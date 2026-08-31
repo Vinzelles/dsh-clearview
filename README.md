@@ -4,7 +4,34 @@
 
 执行时看得到原生步骤、思考和进度；完成后把过程收起来，留下最终回答。独立的 **「阅读」** 页签，保留原版「对话 / 轨迹」、输入框、模型选择、工具和审批。
 
-**v0.1.0 · 非官方 DSH 展示插件。只改展示，不改 Agent、SDK、提示词、模型设置或会话记录。**
+**v0.1.1 · 本地维护版（基于 v0.1.0）。只改展示，不改 Agent、SDK、提示词、模型设置或会话记录。**
+
+## 本地维护改动（0.1.1，2026-08-31）
+
+本副本从 `deepseek-harness/my-plugins/` 迁移到 `dsh/dsh-better-display` 独立维护（上游以
+`.bak-20260831` 留档）。相对上游新增两块内容：
+
+1. **逐词 span 性能修复**（`src/client/word-motion.tsx`）：`<span data-reader-word>`
+   渐显结束后由组件自行渲染为纯文本、React 干净卸载该 span，稳态只保留 ~350ms
+   动画前沿。修复长会话（数万词）滚动掉帧（实测 maxDelta 117-400ms → 17ms、
+   longtask 清零）。
+2. **阅读视图兼容层**（`src/client/compat/`）：原以 `dsh-custom-patcher` 客户端补丁
+   形式存在的 13 个配套修复已全部内聚——composer 布局/毛玻璃标记、memory 收尾
+   展开、思考跟随追赶与渐隐修正、轮次统计行补回、rewind 兼容桥、工具失败去重、
+   短思考样式、离屏轮次 content-visibility、负载守卫 heavy 降级。样式注入
+   `<style id="dsh-better-display-compat">`；JS 模块由客户端 `apply` 经
+   `startCompat(ctx)` 启动，可重入（宿主 boot handoff 二次 apply 先销毁上一实例）。
+
+本机构建（不重启宿主，刷新页面即生效）：
+
+```sh
+cd /d/Khabarovsk/K.Develop/dsh/dsh-better-display
+DSHX_HARNESS=/d/Khabarovsk/K.Develop/deepseek-harness npm run build
+```
+
+profile（`~/.dsh/profiles/web`）经 `link:` 与 junction 指向本目录；
+`deepseek-harness/my-plugins/dsh-better-display` 已改为指向本目录的 junction，
+任何仍按旧路径访问的工具/服务器都能解析。
 
 ## 使用体验
 
