@@ -4,6 +4,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
 import { Reader } from './Reader.js';
 import { createReaderStore } from './store.js';
 import { installReaderEntry } from './entry.js';
+import { startCompat } from './compat/index.js';
 import type { ReaderInjected } from './types.js';
 
 export type { ReaderBlockOwner } from './types.js';
@@ -11,6 +12,7 @@ export const name = 'dsh-better-display-client';
 export const inject = ['slots', 'sessions'];
 
 export function apply(ctx: Context): void {
+  startCompat(ctx);
   const store = createReaderStore();
   const faces = new Map<SessionId, ReaderInjected>();
   ctx.effect(() => () => { faces.clear(); });

@@ -1,4 +1,4 @@
-import { createContext, useContext, useLayoutEffect, useMemo, useRef } from 'react';
+import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import { MarkdownText } from './markdown/MarkdownText.js';
 import { WORD_MOTION, WordTimeline } from './word-timeline.js';
@@ -7,17 +7,23 @@ import css from './Reader.module.css';
 const WordScope = createContext({ enabled: false, generation: 0 });
 const CODE_LABELS = { copyLabel: '复制代码', copiedLabel: '已复制' };
 
-function useSourceReveal(element: RefObject<HTMLElement>, born: number | null, generation: number) {
+/** Whether a word with this birth time still needs its reveal animation now. */
+function willReveal(born: number | null): boolean {
+  if (born === null || document.hidden) return false;
+  return Number(document.timeline.currentTime ?? performance.now()) - born < WORD_MOTION.duration;
+}
+
+function useSourceReveal(element: RefObject<HTMLElement>, born: number | null, generation: number, onSettled: (() => void) | null) {
   const scope = useContext(WordScope);
   const cancelled = useRef(false);
   useLayoutEffect(() => {
     const target = element.current;
     if (!target) return;
     target.dataset.wordState = 'settled';
-    if (!scope.enabled || scope.generation !== generation) { cancelled.current = true; return; }
-    if (cancelled.current || born === null || document.hidden) return;
+    if (!scope.enabled || scope.generation !== generation) { cancelled.current = true; onSettled?.(); return; }
+    if (cancelled.current || born === null || document.hidden) { onSettled?.(); return; }
     const age = Number(document.timeline.currentTime ?? performance.now()) - born;
-    if (age >= WORD_MOTION.duration || typeof target.animate !== 'function') return;
+    if (age >= WORD_MOTION.duration || typeof target.animate !== 'function') { onSettled?.(); return; }
     // The reference opacity + blur frames, applied only to this new word.
     // No color interpolation, stylesheet mutation, or whole-paragraph wipe.
     const animation = target.animate([
@@ -28,24 +34,35 @@ function useSourceReveal(element: RefObject<HTMLElement>, born: number | null, g
     // a fresh delay or running ahead because their layout effects ran later.
     animation.startTime = born;
     target.dataset.wordState = 'resolving';
-    const finish = () => { animation.cancel(); target.dataset.wordState = 'settled'; document.removeEventListener('visibilitychange', hidden); };
+    const finish = () => { animation.cancel(); target.dataset.wordState = 'settled'; document.removeEventListener('visibilitychange', hidden); onSettled?.(); };
     animation.onfinish = finish;
     const hidden = () => { if (document.hidden) { cancelled.current = true; finish(); } };
     document.addEventListener('visibilitychange', hidden);
     return () => { animation.cancel(); document.removeEventListener('visibilitychange', hidden); target.dataset.wordState = 'settled'; };
-  }, [element, born, generation, scope.enabled, scope.generation]);
+  }, [element, born, generation, scope.enabled, scope.generation, onSettled]);
 }
 
 function Word({ children, born, generation, offset, inline }: { children: string; born: number | null; generation: number; offset: number; inline: boolean }) {
   const element = useRef<HTMLSpanElement>(null);
-  useSourceReveal(element, born, generation);
+  // A reveal leaf only needs its wrapper while it animates. Once settled it is
+  // dropped to a plain text node: a long turn streams tens of thousands of words
+  // and keeping a <span> per word made every scroll pay layout/paint for each
+  // box (measured: 90k spans → 50-200ms longtasks; text → smooth). Because the
+  // component itself stops rendering the span, React unmounts it cleanly — no
+  // detached-node crash risk that an external DOM unwrap would carry. Only the
+  // ~350ms frontier holds spans; everything behind is text.
+  const [settled, setSettled] = useState(() => !willReveal(born));
+  const settle = useCallback(() => setSettled(true), []);
+  const onSettled = settled ? null : settle;
+  useSourceReveal(element, born, generation, onSettled);
+  if (settled) return <>{children}</>;
   return <span ref={element} className={inline ? css.streamInlineWord : css.streamWord} data-reader-word data-source-start={offset} data-source-birth={born ?? undefined}>{children}</span>;
 }
 
 /** A native code block enters on the same clock, without rebuilding its text. */
 function MotionAtom({ children, born, generation, offset }: { children: ReactNode; born: number | null; generation: number; offset: number }) {
   const element = useRef<HTMLDivElement>(null);
-  useSourceReveal(element, born, generation);
+  useSourceReveal(element, born, generation, null);
   return <div ref={element} className={css.streamAtom} data-reader-atom data-source-start={offset} data-source-birth={born ?? undefined}>{children}</div>;
 }
 
