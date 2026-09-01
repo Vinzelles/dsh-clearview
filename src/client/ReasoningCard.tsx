@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { REASON_HOLD, REASON_STEP, reasoningTarget } from './reasoning-follow.js';
+import { REASON_CALM_BEAT, REASON_CATCH_BEAT, REASON_END_MAX, REASON_END_MIN, REASON_FIRST, reasoningAdvance } from './reasoning-follow.js';
 import css from './Reader.module.css';
 
 const EASING = 'cubic-bezier(.22,1,.36,1)';
@@ -21,6 +21,8 @@ export function ReasoningCard({ children, step, active, motion, selected, onRead
   const resize = useRef<Animation | null>(null);
   const previousExpanded = useRef(expanded);
   const stopFollow = useRef<() => void>(() => {});
+  /** End-of-stream glide in flight; user interaction cancels it at the painted position. */
+  const glideRef = useRef<{ abort: () => void } | null>(null);
   const allowed = following && active && motion && !selected;
 
   const pause = useCallback(() => {
@@ -62,9 +64,14 @@ export function ReasoningCard({ children, step, active, motion, selected, onRead
     const text = content.current;
     const scrollTrack = track.current;
     if (!port || !text || !scrollTrack) return;
+    // A previous run may still be gliding to the end after the stream finished.
+    // A resuming follow takes over from the painted position, so settle that
+    // glide now; a following run keeps it running and only its interaction
+    // handlers may cancel it.
+    if (allowed) glideRef.current?.abort();
     let frame = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let nextAt = performance.now() + REASON_HOLD;
+    let nextAt = performance.now() + REASON_FIRST;
     let alive = true;
     let automatic = false;
     let lastPainted = port.scrollTop;
@@ -120,7 +127,7 @@ export function ReasoningCard({ children, step, active, motion, selected, onRead
       setEdges(value => value === next ? value : next);
       if (recordHeight && !resize.current) lastHeight.current = port.clientHeight;
     };
-    stopFollow.current = () => { cancel(); manual(); measure(false); };
+    stopFollow.current = () => { glideRef.current?.abort(); cancel(); manual(); measure(false); };
     const canFollow = () => allowed && alive && !document.hidden && !hasSelection();
     const schedule = () => {
       if (!canFollow() || frame || timer !== undefined) return;
@@ -133,17 +140,21 @@ export function ReasoningCard({ children, step, active, motion, selected, onRead
       if (!canFollow()) return;
       const from = paintedOffset();
       const lineHeight = parseFloat(getComputedStyle(text).lineHeight) || 24;
-      const target = reasoningTarget(from, text.offsetHeight, port.clientHeight, lineHeight);
+      const advance = reasoningAdvance(from, text.offsetHeight, port.clientHeight, lineHeight);
+      const { duration, catchUp } = advance;
+      let target = advance.target;
       if (target - from < 1) return;
       const began = performance.now();
-      nextAt = began + REASON_HOLD;
+      // Calm steps keep the 840ms reference cadence; a catch-up glide only
+      // pauses a beat before the loop re-evaluates the live tail.
+      nextAt = began + duration + (catchUp ? REASON_CATCH_BEAT : REASON_CALM_BEAT);
       targetOffset = target;
       // The supplied recipe: commit the start pose, then transition the track.
-      // No per-frame scrollTop writes and no catch-up across unread lines.
+      // No per-frame scrollTop writes; the glide target stays the real end.
       scrollTrack.style.transition = 'none';
       scrollTrack.style.transform = `translateY(-${from}px)`;
       void scrollTrack.offsetHeight;
-      scrollTrack.style.transition = 'transform var(--reason-step) var(--reason-ease)';
+      scrollTrack.style.transition = `transform ${duration}ms var(--reason-ease)`;
       scrollTrack.style.transform = `translateY(-${target}px)`;
       port.dataset.reasoningMoving = 'true';
       port.dataset.reasoningFrom = String(from);
@@ -154,7 +165,15 @@ export function ReasoningCard({ children, step, active, motion, selected, onRead
         if (!canFollow()) { cancel(); manual(); return; }
         // Observe the browser's actual CSS interpolation for masks and handoff.
         measure();
-        if (now - began < REASON_STEP || Math.abs(lastPainted - target) > .05) frame = requestAnimationFrame(tick);
+        // The tail can shrink mid-step (reflow, collapse): clamp the in-flight
+        // target to the live end so the viewport never passes the transcript
+        // end and rolls back on the next step.
+        const liveEnd = tail();
+        if (target > liveEnd + .5) {
+          target = targetOffset = liveEnd;
+          scrollTrack.style.transform = `translateY(-${target}px)`;
+        }
+        if (now - began < duration || Math.abs(lastPainted - target) > .05) frame = requestAnimationFrame(tick);
         else { delete port.dataset.reasoningMoving; schedule(); }
       };
       frame = requestAnimationFrame(tick);
@@ -169,7 +188,7 @@ export function ReasoningCard({ children, step, active, motion, selected, onRead
       // The compositor picks a wheel scroller before handlers run. A clipped
       // transform viewport would otherwise lose this first gesture or scroll
       // the conversation. Consume only this handoff; later wheels stay native.
-      const handoff = automatic && event.cancelable;
+      const handoff = (automatic || glideRef.current !== null) && event.cancelable;
       if (handoff) event.preventDefault();
       const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? parseFloat(getComputedStyle(text).lineHeight) || 24
         : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? port.clientHeight : 1;
@@ -179,14 +198,14 @@ export function ReasoningCard({ children, step, active, motion, selected, onRead
     const onSelection = () => { if (hasSelection()) pause(); };
     const onVisibility = () => {
       cancel(); manual();
-      nextAt = performance.now() + REASON_HOLD;
+      nextAt = performance.now() + REASON_FIRST;
       if (!document.hidden) schedule();
     };
     const observer = new ResizeObserver(() => {
-      if (automatic && targetOffset > tail() + 1) {
-        cancel(); manual();
-        nextAt = performance.now() + REASON_HOLD;
-      }
+      // The tail only ever shrinks here (reflow, collapse, resize): re-aim
+      // the pending target instead of freezing follow; the next step reads
+      // the live end.
+      if (automatic && targetOffset > tail()) targetOffset = tail();
       measure(); schedule();
     });
     observer.observe(text); observer.observe(port);
@@ -197,11 +216,56 @@ export function ReasoningCard({ children, step, active, motion, selected, onRead
     // Keep the previous layout height until the resize effect can sample it.
     measure(false); schedule();
     return () => {
-      alive = false; cancel(); manual(); observer.disconnect();
+      alive = false;
+      cancel();
+      observer.disconnect();
       port.removeEventListener('scroll', onScroll); port.removeEventListener('wheel', onWheel);
       document.removeEventListener('selectionchange', onSelection);
       document.removeEventListener('visibilitychange', onVisibility);
       stopFollow.current = () => {};
+      if (!automatic) { manual(); return; }
+      // The stream ended while this card was still following (a user pause,
+      // wheel or selection would have left transform mode first): glide the
+      // remaining lag to the end of the transcript, then hand the viewport to
+      // native scrolling so the end of the thinking stays visible.
+      const top = paintedOffset();
+      const end = tail();
+      if (port.clientHeight > 1 && end - top > 1) {
+        const glideMs = end - top > 400 ? REASON_END_MAX : REASON_END_MIN;
+        let settleTimer: ReturnType<typeof setTimeout> | undefined;
+        const token: { abort: () => void } = {
+          abort: () => {
+            if (glideRef.current !== token) return;
+            glideRef.current = null;
+            clearTimeout(settleTimer);
+            // Interaction wins: freeze the glide at the painted position.
+            const frozen = paintedOffset();
+            scrollTrack.style.transition = 'none';
+            scrollTrack.style.transform = `translateY(-${frozen}px)`;
+            void scrollTrack.offsetHeight;
+            manual();
+            measure(false);
+          },
+        };
+        const settle = () => {
+          if (glideRef.current !== token) return;
+          glideRef.current = null;
+          clearTimeout(settleTimer);
+          manual();
+          measure(false);
+        };
+        scrollTrack.style.transition = 'none';
+        scrollTrack.style.transform = `translateY(-${top}px)`;
+        void scrollTrack.offsetHeight;
+        scrollTrack.style.transition = `transform ${glideMs}ms var(--reason-ease)`;
+        scrollTrack.style.transform = `translateY(-${end}px)`;
+        glideRef.current = token;
+        settleTimer = setTimeout(settle, glideMs + 80);
+        // Reduced-motion CSS or an unmounted card can swallow the end event.
+        scrollTrack.addEventListener('transitionend', settle, { once: true });
+      } else {
+        manual();
+      }
     };
   }, [allowed, pause]);
 

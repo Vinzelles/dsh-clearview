@@ -196,10 +196,24 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean):
       const selection = document.getSelection();
       return selection && !selection.isCollapsed && selection.anchorNode && content.contains(selection.anchorNode);
     };
+    let captureFrame = 0;
     const capture = () => {
       const top = scroll.getBoundingClientRect().top;
-      const candidate = Array.from(content.querySelectorAll<HTMLElement>('[data-reader-anchor]')).find(element => element.getBoundingClientRect().bottom > top + 8);
+      const anchors = content.querySelectorAll<HTMLElement>('[data-reader-anchor]');
+      let candidate: HTMLElement | null = null;
+      for (let i = 0; i < anchors.length; i++) {
+        const el = anchors[i];
+        if (el.getBoundingClientRect().bottom > top + 8) { candidate = el; break; }
+      }
       anchor.current = candidate ? { element: candidate, top: candidate.getBoundingClientRect().top } : null;
+    };
+    // Coalesce the anchor capture to one per frame: scrolling fires scroll
+    // events faster than paint, and during streaming each capture forces a
+    // synchronous layout of the whole conversation (rect reads on dirty
+    // layout) — the dominant per-scroll-event cost under generation.
+    const scheduleCapture = () => {
+      if (captureFrame) return;
+      captureFrame = requestAnimationFrame(() => { captureFrame = 0; capture(); });
     };
     const onScroll = () => {
       // Our easing frames must not be mistaken for a user leaving the bottom.
@@ -207,7 +221,7 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean):
       following.current = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 72;
       setDetached(!following.current);
       if (!following.current) { cancelAnimationFrame(followFrame); followFrame = 0; }
-      capture();
+      scheduleCapture();
     };
     const onWheel = (event: WheelEvent) => {
       cancelAnimationFrame(followFrame); followFrame = 0; lastWrittenTop = null;
@@ -252,7 +266,7 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean):
     scroll.addEventListener('wheel', onWheel, { passive: true });
     scroll.addEventListener('keydown', onKey);
     return () => {
-      cancelAnimationFrame(firstFrame); cancelAnimationFrame(followFrame); observer.disconnect();
+      cancelAnimationFrame(firstFrame); cancelAnimationFrame(followFrame); cancelAnimationFrame(captureFrame); observer.disconnect();
       scroll.removeEventListener('scroll', onScroll); scroll.removeEventListener('wheel', onWheel);
       scroll.removeEventListener('keydown', onKey);
     };
