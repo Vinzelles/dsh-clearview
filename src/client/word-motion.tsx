@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createContext, memo, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import { MarkdownText } from './markdown/MarkdownText.js';
 import { WORD_MOTION, WordTimeline } from './word-timeline.js';
@@ -66,6 +66,18 @@ function MotionAtom({ children, born, generation, offset }: { children: ReactNod
   return <div ref={element} className={css.streamAtom} data-reader-atom data-source-start={offset} data-source-birth={born ?? undefined}>{children}</div>;
 }
 
+/** One paragraph of a reasoning transcript, memoized on its own text. */
+const ReasonSegment = memo(function ReasonSegment({ timeline, text, offset, generation }: {
+  timeline: WordTimeline; text: string; offset: number; generation: number;
+}) {
+  return <>{timeline.words(text, offset).map(word => word.text.trim()
+    ? <Word key={word.key} born={word.born} generation={generation} offset={word.key} inline>{word.text}</Word>
+    : word.text)}</>;
+}, (previous, next) => previous.timeline === next.timeline
+  && previous.text === next.text
+  && previous.offset === next.offset
+  && previous.generation === next.generation);
+
 /** Native Think is literal text, not Markdown. Spans never alter its bytes. */
 export function MotionPlainText({ text, enabled, revision }: { text: string; enabled: boolean; revision: number }) {
   const timeline = useRef<WordTimeline>();
@@ -74,11 +86,27 @@ export function MotionPlainText({ text, enabled, revision }: { text: string; ena
   const current = timeline.current;
   const generation = current.generation;
   const scope = useMemo(() => ({ enabled, generation }), [enabled, generation]);
-  return <WordScope.Provider value={scope}><div className={css.reasonPlain}>
-    {current.hasLiveText ? current.words(text, 0).map(word => word.text.trim()
-      ? <Word key={word.key} born={word.born} generation={generation} offset={word.key} inline>{word.text}</Word>
-      : word.text) : text}
-  </div></WordScope.Provider>;
+  if (!current.hasLiveText) return <WordScope.Provider value={scope}><div className={css.reasonPlain}>{text}</div></WordScope.Provider>;
+  // Paragraph-chunk the reasoning text: words() re-segments the WHOLE text on
+  // every revision and React diffed every word element, making the running
+  // step's cost O(total-think) per chunk. Only the trailing paragraph grows
+  // append-only, so memoized earlier paragraphs re-render zero times and the
+  // per-chunk cost tracks the live paragraph only. Word keys stay global
+  // source offsets (segment offset + in-segment index), so reconciliation
+  // across paragraph growth is stable.
+  const children: ReactNode[] = [];
+  let offset = 0;
+  let index = 0;
+  for (let i = 0; i < text.length;) {
+    const end = text.indexOf('\n\n', i);
+    const stop = end === -1 ? text.length : end;
+    if (index > 0) children.push('\n\n');
+    children.push(<ReasonSegment key={offset} timeline={current} text={text.slice(i, stop)} offset={offset} generation={generation} />);
+    offset += stop - i + (end === -1 ? 0 : 2);
+    i = end === -1 ? text.length : end + 2;
+    index += 1;
+  }
+  return <WordScope.Provider value={scope}><div className={css.reasonPlain}>{children}</div></WordScope.Provider>;
 }
 
 /** Native DSH Markdown semantics with a stable text-leaf animation hook. */

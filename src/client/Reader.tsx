@@ -41,9 +41,16 @@ const AssistantNode = memo(function AssistantNode({ useSession, nodeKey, boundar
   const node = useSession(snapshot => snapshot.chat.nodes.get(nodeKey));
   if (!node || node.visibility === 'hidden' || !isNode(node, 'assistant-step')) return null;
   const data = node.data;
-  const parts = assistantSegments(data.blocks);
+  // Memoize the segment split on the node's own blocks identity. During
+  // streaming the turn boundary changes every chunk, re-rendering every
+  // AssistantNode in the open turn; without this memo each re-render hands
+  // Blocks a fresh array, defeats its memo, and re-segments the FULL text of
+  // every settled step (the reasoning path has no inner cache) — an
+  // O(turn-size) storm per chunk. Settled nodes keep a stable data.blocks, so
+  // their children now bail out entirely.
+  const parts = useMemo(() => assistantSegments(data.blocks), [data.blocks]);
   const earlier = isEarlierNarration(data, boundary);
-  const body = data.blocks.filter(block => block.kind !== 'reasoning' && block.kind !== 'tool-call');
+  const body = useMemo(() => data.blocks.filter(block => block.kind !== 'reasoning' && block.kind !== 'tool-call'), [data.blocks]);
   return <>{parts.map((part, index) => part.kind === 'reasoning'
     ? <ProcessFragment key={part.start} open={processOpen} motion={motion} onRead={onRead} returnFocusTo={returnFocusTo} nodeKey={nodeKey} framed>
       <ReasoningCard step={data.step} active={processOpen && boundary.status === 'open' && data.step === boundary.latestStep} motion={motion} selected={pinned} onRead={onRead}>
@@ -76,11 +83,18 @@ const MainNode = memo(function MainNode({ useSession, nodeKey, boundary, pinned,
   if (isNode(node, 'model-retry')) return node.data.current.retryState === 'scheduled'
     ? <div className={css.notice} role="status">模型请求未成功，正在等待重试。详情保留在执行过程中。</div> : null;
   if (isNode(node, 'command')) {
-    if (node.data.outcome?.kind === 'error') return <div className={css.error} role="alert">命令执行失败：{node.data.outcome.text ?? node.data.name ?? '查看原对话中的命令记录'}</div>;
+    // The failure banner folds with the process (its 命令记录 JsonBlock already
+    // does); a red banner no longer sits above the final answer once a turn
+    // completes and collapses.
+    if (node.data.outcome?.kind === 'error') return processOpen
+      ? <div className={css.error} role="alert">命令执行失败：{node.data.outcome.text ?? node.data.name ?? '查看原对话中的命令记录'}</div>
+      : null;
     return node.data.outcome?.text ? <MarkdownText text={node.data.outcome.text} /> : null;
   }
   if (isNode(node, 'manual-compaction')) {
-    if (node.data.command.outcome?.kind === 'error') return <div className={css.error} role="alert">上下文压缩失败：{node.data.command.outcome.text}</div>;
+    if (node.data.command.outcome?.kind === 'error') return processOpen
+      ? <div className={css.error} role="alert">上下文压缩失败：{node.data.command.outcome.text}</div>
+      : null;
     return node.data.compaction ? <p className={css.meta}>上下文已整理，原始记录仍保留。</p> : <p className={css.meta}>正在整理上下文…</p>;
   }
   if (node.kind === 'compaction') return <details className={css.detail}><summary>上下文已整理，查看记录</summary><JsonBlock label="压缩记录" payload={node.data} /></details>;
@@ -156,7 +170,7 @@ const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedP
         <BlockBoundary><ProcessFragment open={expanded} motion={motion} onRead={pinProcess} returnFocusTo={processButton} nodeKey={item.key} framed>
           <ToolActivity {...shared} entry={item} motion={motion} turnClosed={boundary.status === 'closed'} onRead={pinProcess} />
         </ProcessFragment></BlockBoundary>
-        {item.block && <BlockBoundary><ToolMedia {...shared} block={item.block} /></BlockBoundary>}
+        {item.block && <BlockBoundary><ToolMedia {...shared} block={item.block} open={expanded} /></BlockBoundary>}
       </Fragment>)}
     </div>
     {terminal && <div className={css.notice} data-reader-terminal>{terminal}</div>}
@@ -182,7 +196,7 @@ export function Reader(props: ReaderProps) {
   const pinnedKeys = usePinnedSelection(root);
   const selectedProcessKeys = usePinnedSelection(root, '[data-reader-process]');
   const [historyError, setHistoryError] = useState(false);
-  return <StreamMotionContext.Provider value={streamMotion}><div ref={root} className={css.root} data-dsh-better-display="0.1.1" data-motion={motion ? 'on' : 'off'}>
+  return <StreamMotionContext.Provider value={streamMotion}><div ref={root} className={css.root} data-dsh-better-display="0.1.2" data-motion={motion ? 'on' : 'off'}>
     <div className={css.column}>
       <div className={css.toolbar} data-ud-check="reader-toolbar">
         <span title="基于真实消息类型和轮次边界整理。当前协议没有独立的正文阶段标记，无法确认的内容会继续保留。">阅读 · 原始记录完整保留</span>

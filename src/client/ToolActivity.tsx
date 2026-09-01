@@ -140,14 +140,25 @@ export const ToolActivity = memo(function ToolActivityView({ entry, motion, turn
   && previous.onRead === next.onRead && previous.renderSlotChain === next.renderSlotChain && previous.loadImage === next.loadImage);
 
 /** Media and failures never disappear inside a folded execution record. */
-export function ToolMedia({ block, depth = 0, ...render }: BlockRenderProps & { block: ToolCallBlock; depth?: number }) {
+// Media and failures are rendered outside the per-tool ProcessFragment so they
+// never vanish inside a single folded tool row. The failure banner and its error
+// text additionally follow the whole turn's open state: once the turn's process
+// is folded (only for completed turns) they retire with it, so a run of failed
+// commands no longer stacks red banners above the final answer. Media (images)
+// stays put. The `open` flag keeps the banner and its duplicate error text in
+// sync so the reader-tool-error-dedup CSS (keyed on the alert div) keeps
+// matching when the process is re-expanded.
+export function ToolMedia({ block, depth = 0, open = true, ...render }: BlockRenderProps & { block: ToolCallBlock; depth?: number; open?: boolean }) {
   if (depth > 6) return null;
   const settled = 'kind' in block;
   const failed = activityPhase({ block }) === 'failed';
-  const visible = settled ? contentBlocks(block.content).filter(item => block.isError || item.kind === 'image' || item.kind === 'other') : [];
+  const blocks = settled ? contentBlocks(block.content) : [];
+  const media = blocks.filter(item => item.kind === 'image' || item.kind === 'other');
+  const failure = settled && block.isError ? blocks.filter(item => item.kind !== 'image' && item.kind !== 'other') : [];
   return <>
-    {failed && <div className={css.error} role="alert">{toolIdentity({ block }).name} 执行未成功{executionFacts(block).exitCode !== undefined ? ` · 退出码 ${executionFacts(block).exitCode}` : ''}，详情保留在执行记录中。</div>}
-    {visible.length > 0 && <Blocks {...render} blocks={visible} source="tool" />}
-    {block.subCalls.map(child => <ToolMedia key={child.callId} {...render} block={child} depth={depth + 1} />)}
+    {failed && open && <div className={css.error} role="alert">{toolIdentity({ block }).name} 执行未成功{executionFacts(block).exitCode !== undefined ? ` · 退出码 ${executionFacts(block).exitCode}` : ''}，详情保留在执行记录中。</div>}
+    {open && failure.length > 0 && <Blocks {...render} blocks={failure} source="tool" />}
+    {media.length > 0 && <Blocks {...render} blocks={media} source="tool" />}
+    {block.subCalls.map(child => <ToolMedia key={child.callId} {...render} block={child} depth={depth + 1} open={open} />)}
   </>;
 }

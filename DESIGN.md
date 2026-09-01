@@ -20,7 +20,9 @@ Only a successful public turn-close boundary folds process and intermediate comm
 
 ## Long reasoning
 
-A neutral card bounds the transcript without replacing it. The viewport mask is 28px. Follow advances by two actual line heights every 840ms, with a 500ms transform using `cubic-bezier(.22,1,.36,1)`; clamp only at the current real end. Never accelerate through a burst, clone the transcript or loop old text.
+A neutral card bounds the transcript without replacing it. The viewport mask is 28px. Follow advances by two actual line heights every 840ms, with a 500ms transform using `cubic-bezier(.22,1,.36,1)`; clamp only at the current real end. When a fast stream leads by more than four lines, the viewport instead glides to the current end — 400–1800ms, scaled by the distance — and re-evaluates on a 120ms beat: a burst extends the glide, it never jumps past the real end, clones the transcript or loops old text. In-flight steps clamp to a shrinking tail, so a reflow or collapse can never push the viewport past the transcript end and roll it back.
+
+When the stream ends while following, the viewport glides the remaining distance to the end (420/600ms) and hands off to native scrolling; user interaction during the glide cancels it at the painted position.
 
 Expanding changes viewport size and preserves position and follow state. Wheel, touch, viewport focus or selection pause following. The explicit follow control resumes only when no text is selected. Completed history stays static. The full source text remains available.
 
