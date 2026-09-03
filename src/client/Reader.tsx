@@ -562,7 +562,7 @@ export function Reader(props: ReaderProps) {
           data-phase={activity.phase} data-ud-check="reader-activity-bar" role="status">
           <span className={css.activityText} data-reader-activity-label>{activity.label}</span>
           {activity.seconds !== null && (
-            <span className={css.activityTimer} data-reader-activity-timer>{formatSeconds(activity.seconds)}</span>
+            <span className={css.activityTimer} data-reader-activity-timer aria-hidden="true">{formatSeconds(activity.seconds)}</span>
           )}
           <button type="button" className={css.activityJump} aria-label="回到最新" title="回到最新" onClick={scroll.jump}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
