@@ -2,6 +2,7 @@ import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode, RefObject } from 'react';
 import css from './Reader.module.css';
 import { StreamMotionContext } from './streaming.js';
+import { READING_SURFACE_GAP, readingFollowAction } from './reading-follow.js';
 
 const EASING = 'cubic-bezier(.22,1,.36,1)';
 
@@ -92,15 +93,11 @@ export function Disclosure({ open, onChange, label, status, controls, buttonRef 
   status?: string; controls: string; buttonRef: RefObject<HTMLButtonElement>;
 }) {
   return <div className={css.disclosure} data-reader-disclosure data-expanded={open}>
-    <button ref={buttonRef} type="button" className={css.disclosureButton} aria-label={`${open ? '收起' : '展开'}思考与过程`} aria-expanded={open} aria-controls={controls} onClick={() => onChange(!open)}>
+    <button ref={buttonRef} type="button" className={css.disclosureButton} aria-label={`${open ? '收起' : '展开'}思考与过程${status ? `，${status}` : ''}`} aria-expanded={open} aria-controls={controls} onClick={() => onChange(!open)}>
       {label}
+      {status && <span className={css.disclosureStatus}>{status}</span>}
       <svg className={css.chevron} data-open={open} viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg>
     </button>
-    <div className={css.processMeta} data-reader-process-meta data-open={open} aria-hidden={!open}>
-      <div className={css.processMetaInner}><div className={css.processMetaLine}>
-        <span>思考与过程</span>{status && <span className={css.meta}>{status}</span>}
-      </div></div>
-    </div>
   </div>;
 }
 
@@ -182,7 +179,6 @@ export function RetiringContent({ visible, children }: { visible: boolean; child
 export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean): { detached: boolean; jump: () => void } {
   const port = useRef<HTMLElement | null>(null);
   const following = useRef(true);
-  const anchor = useRef<{ element: HTMLElement; top: number } | null>(null);
   const [detached, setDetached] = useState(false);
   useLayoutEffect(() => {
     const content = root.current;
@@ -196,69 +192,62 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean):
       const selection = document.getSelection();
       return selection && !selection.isCollapsed && selection.anchorNode && content.contains(selection.anchorNode);
     };
-    let captureFrame = 0;
-    const capture = () => {
-      const top = scroll.getBoundingClientRect().top;
-      const anchors = content.querySelectorAll<HTMLElement>('[data-reader-anchor]');
-      let candidate: HTMLElement | null = null;
-      for (let i = 0; i < anchors.length; i++) {
-        const el = anchors[i];
-        if (el.getBoundingClientRect().bottom > top + 8) { candidate = el; break; }
-      }
-      anchor.current = candidate ? { element: candidate, top: candidate.getBoundingClientRect().top } : null;
-    };
-    // Coalesce the anchor capture to one per frame: scrolling fires scroll
-    // events faster than paint, and during streaming each capture forces a
-    // synchronous layout of the whole conversation (rect reads on dirty
-    // layout) — the dominant per-scroll-event cost under generation.
-    const scheduleCapture = () => {
-      if (captureFrame) return;
-      captureFrame = requestAnimationFrame(() => { captureFrame = 0; capture(); });
+    const focused = () => {
+      const active = document.activeElement;
+      return active instanceof HTMLElement && active !== document.body && content.contains(active);
     };
     const onScroll = () => {
       // Our easing frames must not be mistaken for a user leaving the bottom.
       if (lastWrittenTop !== null && Math.abs(scroll.scrollTop - lastWrittenTop) < 1) return;
-      following.current = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 72;
+      following.current = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < READING_SURFACE_GAP;
       setDetached(!following.current);
       if (!following.current) { cancelAnimationFrame(followFrame); followFrame = 0; }
-      scheduleCapture();
     };
     const onWheel = (event: WheelEvent) => {
       cancelAnimationFrame(followFrame); followFrame = 0; lastWrittenTop = null;
-      if (event.deltaY < 0) { following.current = false; setDetached(true); capture(); }
+      if (event.deltaY < 0) { following.current = false; setDetached(true); }
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLElement && event.target.closest('textarea,input,[contenteditable=true]')) return;
       if (['PageUp', 'Home', 'ArrowUp'].includes(event.key)) {
         cancelAnimationFrame(followFrame); followFrame = 0; lastWrittenTop = null;
-        following.current = false; setDetached(true); capture();
+        following.current = false; setDetached(true);
       }
     };
     const writeTop = (top: number) => { scroll.scrollTop = top; lastWrittenTop = scroll.scrollTop; };
     const follow = (now: number) => {
       followFrame = 0;
-      if (!following.current || selected() || content.contains(document.activeElement)) return;
+      if (!following.current || selected() || focused()) return;
       const gap = scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop;
       const delta = Math.min(48, Math.max(1, now - lastFrameAt));
       lastFrameAt = now;
-      if (!motion || Math.abs(gap) < 1.5) { writeTop(scroll.scrollHeight); capture(); return; }
+      if (!motion || Math.abs(gap) < 1.5) { writeTop(scroll.scrollHeight); setDetached(false); return; }
       writeTop(scroll.scrollTop + gap * (1 - Math.exp(-delta / 52)));
       followFrame = requestAnimationFrame(follow);
     };
     const firstFrame = requestAnimationFrame(() => {
       if (following.current && !selected()) writeTop(scroll.scrollHeight);
-      capture();
     });
     const observer = new ResizeObserver(() => {
-      if (selected()) return;
-      if (following.current && !content.contains(document.activeElement)) {
+      const action = readingFollowAction(
+        { selected: !!selected(), focused: focused() },
+        following.current,
+        scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight,
+      );
+      if (action === 'follow') {
         if (!motion) writeTop(scroll.scrollHeight);
         else if (!followFrame) { lastFrameAt = performance.now(); followFrame = requestAnimationFrame(follow); }
-      } else if (!following.current && anchor.current?.element.isConnected) {
-        const delta = anchor.current.element.getBoundingClientRect().top - anchor.current.top;
-        if (Math.abs(delta) > .5) writeTop(scroll.scrollTop + delta);
+      } else if (action === 'surface') {
+        // A reading guard is holding follow while the reader still claims the
+        // bottom. Without this the pause is silent until the reader scrolls
+        // by hand — and the jump pill is the guard's only visible exit.
+        setDetached(true);
       }
-      capture();
+      // Detached stabilization is intentionally not applied here: the host
+      // scroll container's native scroll anchoring already keeps the reader
+      // in place during async layout/content-visibility changes, and a second
+      // manual anchor adjustment is what caused sudden jumps while scrolling
+      // back through completed turns.
     });
     observer.observe(content);
     if (scroll !== content) observer.observe(scroll);
@@ -266,12 +255,22 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean):
     scroll.addEventListener('wheel', onWheel, { passive: true });
     scroll.addEventListener('keydown', onKey);
     return () => {
-      cancelAnimationFrame(firstFrame); cancelAnimationFrame(followFrame); cancelAnimationFrame(captureFrame); observer.disconnect();
+      cancelAnimationFrame(firstFrame); cancelAnimationFrame(followFrame); observer.disconnect();
       scroll.removeEventListener('scroll', onScroll); scroll.removeEventListener('wheel', onWheel);
       scroll.removeEventListener('keydown', onKey);
     };
   }, [root, motion]);
   return { detached, jump: () => {
+    // "Back to latest" is an explicit resume: clear the reading guards that
+    // live inside the reader, or the next content growth silently re-stalls
+    // follow against them — a text selection survives a button click by
+    // design, so without this the pill recursed the exact bug it promised
+    // to fix. Guards owned outside the reader (composer focus, a selection
+    // elsewhere) are left alone.
+    const selection = document.getSelection();
+    if (selection && !selection.isCollapsed && selection.anchorNode && root.current?.contains(selection.anchorNode)) selection.removeAllRanges();
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active !== document.body && root.current?.contains(active)) active.blur();
     following.current = true; setDetached(false);
     port.current?.scrollTo({ top: port.current.scrollHeight, behavior: 'instant' });
   } };

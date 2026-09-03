@@ -8,7 +8,7 @@ import { startCompat } from './compat/index.js';
 import type { ReaderInjected } from './types.js';
 
 export type { ReaderBlockOwner } from './types.js';
-export const name = 'dsh-better-display-client';
+export const name = 'dsh-clearview-client';
 export const inject = ['slots', 'sessions'];
 
 export function apply(ctx: Context): void {
@@ -23,7 +23,7 @@ export function apply(ctx: Context): void {
     order: -5,
     label: () => '阅读',
     locale: 'conversation',
-    children: { 'dsh-better-display.block': { kind: 'chain', scope: 'session' } },
+    children: { 'dsh-clearview.block': { kind: 'chain', scope: 'session' } },
     store,
     inject: (sessionId: SessionId): ReaderInjected => {
       const existing = faces.get(sessionId);

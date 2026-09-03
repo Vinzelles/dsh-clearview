@@ -96,6 +96,6 @@ export function apply(_ctx: any): () => void {
     if (domObserver) domObserver.disconnect();
     if (themeObserver) themeObserver.disconnect();
   };
-  try { console.info('[dsh-better-display:composer-readability] applied'); } catch { /* 忽略 */ }
+  try { console.info('[dsh-clearview:composer-readability] applied'); } catch { /* 忽略 */ }
   return cleanup;
 }

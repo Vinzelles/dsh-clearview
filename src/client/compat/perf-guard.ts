@@ -35,20 +35,20 @@ function syncRoot(root: HTMLElement): void {
   const next = heavy ? 'on' : 'off';
   if (root.getAttribute('data-dshcp-heavy') !== next) {
     root.setAttribute('data-dshcp-heavy', next);
-    try { console.info(`[dsh-better-display:perf-guard] reader ${next} (chars=${load.chars}, sections=${load.sections})`); } catch { /* 忽略 */ }
+    try { console.info(`[dsh-clearview:perf-guard] reader ${next} (chars=${load.chars}, sections=${load.sections})`); } catch { /* 忽略 */ }
   }
   root.setAttribute('data-dshcp-load', `${load.chars}:${load.sections}`);
 }
 
 export function apply(_ctx: any): () => void {
   const work = () => {
-    const roots = document.querySelectorAll<HTMLElement>('[data-dsh-better-display]');
+    const roots = document.querySelectorAll<HTMLElement>('[data-dsh-clearview]');
     for (let i = 0; i < roots.length; i++) {
       try { syncRoot(roots[i]); } catch { /* 单根失败忽略 */ }
     }
   };
   work();
   const timer = setInterval(work, POLL_MS);
-  try { console.info('[dsh-better-display:perf-guard] applied'); } catch { /* 忽略 */ }
+  try { console.info('[dsh-clearview:perf-guard] applied'); } catch { /* 忽略 */ }
   return () => clearInterval(timer);
 }

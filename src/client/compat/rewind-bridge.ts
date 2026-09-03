@@ -117,7 +117,7 @@ export function apply(_ctx: any): () => void {
 
   const scan = () => {
     lastRun = Date.now();
-    document.querySelectorAll<HTMLElement>('[data-dsh-better-display]').forEach(rootEl => {
+    document.querySelectorAll<HTMLElement>('[data-dsh-clearview]').forEach(rootEl => {
       try { rootEl.querySelectorAll<HTMLElement>(SEAT_SELECTOR).forEach(ensureSeat); } catch { /* 隔离单根异常 */ }
     });
   };
@@ -150,6 +150,6 @@ export function apply(_ctx: any): () => void {
     if (observer) observer.disconnect();
     if (trailing) clearTimeout(trailing);
   };
-  try { console.info('[dsh-better-display:rewind-bridge] applied'); } catch { /* 忽略 */ }
+  try { console.info('[dsh-clearview:rewind-bridge] applied'); } catch { /* 忽略 */ }
   return cleanup;
 }

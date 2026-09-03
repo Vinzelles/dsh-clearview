@@ -1,4 +1,4 @@
 # Portable source overlay. Use dshx activate-new-client for a built Web plugin.
 - insert:
-    - id: dsh-better-display
-      name: './src/dsh-better-display.ts'
+    - id: dsh-clearview
+      name: './src/dsh-clearview.ts'

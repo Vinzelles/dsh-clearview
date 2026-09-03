@@ -20,25 +20,25 @@ Only a successful public turn-close boundary folds process and intermediate comm
 
 ## Long reasoning
 
-A neutral card bounds the transcript without replacing it. The viewport mask is 28px. Follow advances by two actual line heights every 840ms, with a 500ms transform using `cubic-bezier(.22,1,.36,1)`; clamp only at the current real end. When a fast stream leads by more than four lines, the viewport instead glides to the current end — 400–1800ms, scaled by the distance — and re-evaluates on a 120ms beat: a burst extends the glide, it never jumps past the real end, clones the transcript or loops old text. In-flight steps clamp to a shrinking tail, so a reflow or collapse can never push the viewport past the transcript end and roll it back.
+A neutral card bounds the transcript without replacing it. The viewport mask is 28px. Follow is continuous, not stepped: one rAF loop writes the viewport's native scroll offset per frame, driven by a velocity-matched controller — an EMA of the measured tail growth feeds the speed forward and a proportional term closes residual lag. Under steady streaming the viewport moves at exactly the content speed with zero visible lag; a burst or a resume closes the gap smoothly at a capped speed. The position is clamped to the live tail every frame, so the viewport never passes the transcript end, rolls back, clones the transcript or loops old text; a shrinking tail re-aims instead of freezing. All metrics are cached from the resize signal, so neither the scroll nor the fade costs more as a single card grows long: the loop reads no layout, and native scrolling rasterizes against the viewport, not the transcript. When the stream stops or the loop settles, it parks itself until the next growth.
 
-When the stream ends while following, the viewport glides the remaining distance to the end (420/600ms) and hands off to native scrolling; user interaction during the glide cancels it at the painted position.
+When the stream ends while following, the same controller glides the residual lag to the end and stops; user interaction during the glide cancels it at the painted position.
 
 Expanding changes viewport size and preserves position and follow state. Wheel, touch, viewport focus or selection pause following. The explicit follow control resumes only when no text is selected. Completed history stays static. The full source text remains available.
 
 ## Text and status motion
 
-Assign reveal times from source positions before rendering Markdown. Only newly appended text receives opacity/blur motion; existing paragraphs, page surfaces and text color do not animate. Unicode graphemes and punctuation keep their source order. Media and custom blocks do not enter the text queue.
+Assign reveal times from source positions before rendering Markdown. Only newly appended text receives opacity/blur motion; existing paragraphs, page surfaces and text color do not animate. The animated frontier is bounded: text whose reveal has finished renders as plain text, and only the live reveal window (roughly duration plus queue delay worth of words) exists as components, so a long single paragraph costs the same per frame as a short one. Unicode graphemes and punctuation keep their source order. Media and custom blocks do not enter the text queue.
 
 Busy labels use a 2-second glyph-only shimmer and a short state swap. Initial, busy and elapsed labels all use the native font at 14px/24px, weight 400. The disclosure arrow sits 6px from the current label; no longest-state spacer. Elapsed time and attention states do not shimmer.
 
 ## Reading and accessibility
 
-Manual reading, selection and keyboard access take precedence over automatic following. Reduced-motion preferences, disabled motion and background views settle to the received content. Errors stay local to their block. Do not turn user interaction into a permanent lock that prevents successful-turn folding.
+Manual reading, selection and keyboard access take precedence over automatic following. A guard pause must stay visible and closable: while a selection or focus inside the reader holds the follow and the reader still claims the bottom, new content beyond the bottom budget surfaces the jump pill, and using the pill clears reader-owned selection and focus so following resumes. A pause with no affordance and no exit is a stall, not a guard. Reduced-motion preferences, disabled motion and background views settle to the received content. Errors stay local to their block. Do not turn user interaction into a permanent lock that prevents successful-turn folding.
 
 ## Extensions and safety
 
-Trusted plugins may register `dsh-better-display.block`. Native content remains the fallback. This release does not execute arbitrary generated markup, embed an MCP App host or grant capabilities to generated UI.
+Trusted plugins may register `dsh-clearview.block`. Native content remains the fallback. This release does not execute arbitrary generated markup, embed an MCP App host or grant capabilities to generated UI.
 
 ## Verification
 

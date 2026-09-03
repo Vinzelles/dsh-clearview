@@ -57,7 +57,7 @@ export function hasProcessContent(node: ChatConversationViewNode | undefined, bo
     return data.blocks.some(block => block.kind === 'reasoning' && block.text.trim() !== '')
       || (isEarlierNarration(data, boundary) && hasVisibleBody(data.blocks));
   }
-  return node.kind === 'context' || node.kind === 'model-retry'
+  return node.kind === 'context'
     || node.kind === 'command' || node.kind === 'manual-compaction';
 }
 

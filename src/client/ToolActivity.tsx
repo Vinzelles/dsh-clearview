@@ -95,7 +95,7 @@ export const ToolActivity = memo(function ToolActivityView({ entry, motion, turn
   const rowTitle = model.name === 'skill' ? 'Skill' : native?.title ?? VARIANT_TITLES[classifyTool(model.name)];
   const rowSummary = model.name === 'skill' ? skillName : native?.errorSummary ?? native?.summary
     ?? (classifyTool(model.name) === 'others' ? `${model.name} · ${model.target ?? model.title}` : model.target ?? model.title);
-  const showState = phase === 'preparing' || phase === 'running' || phase === 'failed' || phase === 'interrupted';
+  const showState = true;
   const elapsed = block && 'kind' in block && block.callTime != null ? Math.max(0, block.time - block.callTime) : null;
   const rawResult = useMemo(() => {
     const value = preview.entry.block;
@@ -140,24 +140,33 @@ export const ToolActivity = memo(function ToolActivityView({ entry, motion, turn
   && previous.onRead === next.onRead && previous.renderSlotChain === next.renderSlotChain && previous.loadImage === next.loadImage);
 
 /** Media and failures never disappear inside a folded execution record. */
-// Media and failures are rendered outside the per-tool ProcessFragment so they
-// never vanish inside a single folded tool row. The failure banner and its error
-// text additionally follow the whole turn's open state: once the turn's process
-// is folded (only for completed turns) they retire with it, so a run of failed
-// commands no longer stacks red banners above the final answer. Media (images)
-// stays put. The `open` flag keeps the banner and its duplicate error text in
-// sync so the reader-tool-error-dedup CSS (keyed on the alert div) keeps
-// matching when the process is re-expanded.
+// Failures are collected into one expandable error card outside the per-tool
+// ProcessFragment: the summary stays visible when the turn's process is open,
+// while the raw error text is hidden behind the disclosure instead of appearing
+// as a second, redundant prompt. Media (images) stays put.
 export function ToolMedia({ block, depth = 0, open = true, ...render }: BlockRenderProps & { block: ToolCallBlock; depth?: number; open?: boolean }) {
   if (depth > 6) return null;
   const settled = 'kind' in block;
   const failed = activityPhase({ block }) === 'failed';
   const blocks = settled ? contentBlocks(block.content) : [];
   const media = blocks.filter(item => item.kind === 'image' || item.kind === 'other');
-  const failure = settled && block.isError ? blocks.filter(item => item.kind !== 'image' && item.kind !== 'other') : [];
+  const failure = settled && failed ? blocks.filter(item => item.kind !== 'image' && item.kind !== 'other') : [];
+  const facts = executionFacts(block);
   return <>
-    {failed && open && <div className={css.error} role="alert">{toolIdentity({ block }).name} 执行未成功{executionFacts(block).exitCode !== undefined ? ` · 退出码 ${executionFacts(block).exitCode}` : ''}，详情保留在执行记录中。</div>}
-    {open && failure.length > 0 && <Blocks {...render} blocks={failure} source="tool" />}
+    {failed && open && (
+      <details className={css.errorCard} data-reader-tool-error>
+        <summary>
+          <span className={css.errorCardTitle}>{toolIdentity({ block }).name} 执行未成功</span>
+          {facts.exitCode !== undefined && <span className={css.errorCardMeta}>退出码 {facts.exitCode}</span>}
+          <span className={css.errorCardHint}>{failure.length > 0 ? '展开查看详情' : '详情保留在执行记录中'}</span>
+        </summary>
+        <div className={css.errorCardBody}>
+          {failure.length > 0
+            ? <Blocks {...render} blocks={failure} source="tool" />
+            : <p className={css.toolDetailNote}>工具没有返回可展示的错误文本，完整记录可在「原始数据」查看。</p>}
+        </div>
+      </details>
+    )}
     {media.length > 0 && <Blocks {...render} blocks={media} source="tool" />}
     {block.subCalls.map(child => <ToolMedia key={child.callId} {...render} block={child} depth={depth + 1} open={open} />)}
   </>;

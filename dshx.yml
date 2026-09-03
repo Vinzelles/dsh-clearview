@@ -1,5 +1,5 @@
-id: dsh-better-display
-entry: src/dsh-better-display.ts
-marker: '[my-plugins/dsh-better-display] loaded'
+id: dsh-clearview
+entry: src/dsh-clearview.ts
+marker: '[my-plugins/dsh-clearview] loaded'
 kind: client
 profile: web
