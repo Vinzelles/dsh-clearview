@@ -797,6 +797,41 @@
 .imageDialog::backdrop { background: var(--dsw-alias-bg-mask-photo); }
 .imageDialog img { max-width: 82vw; max-height: 75vh; display: block; object-fit: contain; }
 .dialogClose { position: absolute; right: 8px; top: 4px; border: 0; background: transparent; color: inherit; width: 32px; height: 32px; border-radius: 8px; font-size: 24px; }
+/* Running activity bar: quiet rectangular glass strip, not a pill. */
+.activityBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 14px;
+  margin: 2px 0 10px;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 80%, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 78%, transparent);
+  backdrop-filter: blur(6px);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+.activityText { font-weight: 500; color: var(--dsw-alias-label-primary); white-space: nowrap; }
+.activityTimer { font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-secondary); white-space: nowrap; }
+.activityJump {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+.activityJump:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+/* Content left the bottom: fade out but stay clickable/visible enough. */
+.activityBar[data-detached] { opacity: 0.25; transform: translateY(2px); }
 .jumpDock { position: sticky; bottom: 12px; align-self: center; height: 0; z-index: 2; }
 .jump {
   display: inline-flex;
@@ -820,7 +855,7 @@
   flex: none;
 }
 
-[data-motion=off] .chevron, [data-motion=off] .imageOpen img { transition: none; }
+[data-motion=off] .chevron, [data-motion=off] .imageOpen img, [data-motion=off] .activityBar { transition: none; }
 [data-motion=off] .toolState::before,
 [data-motion=off] .toolActivity[data-tool-phase=running] .nativeToolSummary,
 [data-motion=off] .toolActivity[data-tool-phase=running] .toolState,
@@ -831,7 +866,7 @@
 [data-motion=off] .commandRecord[data-command-state=running] .commandRecordStatus,
 [data-motion=off] .commandRecord[data-command-state=running] button { animation: none !important; }
 @media (prefers-reduced-motion: reduce) {
-  .chevron, .imageOpen img { transition: none; }
+  .chevron, .imageOpen img, .activityBar { transition: none; }
   .toolState::before,
   .toolActivity[data-tool-phase=running] .nativeToolSummary,
   .toolActivity[data-tool-phase=running] .toolState,
