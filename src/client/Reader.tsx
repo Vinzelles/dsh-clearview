@@ -8,6 +8,8 @@ import { ReasoningCard } from './ReasoningCard.js';
 import { ToolActivity, ToolMedia } from './ToolActivity.js';
 import { formatOperationClusterSummary, groupOperationalFlow, preparingLabel, readerFlow } from './tool-activity.js';
 import type { OperationalFlowItem, ReaderFlowEntry } from './tool-activity.js';
+import { formatSeconds } from './turn-activity.js';
+import { useTurnActivity } from './use-turn-activity.js';
 import { Disclosure, ProcessFragment, RetiringContent, StatusText, useMotionAllowed, usePinnedSelection, useReadingScroll } from './motion.js';
 import { StreamMotionContext } from './streaming.js';
 import { assistantSegments, boundaryOf, groupNodes, hasProcessContent, hasVisibleBody, isEarlierNarration, processChoiceKey, processExpanded, terminalLabel } from './projection.js';
@@ -495,6 +497,7 @@ export function Reader(props: ReaderProps) {
   const motionPreference = props.useStore(state => state.motion);
   const collapseThinking = props.useStore(state => state.collapseThinking ?? true);
   const motion = useMotionAllowed(motionPreference);
+  const activity = useTurnActivity(props.useSession);
   const streamMotion = useMemo(() => ({ enabled: motion, activatedAt: activatedAt.current }), [motion]);
   const rewindHidden = useMemo(() => {
     return rewindToken ? hiddenSeqsOf({ order, nodes }) : new Set<number>();
@@ -554,6 +557,20 @@ export function Reader(props: ReaderProps) {
         <strong>{pending.some(item => item.kind === 'question') ? '需要你回答一个问题' : '需要你的确认'}</strong>
         <span>请在下方原生操作区处理。此提示不会收进执行过程。</span>
       </div>}
+      {activity.key && (
+        <div className={css.activityBar} data-detached={scroll.detached ? 'true' : undefined}
+          data-phase={activity.phase} data-ud-check="reader-activity-bar" role="status">
+          <span className={css.activityText} data-reader-activity-label>{activity.label}</span>
+          {activity.seconds !== null && (
+            <span className={css.activityTimer} data-reader-activity-timer>{formatSeconds(activity.seconds)}</span>
+          )}
+          <button type="button" className={css.activityJump} aria-label="回到最新" title="回到最新" onClick={scroll.jump}>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M8 3v10m-4-4 4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      )}
       {scroll.detached && <div className={css.jumpDock}><button type="button" className={css.jump} onClick={scroll.jump} aria-label="回到最新" title="回到最新">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <path d="M8 3v10m-4-4 4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
