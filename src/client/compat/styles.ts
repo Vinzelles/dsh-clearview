@@ -14,7 +14,14 @@
  *  - rewind-reader-bridge.css        rewind 兼容桥 actions 行样式
  */
 
-export const COMPAT_CSS = `/* ==== reader-scroll-anchor.css ==== */
+export const COMPAT_CSS = `/* ==== reader-tool-state.css ==== */
+/* 确保工具状态徽标不残留旧构建的半圆药丸样式，统一为工具行同款圆角矩形。 */
+[data-dsh-clearview] [class*="toolState"] {
+  border-radius: 6px !important;
+  padding: 2px 8px !important;
+}
+
+/* ==== reader-scroll-anchor.css ==== */
 /* 对话滚动容器交给原生 scroll anchoring 负责脱离底部后的位置保持；
  * 插件不再叠加手动锚点补偿，避免滚动历史时被二次锚定拽跳。 */
 [data-conversation-scroll] {

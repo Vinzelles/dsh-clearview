@@ -46,7 +46,25 @@ function CommandRecord({ node }: { node: CommandRecordNode }) {
         <span className={css.commandRecordLabel}>{label}</span>
         {outcomeText && <span className={css.commandRecordSummary} title={outcomeText}>{outcomeText}</span>}
       </div>
+      {isNode(node, 'manual-compaction') && (
+        <div className={css.commandRecordCompaction} data-reader-compaction-record>
+          <strong>{node.data.compaction ? '上下文已整理' : '正在整理上下文…'}</strong>
+          {node.data.compaction && <span>原始记录仍保留。</span>}
+        </div>
+      )}
       <JsonBlock label="命令记录" payload={node.data} />
+    </div>
+  );
+}
+
+function CompactionRecord({ node }: { node: ChatNode<'compaction'> }) {
+  return (
+    <div className={css.compactionRecord} data-reader-compaction-record>
+      <div className={css.compactionRecordHeader}>
+        <strong className={css.compactionRecordTitle}>上下文已整理</strong>
+        <span className={css.compactionRecordMeta}>原始记录仍保留。</span>
+      </div>
+      <JsonBlock label="压缩记录" payload={node.data} />
     </div>
   );
 }
@@ -67,6 +85,19 @@ function NoticeCard({ title, meta, hint = '展开查看详情', tone = 'error', 
   </details>;
 }
 
+function Switch({ label, checked, onChange, title }: {
+  label: string; checked: boolean; onChange: () => void; title?: string;
+}) {
+  return (
+    <button type="button" className={css.switchButton} role="switch" aria-checked={checked} onClick={onChange} title={title}>
+      <span className={css.switchLabel}>{label}</span>
+      <span className={css.switchTrack} data-checked={checked} aria-hidden="true">
+        <span className={css.switchThumb} />
+      </span>
+    </button>
+  );
+}
+
 type SeatProps = BlockRenderProps & Pick<ReaderProps, 'useSession'> & {
   nodeKey: string; boundary: TurnBoundary; pinned?: boolean; processOpen?: boolean;
 };
@@ -78,7 +109,17 @@ const ProcessNode = memo(function ProcessNode({ useSession, t, nodeKey, open, mo
   if (!node || node.visibility === 'hidden') return null;
   let content: ReactNode = null;
   if (isNode(node, 'context')) content = <ContextInjectionRow {...node.data} t={t} />;
-  else if (isNode(node, 'command') || isNode(node, 'manual-compaction')) {
+  else if (isNode(node, 'model-retry')) {
+    const retryTitle = node.data.current.retryState === 'scheduled'
+      ? '模型请求未成功，正在等待重试'
+      : node.data.current.retryState === 'started' ? '模型请求正在重试'
+      : '模型重试记录';
+    content = <NoticeCard title={retryTitle} tone="info" hint="展开查看重试记录">
+      <JsonTree data={node.data.attempts as unknown as object | unknown[]} label="模型重试记录" expandTopLevel={false} />
+    </NoticeCard>;
+  } else if (isNode(node, 'compaction')) {
+    content = <CompactionRecord node={node} />;
+  } else if (isNode(node, 'command') || isNode(node, 'manual-compaction')) {
     const outcomeText = commandOutcomeText(node);
     const failed = isNode(node, 'command')
       ? node.data.outcome?.kind === 'error'
@@ -95,12 +136,19 @@ const ProcessNode = memo(function ProcessNode({ useSession, t, nodeKey, open, mo
   return content && <ProcessFragment open={open} motion={motion} onRead={onRead} returnFocusTo={returnFocusTo} nodeKey={nodeKey} framed>{content}</ProcessFragment>;
 });
 
-const AssistantNode = memo(function AssistantNode({ useSession, nodeKey, boundary, processOpen = false, pinned = false, motion, onRead, returnFocusTo, ...render }: SeatProps & {
-  motion: boolean; onRead: () => void; returnFocusTo: RefObject<HTMLButtonElement>;
+const AssistantNode = memo(function AssistantNode({ useSession, nodeKey, boundary, processOpen = false, pinned = false, motion, collapseThinking = false, onRead, returnFocusTo, ...render }: SeatProps & {
+  motion: boolean; collapseThinking?: boolean; onRead: () => void; returnFocusTo: RefObject<HTMLButtonElement>;
 }) {
   const node = useSession(snapshot => snapshot.chat.nodes.get(nodeKey));
   if (!node || node.visibility === 'hidden' || !isNode(node, 'assistant-step')) return null;
   const data = node.data;
+  const thinkingMs = useMemo(() => {
+    const timing = data.finalNode?.timing;
+    if (!timing) return null;
+    if (timing.stepStartTime != null && timing.firstTokenTime != null) return Math.max(0, timing.firstTokenTime - timing.stepStartTime);
+    if (timing.stepStartTime != null && timing.completedTime != null) return Math.max(0, timing.completedTime - timing.stepStartTime);
+    return null;
+  }, [data]);
   // Memoize the segment split on the node's own blocks identity. During
   // streaming the turn boundary changes every chunk, re-rendering every
   // AssistantNode in the open turn; without this memo each re-render hands
@@ -112,12 +160,19 @@ const AssistantNode = memo(function AssistantNode({ useSession, nodeKey, boundar
   const earlier = isEarlierNarration(data, boundary);
   const body = useMemo(() => data.blocks.filter(block => block.kind !== 'reasoning' && block.kind !== 'tool-call'), [data.blocks]);
   return <>{parts.map((part, index) => part.kind === 'reasoning'
-    ? <ProcessFragment key={part.start} open={processOpen} motion={motion} onRead={onRead} returnFocusTo={returnFocusTo} nodeKey={nodeKey} framed>
-      <ReasoningCard step={data.step} active={processOpen && boundary.status === 'open' && data.step === boundary.latestStep} motion={motion} selected={pinned} onRead={onRead}>
-        <Blocks {...render} blocks={part.blocks} streaming={data.status === 'running' && index === parts.length - 1 && data.blocks.at(-1)?.kind === 'reasoning'}
-          holdFormatting={pinned} startedAt={data.time} interrupted={data.status === 'interrupted'} liveText />
-      </ReasoningCard>
-    </ProcessFragment>
+    ? (() => {
+      const charCount = part.blocks.reduce((sum, block) => sum + (block.kind === 'reasoning' ? block.text.length : 0), 0);
+      const liveReasoning = data.status === 'running' && index === parts.length - 1 && data.blocks.at(-1)?.kind === 'reasoning';
+      return (
+        <ProcessFragment key={part.start} open={processOpen} motion={motion} onRead={onRead} returnFocusTo={returnFocusTo} nodeKey={nodeKey} framed>
+          <ReasoningCard step={data.step} active={processOpen && boundary.status === 'open' && data.step === boundary.latestStep} running={liveReasoning} motion={motion} selected={pinned} onRead={onRead}
+            collapsible={collapseThinking} durationMs={thinkingMs} startedAt={data.time} charCount={charCount}>
+            <Blocks {...render} blocks={part.blocks} streaming={liveReasoning}
+              holdFormatting={pinned} startedAt={data.time} interrupted={data.status === 'interrupted'} liveText />
+          </ReasoningCard>
+        </ProcessFragment>
+      );
+    })()
     : hasVisibleBody(part.blocks) && <RetiringContent key={part.start} visible={pinned || processOpen || !earlier}>
       <article className={css.answer} data-reader-answer data-reader-anchor data-reader-key={nodeKey} data-reader-source-start={part.start} data-answer-status={data.status} data-answer-phase={earlier ? 'process' : 'body'}>
         <Blocks {...render} blocks={part.blocks} streaming={data.status === 'running'} holdFormatting={pinned} startedAt={data.time} interrupted={data.status === 'interrupted'} liveText />
@@ -144,13 +199,10 @@ const MainNode = memo(function MainNode({ useSession, nodeKey, boundary, pinned,
     <p>输出达到本轮长度限制，内容可能尚未完整；已生成的内容仍保留。</p>
   </NoticeCard>;
   if (isNode(node, 'model-retry')) {
-    const retryTitle = node.data.current.retryState === 'scheduled'
-      ? '模型请求未成功，正在等待重试'
-      : node.data.current.retryState === 'started' ? '模型请求正在重试'
-      : '模型重试记录';
-    return <NoticeCard title={retryTitle} tone="info" hint="展开查看重试记录">
-      <JsonTree data={node.data.attempts as unknown as object | unknown[]} label="模型重试记录" expandTopLevel={false} />
-    </NoticeCard>;
+    // Model-retry records are process detail, not final answer content: they
+    // belong inside the foldable process area and must not remain visible
+    // after the turn completes and the process collapses.
+    return null;
   }
   if (isNode(node, 'command')) {
     // Failures are presented as the expandable command-error card inside the
@@ -159,10 +211,14 @@ const MainNode = memo(function MainNode({ useSession, nodeKey, boundary, pinned,
     return node.data.outcome?.text ? <MarkdownText text={node.data.outcome.text} /> : null;
   }
   if (isNode(node, 'manual-compaction')) {
-    if (node.data.command.outcome?.kind === 'error') return null;
-    return node.data.compaction ? <p className={css.meta}>上下文已整理，原始记录仍保留。</p> : <p className={css.meta}>正在整理上下文…</p>;
+    // The compact/command lifecycle is one card inside the process area; no
+    // separate top-level hint is needed.
+    return null;
   }
-  if (node.kind === 'compaction') return <details className={css.detail}><summary>上下文已整理，查看记录</summary><JsonBlock label="压缩记录" payload={node.data} /></details>;
+  if (node.kind === 'compaction') {
+    // The compaction marker lives inside the process card too.
+    return null;
+  }
   if (node.kind === 'context' || node.kind === 'turn-tail') return null;
   return <div className={css.unknown} data-reader-anchor>
     <p>此记录类型暂未接入阅读页：{node.kind}</p>
@@ -207,6 +263,7 @@ function OperationalClusterBlock({
   boundary,
   pinnedKeys,
   motion,
+  collapseThinking,
   pinProcess,
   processButton,
 }: {
@@ -218,6 +275,7 @@ function OperationalClusterBlock({
   boundary: TurnBoundary;
   pinnedKeys: readonly string[];
   motion: boolean;
+  collapseThinking: boolean;
   pinProcess: () => void;
   processButton: RefObject<HTMLButtonElement>;
 }) {
@@ -244,6 +302,7 @@ function OperationalClusterBlock({
             </svg>
           </span>
           <span className={css.clusterSummary}>{summaryText}</span>
+          {cluster.hasFailed && <span className={css.clusterFailure}>· {cluster.summary.failed} 个失败</span>}
         </span>
         <span className={css.clusterHeaderRight}>
           <span className={css.clusterHint}>{expanded ? '收起详情' : '展开查看详细'}</span>
@@ -273,6 +332,7 @@ function OperationalClusterBlock({
                     pinned={pinnedKeys.includes(item.nodeKey)}
                     processOpen={expanded}
                     motion={motion}
+                    collapseThinking={collapseThinking}
                     onRead={pinProcess}
                     returnFocusTo={processButton}
                   />
@@ -327,6 +387,7 @@ const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedP
   const boundary = useMemo(() => boundaryOf(turn), [turn]);
   const choiceKey = processChoiceKey(group.key, boundary);
   const expansionChoice = props.useStore(state => state.expanded[choiceKey]);
+  const collapseThinking = props.useStore(state => state.collapseThinking ?? true);
   const flowId = useId();
   const processButton = useRef<HTMLButtonElement>(null);
   const setExpanded = useCallback((value: boolean) => props.actions.setExpanded(choiceKey, value), [props.actions, choiceKey]);
@@ -378,6 +439,7 @@ const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedP
                 boundary={boundary}
                 pinnedKeys={pinnedKeys}
                 motion={motion}
+                collapseThinking={collapseThinking}
                 pinProcess={pinProcess}
                 processButton={processButton}
               />
@@ -388,7 +450,7 @@ const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedP
         return item.kind === 'node' ? (
           <Fragment key={item.key}>
             <BlockBoundary><ProcessNode useSession={props.useSession} t={props.t} nodeKey={item.nodeKey} open={expanded} motion={motion} onRead={pinProcess} returnFocusTo={processButton} /></BlockBoundary>
-            <BlockBoundary><AssistantNode {...shared} boundary={boundary} nodeKey={item.nodeKey} pinned={pinnedKeys.includes(item.nodeKey)} processOpen={expanded} motion={motion} onRead={pinProcess} returnFocusTo={processButton} /></BlockBoundary>
+            <BlockBoundary><AssistantNode {...shared} boundary={boundary} nodeKey={item.nodeKey} pinned={pinnedKeys.includes(item.nodeKey)} processOpen={expanded} motion={motion} collapseThinking={collapseThinking} onRead={pinProcess} returnFocusTo={processButton} /></BlockBoundary>
             <BlockBoundary><MainNode {...shared} boundary={boundary} nodeKey={item.nodeKey} pinned={pinnedKeys.includes(item.nodeKey)} processOpen={expanded} /></BlockBoundary>
           </Fragment>
         ) : (
@@ -429,6 +491,7 @@ export function Reader(props: ReaderProps) {
   const hasMore = props.useSession(snapshot => snapshot.hasMore);
   const loadingOlder = props.useSession(snapshot => snapshot.loadingOlder);
   const motionPreference = props.useStore(state => state.motion);
+  const collapseThinking = props.useStore(state => state.collapseThinking ?? true);
   const motion = useMotionAllowed(motionPreference);
   const streamMotion = useMemo(() => ({ enabled: motion, activatedAt: activatedAt.current }), [motion]);
   const rewindHidden = useMemo(() => {
@@ -472,8 +535,10 @@ export function Reader(props: ReaderProps) {
   return <StreamMotionContext.Provider value={streamMotion}><div ref={root} className={css.root} data-dsh-clearview="0.1.6" data-motion={motion ? 'on' : 'off'}>
     <div className={css.column}>
       <div className={css.toolbar} data-ud-check="reader-toolbar">
-        <span title="基于真实消息类型和轮次边界整理。当前协议没有独立的正文阶段标记，无法确认的内容会继续保留。">阅读 · 原始记录完整保留</span>
-        <button type="button" className={css.textButton} aria-pressed={motionPreference} onClick={() => props.actions.setMotion(!motionPreference)} title="新到文字柔和显现，过程平滑展开；关闭后立即完整显示，自动遵循系统减少动态效果设置。">{motionPreference && !motion ? '动效 · 跟随系统关闭' : `动效${motionPreference ? '开' : '关'}`}</button>
+        <Switch label={`折叠思考${collapseThinking ? '开' : '关'}`} checked={collapseThinking} onChange={() => props.actions.setCollapseThinking(!collapseThinking)}
+          title="开启后，每段思考默认折叠为“思考了 N 秒”，可单独展开阅读；关闭后恢复为始终可见的思考卡片。" />
+        <Switch label={`动效${motionPreference ? '开' : '关'}`} checked={motionPreference} onChange={() => props.actions.setMotion(!motionPreference)}
+          title="新到文字柔和显现，过程平滑展开；关闭后立即完整显示，自动遵循系统减少动态效果设置。" />
       </div>
       {hasMore && <button type="button" className={css.historyButton} disabled={loadingOlder} onClick={async () => {
         setHistoryError(false);
