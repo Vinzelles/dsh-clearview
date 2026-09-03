@@ -168,6 +168,7 @@ export interface OperationalClusterSummary {
   commands: number;
   tools: number;
   operations: number;
+  failed: number;
 }
 
 export type OperationalFlowItem =
@@ -197,6 +198,7 @@ export function groupOperationalFlow(
       let commands = 0;
       let tools = 0;
       let operations = 0;
+      let failed = 0;
       let hasActive = false;
       let hasFailed = false;
 
@@ -205,7 +207,7 @@ export function groupOperationalFlow(
           tools++;
           const phase = activityPhase(entry);
           if (phase === 'preparing' || phase === 'running') hasActive = true;
-          if (phase === 'failed') hasFailed = true;
+          if (phase === 'failed') { hasFailed = true; failed++; }
 
           const summary = activitySummary(entry);
           if (summary.category === 'terminal') {
@@ -215,12 +217,14 @@ export function groupOperationalFlow(
           }
         } else if (entry.kind === 'node') {
           const node = get(entry.nodeKey);
-          if (node?.kind === 'command') {
+          if (node?.kind === 'command' || node?.kind === 'manual-compaction') {
             commands++;
             operations++;
-            const outcome = (node.data as { outcome?: { kind?: string } | null }).outcome;
+            const outcome = node.kind === 'command'
+              ? (node.data as { outcome?: { kind?: string } | null }).outcome
+              : (node.data as { command: { outcome?: { kind?: string } | null } }).command.outcome;
             if (outcome == null) hasActive = true;
-            if (outcome?.kind === 'error') hasFailed = true;
+            if (outcome?.kind === 'error') { hasFailed = true; failed++; }
           }
         }
       }
@@ -230,7 +234,7 @@ export function groupOperationalFlow(
         kind: 'cluster',
         key: `cluster:${first.kind === 'node' ? first.nodeKey : first.callId}`,
         items: currentGroup,
-        summary: { commands, tools, operations },
+        summary: { commands, tools, operations, failed },
         hasActive,
         hasFailed,
       });
@@ -244,7 +248,7 @@ export function groupOperationalFlow(
       isOp = true;
     } else if (item.kind === 'node') {
       const node = get(item.nodeKey);
-      if (node?.kind === 'command') {
+      if (node?.kind === 'command' || node?.kind === 'manual-compaction') {
         isOp = true;
       }
     }

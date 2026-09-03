@@ -10,15 +10,15 @@ import type { ToolCallBlock } from '../src/client/types.ts';
 
 test('formatOperationClusterSummary formats correctly', () => {
   assert.equal(
-    formatOperationClusterSummary({ commands: 3, tools: 5, operations: 2 }),
+    formatOperationClusterSummary({ commands: 3, tools: 5, operations: 2, failed: 0 }),
     '运行了 3 条命令，进行了 5 次工具调用，执行了 2 个操作',
   );
   assert.equal(
-    formatOperationClusterSummary({ commands: 1, tools: 1, operations: 0 }),
+    formatOperationClusterSummary({ commands: 1, tools: 1, operations: 0, failed: 0 }),
     '运行了 1 条命令，进行了 1 次工具调用',
   );
   assert.equal(
-    formatOperationClusterSummary({ commands: 0, tools: 2, operations: 2 }),
+    formatOperationClusterSummary({ commands: 0, tools: 2, operations: 2, failed: 0 }),
     '进行了 2 次工具调用，执行了 2 个操作',
   );
 });
@@ -92,6 +92,22 @@ test('groupOperationalFlow clusters consecutive tool and command items', () => {
       formatOperationClusterSummary(grouped[0].summary),
       '运行了 1 条命令，进行了 3 次工具调用，执行了 2 个操作',
     );
+  }
+});
+
+test('groupOperationalFlow clusters command and manual compaction records together', () => {
+  const commandNode: ReaderFlowEntry = { kind: 'node', nodeKey: 'cmd', order: 1 };
+  const compactNode: ReaderFlowEntry = { kind: 'node', nodeKey: 'compact', order: 2 };
+  const grouped = groupOperationalFlow([commandNode, compactNode], key => {
+    if (key === 'cmd') return { kind: 'command', data: { outcome: { kind: 'success' } } } as any;
+    if (key === 'compact') return { kind: 'manual-compaction', data: { command: { outcome: { kind: 'success' } } } } as any;
+    return undefined;
+  });
+  assert.equal(grouped.length, 1);
+  assert.equal(grouped[0]?.kind, 'cluster');
+  if (grouped[0]?.kind === 'cluster') {
+    assert.equal(grouped[0].summary.commands, 2);
+    assert.equal(grouped[0].summary.operations, 2);
   }
 });
 
