@@ -58,7 +58,9 @@ export function hasProcessContent(node: ChatConversationViewNode | undefined, bo
       || (isEarlierNarration(data, boundary) && hasVisibleBody(data.blocks));
   }
   return node.kind === 'context'
-    || node.kind === 'command' || node.kind === 'manual-compaction';
+    || node.kind === 'command' || node.kind === 'manual-compaction'
+    || node.kind === 'model-retry'
+    || node.kind === 'compaction';
 }
 
 export function hasVisibleBody(blocks: readonly AssistantBlock[]): boolean {
