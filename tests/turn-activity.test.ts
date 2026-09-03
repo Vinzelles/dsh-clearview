@@ -93,9 +93,9 @@ test('phaseKeyOf is stable for same phase and changes across phases', () => {
   const t = { status: 'open', steps: [step(0, [reasoning])] };
   // 关键不变量：since 变化不影响 key（计时起点不重置 bar）；同一输入也覆盖确定性
   assert.equal(phaseKeyOf(t, 0, 1000), phaseKeyOf(t, 0, 9999));
-  // 单变量：step 变化 → key 变化
-  const c = phaseKeyOf({ status: 'open', steps: [step(1, [text])] }, 1, 1000);
-  assert.notEqual(phaseKeyOf(t, 0, 1000), c);
+  // 单变量：仅 step 不同（kind 相同）→ key 变化
+  const t1SameKind = { status: 'open', steps: [step(1, [reasoning])] };
+  assert.notEqual(phaseKeyOf(t, 0, 1000), phaseKeyOf(t1SameKind, 1, 1000));
   // 单变量：同 step 内 kind 变化 → key 变化
   const t0withText = { status: 'open', steps: [step(0, [text])] };
   assert.notEqual(phaseKeyOf(t, 0, 1000), phaseKeyOf(t0withText, 0, 1000));
