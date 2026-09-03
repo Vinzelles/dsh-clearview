@@ -28,6 +28,9 @@ export function turnPhaseOf(turn: TurnSnapshot | undefined, pending: number): Ac
   const current = latestAssistant(turn);
   if (!current) return 'processing';
   const last = current.data.blocks.at(-1);
+  // status === 'running' gates only tool-calls: a finished (settled) tool must
+  // not open a new "using tool" phase, while reasoning/text may stay visible
+  // at the tail of an already-settled open turn.
   if (current.data.status === 'running' && last?.kind === 'tool-call') return 'tool';
   if (last?.kind === 'reasoning') return 'thinking';
   if (last?.kind === 'text') return 'output';
