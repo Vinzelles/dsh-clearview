@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { REASON_CALM_BEAT, REASON_CATCH_BEAT, REASON_END_MAX, REASON_END_MIN, REASON_FIRST, reasoningAdvance } from './reasoning-follow.js';
+import { followAdvance } from './reasoning-follow.js';
 import css from './Reader.module.css';
 
 const EASING = 'cubic-bezier(.22,1,.36,1)';
 
-/** One real transcript: reference transform while following, native scroll while reading. */
+/** One real transcript: continuous native-scroll following, plain native reading whenever the user takes over. */
 export function ReasoningCard({ children, step, active, motion, selected, onRead }: {
   children: ReactNode; step: number; active: boolean; motion: boolean; selected: boolean; onRead: () => void;
 }) {
   const viewport = useRef<HTMLDivElement>(null);
-  const track = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const controls = useId();
   const [expanded, setExpanded] = useState(false);
@@ -22,7 +21,11 @@ export function ReasoningCard({ children, step, active, motion, selected, onRead
   const previousExpanded = useRef(expanded);
   const stopFollow = useRef<() => void>(() => {});
   /** End-of-stream glide in flight; user interaction cancels it at the painted position. */
-  const glideRef = useRef<{ abort: () => void } | null>(null);
+  const finishRef = useRef<{ cancel: () => void } | null>(null);
+  /** Last scrollTop written by the loop or the glide; a scroll event away from it is the user's. */
+  const lastTop = useRef(0);
+  /** Whether this card has already performed its first follow entry. */
+  const followSeeded = useRef(false);
   const allowed = following && active && motion && !selected;
 
   const pause = useCallback(() => {
@@ -62,159 +65,118 @@ export function ReasoningCard({ children, step, active, motion, selected, onRead
   useLayoutEffect(() => {
     const port = viewport.current;
     const text = content.current;
-    const scrollTrack = track.current;
-    if (!port || !text || !scrollTrack) return;
-    // A previous run may still be gliding to the end after the stream finished.
-    // A resuming follow takes over from the painted position, so settle that
-    // glide now; a following run keeps it running and only its interaction
-    // handlers may cancel it.
-    if (allowed) glideRef.current?.abort();
+    if (!port || !text) return;
+    // A resuming follow takes over from the painted position, so stop a finish
+    // glide that is still writing toward the end.
+    if (allowed) finishRef.current?.cancel();
+    // Cached metrics: the rAF loop never reads layout, so its per-frame cost
+    // stays O(1) no matter how long the transcript grows. The ResizeObserver
+    // refreshes these values whenever the text or the viewport changes.
+    let clientHeight = port.clientHeight;
+    let tail = Math.max(0, text.offsetHeight - clientHeight);
     let frame = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let nextAt = performance.now() + REASON_FIRST;
     let alive = true;
-    let automatic = false;
-    let lastPainted = port.scrollTop;
-    let targetOffset = lastPainted;
-    const tail = () => Math.max(0, text.offsetHeight - port.clientHeight);
-    const clamp = (value: number) => Math.max(0, Math.min(tail(), value));
-    const paintedOffset = () => {
-      if (!automatic) return port.scrollTop;
-      const transform = getComputedStyle(scrollTrack).transform;
-      // Reduced-motion CSS may win before React receives the media change.
-      // Retain the last painted position rather than snapping back to the top.
-      return clamp(transform === 'none' ? lastPainted : port.scrollTop - new DOMMatrixReadOnly(transform).m42);
-    };
+    let tracking = false;
+    let state = { pos: port.scrollTop, velocity: 0, lastTail: tail, lastAt: 0 };
+    lastTop.current = state.pos;
     const hasSelection = () => {
       const selection = document.getSelection();
       return !!selection && !selection.isCollapsed && !!selection.anchorNode && text.contains(selection.anchorNode);
     };
     const cancel = () => {
       cancelAnimationFrame(frame); frame = 0;
-      clearTimeout(timer); timer = undefined;
       delete port.dataset.reasoningMoving;
     };
-    const manual = () => {
-      if (!automatic) return;
-      const top = paintedOffset();
-      automatic = false;
-      scrollTrack.style.transition = 'none';
-      scrollTrack.style.transform = 'none';
-      // Set both in the same layout effect/event, before a frame can paint.
-      // The first wheel gesture must already have a native scrollable viewport.
-      port.style.overflow = 'auto';
-      port.scrollTop = top;
-      lastPainted = port.scrollTop;
-      port.dataset.reasoningMode = 'manual';
+    const paint = (pos: number) => {
+      port.scrollTop = pos;
+      // Reading back is free (the write resolved layout) and keeps the
+      // user-scroll detector exact when the browser clamps a stale-tail write.
+      lastTop.current = port.scrollTop;
     };
-    const follow = () => {
-      if (automatic) return;
-      targetOffset = lastPainted = clamp(port.scrollTop);
-      scrollTrack.style.transition = 'none';
-      scrollTrack.style.transform = `translateY(-${lastPainted}px)`;
-      port.scrollTop = 0;
-      port.style.overflow = 'hidden';
-      automatic = true;
-      port.dataset.reasoningMode = 'transform';
-    };
-    const measure = (recordHeight = true) => {
-      const previewHeight = parseFloat(getComputedStyle(port).getPropertyValue('--reason-preview-height'));
-      setOverflow(text.offsetHeight > previewHeight + 1);
-      lastPainted = paintedOffset();
-      const top = lastPainted > 1;
-      const bottom = tail() - lastPainted > 1;
+    const edgesFor = (pos: number, end: number) => {
+      const top = pos > 1;
+      const bottom = end - pos > 1;
       const next = top ? bottom ? 'both' : 'top' : bottom ? 'bottom' : 'none';
       setEdges(value => value === next ? value : next);
-      if (recordHeight && !resize.current) lastHeight.current = port.clientHeight;
     };
-    stopFollow.current = () => { glideRef.current?.abort(); cancel(); manual(); measure(false); };
+    const refresh = (recordHeight = true) => {
+      clientHeight = port.clientHeight;
+      const height = text.offsetHeight;
+      tail = Math.max(0, height - clientHeight);
+      const previewHeight = parseFloat(getComputedStyle(port).getPropertyValue('--reason-preview-height'));
+      setOverflow(height > previewHeight + 1);
+      edgesFor(tracking ? state.pos : port.scrollTop, tail);
+      if (recordHeight && !resize.current) lastHeight.current = clientHeight;
+    };
+    stopFollow.current = () => { finishRef.current?.cancel(); cancel(); tracking = false; };
     const canFollow = () => allowed && alive && !document.hidden && !hasSelection();
-    const schedule = () => {
-      if (!canFollow() || frame || timer !== undefined) return;
-      follow();
-      if (tail() - paintedOffset() < 1) return;
-      timer = setTimeout(start, Math.max(0, nextAt - performance.now()));
+    // Continuous follow: one rAF loop writes the native scroll offset per
+    // frame. The controller feeds the measured growth speed forward (steady
+    // streams converge to zero lag at constant speed) and closes any residual
+    // gap proportionally, clamped to the live tail so a burst extends the
+    // approach instead of overshooting and rolling back. Native scrolling is
+    // rasterized against the viewport, not the transcript length, so long
+    // thinking stays as cheap as short thinking.
+    const loop = (now: number) => {
+      frame = 0;
+      if (!canFollow()) { cancel(); return; }
+      const next = followAdvance(state, tail, now);
+      state = next;
+      paint(next.pos);
+      edgesFor(next.pos, tail);
+      if (next.settled) { cancel(); return; }
+      frame = requestAnimationFrame(loop);
     };
-    const start = () => {
-      timer = undefined;
-      if (!canFollow()) return;
-      const from = paintedOffset();
-      const lineHeight = parseFloat(getComputedStyle(text).lineHeight) || 24;
-      const advance = reasoningAdvance(from, text.offsetHeight, port.clientHeight, lineHeight);
-      const { duration, catchUp } = advance;
-      let target = advance.target;
-      if (target - from < 1) return;
-      const began = performance.now();
-      // Calm steps keep the 840ms reference cadence; a catch-up glide only
-      // pauses a beat before the loop re-evaluates the live tail.
-      nextAt = began + duration + (catchUp ? REASON_CATCH_BEAT : REASON_CALM_BEAT);
-      targetOffset = target;
-      // The supplied recipe: commit the start pose, then transition the track.
-      // No per-frame scrollTop writes; the glide target stays the real end.
-      scrollTrack.style.transition = 'none';
-      scrollTrack.style.transform = `translateY(-${from}px)`;
-      void scrollTrack.offsetHeight;
-      scrollTrack.style.transition = `transform ${duration}ms var(--reason-ease)`;
-      scrollTrack.style.transform = `translateY(-${target}px)`;
-      port.dataset.reasoningMoving = 'true';
-      port.dataset.reasoningFrom = String(from);
-      port.dataset.reasoningTarget = String(target);
-      port.dataset.reasoningBegan = String(began);
-      const tick = (now: number) => {
-        frame = 0;
-        if (!canFollow()) { cancel(); manual(); return; }
-        // Observe the browser's actual CSS interpolation for masks and handoff.
-        measure();
-        // The tail can shrink mid-step (reflow, collapse): clamp the in-flight
-        // target to the live end so the viewport never passes the transcript
-        // end and rolls back on the next step.
-        const liveEnd = tail();
-        if (target > liveEnd + .5) {
-          target = targetOffset = liveEnd;
-          scrollTrack.style.transform = `translateY(-${target}px)`;
+    const run = () => {
+      if (!canFollow() || frame) return;
+      // A freshly mounted live card (for example when switching back to a
+      // running conversation) has its native scroller at the top. If the
+      // transcript already overflows, jump to the existing tail before the
+      // first controller frame instead of visibly replaying the whole card
+      // from the beginning — only genuinely new growth should scroll.
+      if (!followSeeded.current) {
+        followSeeded.current = true;
+        // Only the first entry needs the no-replay seek. A card that grew
+        // naturally from empty keeps the controller's smooth catch-up; a
+        // freshly mounted live card starts at the existing tail instead.
+        if (tail > 1) {
+          state.pos = tail;
+          state.velocity = 0;
+          state.lastTail = tail;
+          state.lastAt = performance.now();
+          paint(tail);
+          edgesFor(tail, tail);
         }
-        if (now - began < duration || Math.abs(lastPainted - target) > .05) frame = requestAnimationFrame(tick);
-        else { delete port.dataset.reasoningMoving; schedule(); }
-      };
-      frame = requestAnimationFrame(tick);
+      }
+      tracking = true;
+      state.lastAt = performance.now();
+      state.lastTail = tail;
+      port.dataset.reasoningMoving = 'true';
+      frame = requestAnimationFrame(loop);
     };
     const onScroll = () => {
-      measure();
-      // Focus/keyboard-induced native scroll wins even while the track moves.
-      if (automatic && port.scrollTop > 1) pause();
+      // A scroll away from the last programmatic position is the user's:
+      // keyboard, scrollbar drag or an extension takes the wheel.
+      if ((tracking || finishRef.current) && Math.abs(port.scrollTop - lastTop.current) > 1) pause();
+      else if (!tracking && !finishRef.current) edgesFor(port.scrollTop, tail);
     };
-    const onWheel = (event: WheelEvent) => {
-      if (!event.deltaY) return;
-      // The compositor picks a wheel scroller before handlers run. A clipped
-      // transform viewport would otherwise lose this first gesture or scroll
-      // the conversation. Consume only this handoff; later wheels stay native.
-      const handoff = (automatic || glideRef.current !== null) && event.cancelable;
-      if (handoff) event.preventDefault();
-      const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? parseFloat(getComputedStyle(text).lineHeight) || 24
-        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? port.clientHeight : 1;
-      pause();
-      if (handoff) { port.scrollTop = clamp(port.scrollTop + event.deltaY * unit); measure(); }
-    };
+    // The viewport is always a native scroller, so a wheel gesture scrolls by
+    // itself; the loop only has to stop writing before the next frame.
+    const onWheel = () => { if (tracking || finishRef.current) pause(); };
     const onSelection = () => { if (hasSelection()) pause(); };
-    const onVisibility = () => {
-      cancel(); manual();
-      nextAt = performance.now() + REASON_FIRST;
-      if (!document.hidden) schedule();
-    };
+    const onVisibility = () => { if (!document.hidden && canFollow()) run(); };
     const observer = new ResizeObserver(() => {
-      // The tail only ever shrinks here (reflow, collapse, resize): re-aim
-      // the pending target instead of freezing follow; the next step reads
-      // the live end.
-      if (automatic && targetOffset > tail()) targetOffset = tail();
-      measure(); schedule();
+      refresh();
+      if (tracking) run();
     });
     observer.observe(text); observer.observe(port);
     port.addEventListener('scroll', onScroll, { passive: true });
-    port.addEventListener('wheel', onWheel, { passive: false });
+    port.addEventListener('wheel', onWheel, { passive: true });
     document.addEventListener('selectionchange', onSelection);
     document.addEventListener('visibilitychange', onVisibility);
     // Keep the previous layout height until the resize effect can sample it.
-    measure(false); schedule();
+    refresh(false);
+    if (canFollow()) run();
     return () => {
       alive = false;
       cancel();
@@ -223,48 +185,30 @@ export function ReasoningCard({ children, step, active, motion, selected, onRead
       document.removeEventListener('selectionchange', onSelection);
       document.removeEventListener('visibilitychange', onVisibility);
       stopFollow.current = () => {};
-      if (!automatic) { manual(); return; }
-      // The stream ended while this card was still following (a user pause,
-      // wheel or selection would have left transform mode first): glide the
-      // remaining lag to the end of the transcript, then hand the viewport to
-      // native scrolling so the end of the thinking stays visible.
-      const top = paintedOffset();
-      const end = tail();
-      if (port.clientHeight > 1 && end - top > 1) {
-        const glideMs = end - top > 400 ? REASON_END_MAX : REASON_END_MIN;
-        let settleTimer: ReturnType<typeof setTimeout> | undefined;
-        const token: { abort: () => void } = {
-          abort: () => {
-            if (glideRef.current !== token) return;
-            glideRef.current = null;
-            clearTimeout(settleTimer);
-            // Interaction wins: freeze the glide at the painted position.
-            const frozen = paintedOffset();
-            scrollTrack.style.transition = 'none';
-            scrollTrack.style.transform = `translateY(-${frozen}px)`;
-            void scrollTrack.offsetHeight;
-            manual();
-            measure(false);
-          },
+      if (!tracking) return;
+      tracking = false;
+      // The stream ended while this card was following (a user pause, wheel
+      // or selection would have stopped the loop first): keep gliding the
+      // residual lag to the end with the same controller, then stop. The
+      // transcript is final here, so the cached tail is the exact target.
+      const end = tail;
+      if (clientHeight > 1 && end - state.pos > 1) {
+        let glideFrame = 0;
+        let glideState = { ...state, lastTail: end, lastAt: performance.now() };
+        const token = { cancel: () => { if (finishRef.current !== token) return; finishRef.current = null; cancelAnimationFrame(glideFrame); } };
+        finishRef.current = token;
+        const glide = (now: number) => {
+          glideFrame = 0;
+          if (finishRef.current !== token) return;
+          const next = followAdvance(glideState, end, now);
+          glideState = next;
+          port.scrollTop = next.pos;
+          lastTop.current = port.scrollTop;
+          edgesFor(next.pos, end);
+          if (next.settled) { finishRef.current = null; return; }
+          glideFrame = requestAnimationFrame(glide);
         };
-        const settle = () => {
-          if (glideRef.current !== token) return;
-          glideRef.current = null;
-          clearTimeout(settleTimer);
-          manual();
-          measure(false);
-        };
-        scrollTrack.style.transition = 'none';
-        scrollTrack.style.transform = `translateY(-${top}px)`;
-        void scrollTrack.offsetHeight;
-        scrollTrack.style.transition = `transform ${glideMs}ms var(--reason-ease)`;
-        scrollTrack.style.transform = `translateY(-${end}px)`;
-        glideRef.current = token;
-        settleTimer = setTimeout(settle, glideMs + 80);
-        // Reduced-motion CSS or an unmounted card can swallow the end event.
-        scrollTrack.addEventListener('transitionend', settle, { once: true });
-      } else {
-        manual();
+        glideFrame = requestAnimationFrame(glide);
       }
     };
   }, [allowed, pause]);
@@ -326,7 +270,7 @@ export function ReasoningCard({ children, step, active, motion, selected, onRead
     <div ref={viewport} id={controls} className={css.reasonViewport} data-reader-reasoning-scroll data-edges={edges}
       data-ud-motion="reader-reasoning-scroll" role="region" aria-label={`步骤 ${step} 的思考${overflow ? '，可滚动阅读' : ''}`}
       tabIndex={overflow ? 0 : undefined} onPointerDown={pause} onFocus={pause}>
-      <div ref={track} className={css.reasonTrack} data-reader-reasoning-track>
+      <div className={css.reasonTrack} data-reader-reasoning-track>
         <div ref={content} className={css.reasonText} data-reader-reasoning-text>{children}</div>
       </div>
     </div>

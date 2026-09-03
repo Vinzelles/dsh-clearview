@@ -1,82 +1,85 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { REASON_CATCH_LINES, REASON_CATCH_MAX, REASON_CATCH_MIN, REASON_STEP, reasoningAdvance, reasoningTarget } from '../src/client/reasoning-follow.js';
+import { FOLLOW_DT_MAX, FOLLOW_VMAX, followAdvance } from '../src/client/reasoning-follow.js';
 
-test('reasoning follows ordinary growth in two-line steps without passing the tail', () => {
-  assert.equal(reasoningTarget(0, 284, 224, 24), 48);
-  assert.equal(reasoningTarget(48, 284, 224, 24), 60);
-  assert.equal(reasoningTarget(0, 100, 224, 24), 0);
-  assert.equal(reasoningTarget(999, 284, 224, 24), 60);
-});
+const idle = { pos: 0, velocity: 0, lastTail: 0, lastAt: 0 };
 
-test('a large reasoning burst still advances exactly two lines without skipping the middle', () => {
-  let top = 0;
-  for (const content of [400, 1200, 1500, 1500]) {
-    const target = reasoningTarget(top, content, 224, 24);
-    assert.equal(target - top, 48, 'a transport burst must not change the reference step distance');
-    assert.ok(target <= content - 224);
-    top = target;
+test('steady streaming converges to zero lag at exactly the content speed', () => {
+  let state = { ...idle };
+  const speed = 120; // px/s
+  let previous = 0;
+  for (let t = 16; t <= 4000; t += 16) {
+    const tail = (speed * t) / 1000;
+    state = followAdvance(state, tail, t);
+    assert.ok(state.pos <= tail, 'never passes the live tail');
+    if (t > 1500) {
+      assert.ok(tail - state.pos < 0.5, `lag is invisible at t=${t}`);
+      const delta = state.pos - previous;
+      assert.ok(delta > 1.5 && delta < 2.5, `per-frame motion stays constant at t=${t}`);
+    }
+    previous = state.pos;
   }
-  while (top < 1500 - 224) {
-    const target = reasoningTarget(top, 1500, 224, 24);
-    assert.ok(target > top && target - top <= 48);
-    top = target;
+});
+
+test('a burst closes at capped speed, monotonically, without overshoot', () => {
+  let state = { ...idle };
+  let previousLag = Infinity;
+  let previousPos = 0;
+  for (let t = 16; t <= 2000; t += 16) {
+    const tail = 900; // one transport burst at the first frame, then quiet
+    state = followAdvance(state, tail, t);
+    const lag = tail - state.pos;
+    assert.ok(state.pos <= tail, 'no overshoot');
+    assert.ok(lag <= previousLag + 1e-9, 'lag never grows');
+    assert.ok(state.pos - previousPos <= FOLLOW_VMAX * FOLLOW_DT_MAX + 1e-9, 'speed stays capped');
+    previousLag = lag; previousPos = state.pos;
   }
-  assert.equal(top, 1500 - 224);
-  assert.equal(reasoningTarget(top, 1500, 224, 24), top, 'reaching the end must not replay the transcript');
+  assert.ok(state.settled, 'the loop parks itself once the burst is consumed');
+  assert.equal(state.pos, 900);
 });
 
-test('two-line movement follows actual typography and clamps a resized viewport', () => {
-  assert.equal(reasoningTarget(28, 900, 192, 30), 88);
-  assert.equal(reasoningTarget(-50, 900, 192, 30), 60);
-  assert.equal(reasoningTarget(708, 900, 400, 30), 500);
-  assert.equal(reasoningTarget(0, 900, 192, 0), 2);
+test('a shrinking tail clamps the position instead of chasing a ghost', () => {
+  const state = followAdvance({ pos: 500, velocity: 100, lastTail: 600, lastAt: 0 }, 400, 16);
+  assert.equal(state.pos, 400);
+  assert.equal(state.velocity, 0);
+  assert.ok(state.settled);
 });
 
-test('advance keeps the calm two-line step while the lag is small', () => {
-  const step = 24 * 2;
-  const calm = reasoningAdvance(0, 224 + 100, 224, 24);
-  assert.equal(calm.target, step);
-  assert.equal(calm.duration, REASON_STEP);
-  assert.equal(calm.catchUp, false);
-  // The final partial step may be shorter than two lines, never more.
-  const final = reasoningAdvance(198, 224 + 224, 224, 24);
-  assert.equal(final.target, 224);
-  assert.equal(final.catchUp, false);
-});
-
-test('advance glides to the live tail once the lag exceeds the catch threshold', () => {
-  const threshold = 24 * 2 * REASON_CATCH_LINES;
-  const below = reasoningAdvance(0, 224 + threshold - 1, 224, 24);
-  assert.equal(below.catchUp, false);
-  assert.ok(below.target <= threshold - 1);
-  const above = reasoningAdvance(0, 224 + threshold + 10, 224, 24);
-  assert.equal(above.catchUp, true);
-  assert.equal(above.target, threshold + 10, 'the glide targets the current end, not a fixed distance');
-});
-
-test('the catch-up duration scales with the distance inside its bounds', () => {
-  const short = reasoningAdvance(0, 224 + 200, 224, 24);
-  assert.ok(short.catchUp && short.duration === REASON_CATCH_MIN);
-  const long = reasoningAdvance(0, 224 + 10000, 224, 24);
-  assert.ok(long.catchUp && long.duration === REASON_CATCH_MAX);
-  for (const gap of [500, 1000, 2000, 5000]) {
-    const { duration } = reasoningAdvance(0, 224 + gap, 224, 24);
-    assert.ok(duration >= REASON_CATCH_MIN && duration <= REASON_CATCH_MAX, `gap ${gap} within bounds`);
+test('the loop settles once the stream stops', () => {
+  let state = { ...idle };
+  let settledAt = 0;
+  for (let t = 16; t <= 2000; t += 16) {
+    state = followAdvance(state, 300, t);
+    if (state.settled && !settledAt) settledAt = t;
   }
-  const monotonic = [300, 600, 1200, 4000].map(gap => reasoningAdvance(0, 224 + gap, 224, 24).duration);
-  for (let i = 1; i < monotonic.length; i++) assert.ok(monotonic[i] >= monotonic[i - 1], 'duration never shrinks with distance');
+  assert.ok(settledAt > 0 && settledAt < 1500, 'settles shortly after the tail stops moving');
+  assert.ok(Math.abs(state.pos - 300) < 0.5);
 });
 
-test('advance never passes the tail and settles when already at the end', () => {
-  for (const gap of [1, 2, 47, 97, 400, 5000]) {
-    const { target } = reasoningAdvance(0, 224 + gap, 224, 24);
-    assert.ok(target <= gap, 'no overshoot');
+test('a card without overflow parks the loop on its first frame', () => {
+  const state = followAdvance({ ...idle }, 0, 16);
+  assert.equal(state.pos, 0);
+  assert.ok(state.settled);
+});
+
+test('a throttled or restored tab moves at most one capped frame, never teleports', () => {
+  const state = followAdvance({ ...idle }, 1000, 10000);
+  assert.ok(state.pos <= FOLLOW_VMAX * FOLLOW_DT_MAX + 1e-9, 'one throttled frame cannot jump the whole gap');
+  assert.ok(state.pos > 0, 'but it does start closing immediately');
+});
+
+test('mixed growth, pause, shrink and resume keeps the position inside the transcript', () => {
+  let state = { ...idle };
+  let tail = 0;
+  for (let t = 16; t <= 6000; t += 16) {
+    const seconds = t / 1000;
+    if (seconds < 2) tail = 150 * seconds;
+    else if (seconds < 2.1) tail = 300 + 800; // burst
+    else if (seconds < 3) tail = 950;
+    else if (seconds < 3.1) tail = 700; // reflow shrinks the transcript
+    else tail = 700 + 100 * (seconds - 3.1);
+    state = followAdvance(state, tail, t);
+    assert.ok(state.pos >= 0 && state.pos <= tail, `position stays inside the transcript at t=${t}`);
+    assert.ok(state.velocity >= 0);
   }
-  const settled = reasoningAdvance(300, 524, 224, 24);
-  assert.equal(settled.target, 300);
-  assert.equal(settled.duration, 0);
-  assert.equal(settled.catchUp, false);
-  assert.equal(reasoningAdvance(999, 524, 224, 24).target, 300, 'a lagged start clamps to the real end');
-  assert.equal(reasoningAdvance(-50, 224 + 40, 224, 24).target, 40, 'a negative start clamps to the top');
 });

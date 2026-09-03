@@ -1,22 +1,70 @@
-import { Fragment, memo, useCallback, useId, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import type { ChatConversationViewNode } from '@deepseek-ai/dsh-client-runtime/client';
 import type { ChatNode, ChatNodeKind } from '@deepseek-ai/dsh-client-ui-conversation/client';
-import { JsonBlock, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives';
+import { JsonBlock, JsonTree, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives';
 import { BlockBoundary, Blocks, contentBlocks, CopyAnswer } from './Blocks.js';
 import { ReasoningCard } from './ReasoningCard.js';
 import { ToolActivity, ToolMedia } from './ToolActivity.js';
-import { preparingLabel, readerFlow } from './tool-activity.js';
+import { formatOperationClusterSummary, groupOperationalFlow, preparingLabel, readerFlow } from './tool-activity.js';
+import type { OperationalFlowItem, ReaderFlowEntry } from './tool-activity.js';
 import { Disclosure, ProcessFragment, RetiringContent, StatusText, useMotionAllowed, usePinnedSelection, useReadingScroll } from './motion.js';
 import { StreamMotionContext } from './streaming.js';
 import { assistantSegments, boundaryOf, groupNodes, hasProcessContent, hasVisibleBody, isEarlierNarration, processChoiceKey, processExpanded, terminalLabel } from './projection.js';
 import { ContextInjectionRow } from './native/ContextInjectionRow.js';
+import { hiddenSeqsOf, rewindSpansOf } from './rewind-hidden.js';
+import type { RewindSpan } from './rewind-hidden.js';
 import type { ReaderGroup, TurnBoundary } from './projection.js';
 import type { BlockRenderProps, ReaderProps } from './types.js';
 import css from './Reader.module.css';
 
 function isNode<K extends ChatNodeKind>(node: ChatConversationViewNode, kind: K): node is ChatNode<K> {
   return node.kind === kind;
+}
+
+function commandOutcomeText(node: ChatConversationViewNode): string | undefined {
+  if (isNode(node, 'command')) return node.data.outcome?.text;
+  if (isNode(node, 'manual-compaction')) return node.data.command.outcome?.text;
+  return undefined;
+}
+
+type CommandRecordNode = ChatNode<'command'> | ChatNode<'manual-compaction'>;
+
+function commandRecordState(node: CommandRecordNode): 'running' | 'success' | 'error' {
+  const outcome = node.kind === 'command' ? node.data.outcome : node.data.command.outcome;
+  return outcome == null ? 'running' : outcome.kind === 'success' ? 'success' : 'error';
+}
+
+function CommandRecord({ node }: { node: CommandRecordNode }) {
+  const state = commandRecordState(node);
+  const outcomeText = commandOutcomeText(node);
+  const label = state === 'running' ? '执行中…' : state === 'success' ? '已完成' : '失败';
+  return (
+    <div className={css.commandRecord} data-reader-command-record data-command-state={state}>
+      <div className={css.commandRecordStatus}>
+        <span className={css.commandRecordDot} data-state={state} aria-hidden />
+        <span className={css.commandRecordLabel}>{label}</span>
+        {outcomeText && <span className={css.commandRecordSummary} title={outcomeText}>{outcomeText}</span>}
+      </div>
+      <JsonBlock label="命令记录" payload={node.data} />
+    </div>
+  );
+}
+
+function NoticeCard({ title, meta, hint = '展开查看详情', tone = 'error', children }: {
+  title: ReactNode; meta?: ReactNode; hint?: string; tone?: 'error' | 'info'; children?: ReactNode;
+}) {
+  const card = tone === 'error' ? css.errorCard : css.noticeCard;
+  const titleClass = tone === 'error' ? css.errorCardTitle : css.noticeCardTitle;
+  const bodyClass = tone === 'error' ? css.errorCardBody : css.noticeCardBody;
+  return <details className={card} data-tone={tone} data-reader-expandable-notice role={tone === 'error' ? 'alert' : 'status'}>
+    <summary>
+      <span className={titleClass}>{title}</span>
+      {meta && <span className={css.errorCardMeta}>{meta}</span>}
+      <span className={css.errorCardHint}>{hint}</span>
+    </summary>
+    <div className={bodyClass}>{children}</div>
+  </details>;
 }
 
 type SeatProps = BlockRenderProps & Pick<ReaderProps, 'useSession'> & {
@@ -30,8 +78,20 @@ const ProcessNode = memo(function ProcessNode({ useSession, t, nodeKey, open, mo
   if (!node || node.visibility === 'hidden') return null;
   let content: ReactNode = null;
   if (isNode(node, 'context')) content = <ContextInjectionRow {...node.data} t={t} />;
-  else if (isNode(node, 'model-retry')) content = <JsonBlock label="模型重试记录" payload={node.data.attempts} />;
-  else if (isNode(node, 'command') || isNode(node, 'manual-compaction')) content = <JsonBlock label="命令记录" payload={node.data} />;
+  else if (isNode(node, 'command') || isNode(node, 'manual-compaction')) {
+    const outcomeText = commandOutcomeText(node);
+    const failed = isNode(node, 'command')
+      ? node.data.outcome?.kind === 'error'
+      : node.data.command.outcome?.kind === 'error';
+    const label = isNode(node, 'command') ? '命令执行失败' : '上下文压缩失败';
+    if (failed) {
+      content = <NoticeCard title={label} meta={outcomeText} hint="展开查看完整记录">
+        <JsonBlock label="命令记录" payload={node.data} />
+      </NoticeCard>;
+    } else {
+      content = <CommandRecord node={node} />;
+    }
+  }
   return content && <ProcessFragment open={open} motion={motion} onRead={onRead} returnFocusTo={returnFocusTo} nodeKey={nodeKey} framed>{content}</ProcessFragment>;
 });
 
@@ -76,25 +136,30 @@ const MainNode = memo(function MainNode({ useSession, nodeKey, boundary, pinned,
   </div>;
   if (isNode(node, 'assistant-step')) return null;
   if (isNode(node, 'tool-call')) return <ToolMedia {...render} block={node.data.root} />;
-  if (isNode(node, 'turn-error')) return <div className={css.error} role="alert" data-reader-anchor>
-    <strong>本轮出现错误</strong><p>{node.data.message}</p>{node.data.code && <code>{node.data.code}</code>}
-  </div>;
-  if (isNode(node, 'turn-max-tokens')) return <div className={css.notice}>已到达输出长度限制，回答尚未完整。</div>;
-  if (isNode(node, 'model-retry')) return node.data.current.retryState === 'scheduled'
-    ? <div className={css.notice} role="status">模型请求未成功，正在等待重试。详情保留在执行过程中。</div> : null;
+  if (isNode(node, 'turn-error')) return <NoticeCard title="本轮出现错误" meta={node.data.code}>
+    <p>{node.data.message}</p>
+    {node.data.code && <code>{node.data.code}</code>}
+  </NoticeCard>;
+  if (isNode(node, 'turn-max-tokens')) return <NoticeCard title="已到达输出长度限制，回答可能尚未完整" tone="info" hint="查看说明">
+    <p>输出达到本轮长度限制，内容可能尚未完整；已生成的内容仍保留。</p>
+  </NoticeCard>;
+  if (isNode(node, 'model-retry')) {
+    const retryTitle = node.data.current.retryState === 'scheduled'
+      ? '模型请求未成功，正在等待重试'
+      : node.data.current.retryState === 'started' ? '模型请求正在重试'
+      : '模型重试记录';
+    return <NoticeCard title={retryTitle} tone="info" hint="展开查看重试记录">
+      <JsonTree data={node.data.attempts as unknown as object | unknown[]} label="模型重试记录" expandTopLevel={false} />
+    </NoticeCard>;
+  }
   if (isNode(node, 'command')) {
-    // The failure banner folds with the process (its 命令记录 JsonBlock already
-    // does); a red banner no longer sits above the final answer once a turn
-    // completes and collapses.
-    if (node.data.outcome?.kind === 'error') return processOpen
-      ? <div className={css.error} role="alert">命令执行失败：{node.data.outcome.text ?? node.data.name ?? '查看原对话中的命令记录'}</div>
-      : null;
+    // Failures are presented as the expandable command-error card inside the
+    // process; suppress the old top-level banner so they are not duplicated.
+    if (node.data.outcome?.kind === 'error') return null;
     return node.data.outcome?.text ? <MarkdownText text={node.data.outcome.text} /> : null;
   }
   if (isNode(node, 'manual-compaction')) {
-    if (node.data.command.outcome?.kind === 'error') return processOpen
-      ? <div className={css.error} role="alert">上下文压缩失败：{node.data.command.outcome.text}</div>
-      : null;
+    if (node.data.command.outcome?.kind === 'error') return null;
     return node.data.compaction ? <p className={css.meta}>上下文已整理，原始记录仍保留。</p> : <p className={css.meta}>正在整理上下文…</p>;
   }
   if (node.kind === 'compaction') return <details className={css.detail}><summary>上下文已整理，查看记录</summary><JsonBlock label="压缩记录" payload={node.data} /></details>;
@@ -133,7 +198,130 @@ function GroupStatus({ group, useSession, motion }: Pick<ReaderProps, 'useSessio
   return <StatusText text={text} motion={motion} shimmer={busy} />;
 }
 
-const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedProcessKeys, ...props }: ReaderProps & { group: ReaderGroup; motion: boolean; pinnedKeys: readonly string[]; selectedProcessKeys: readonly string[] }) {
+function OperationalClusterBlock({
+  cluster,
+  expanded,
+  onToggle,
+  shared,
+  t,
+  boundary,
+  pinnedKeys,
+  motion,
+  pinProcess,
+  processButton,
+}: {
+  cluster: Extract<OperationalFlowItem, { kind: 'cluster' }>;
+  expanded: boolean;
+  onToggle: () => void;
+  shared: BlockRenderProps & Pick<ReaderProps, 'useSession'>;
+  t: ReaderProps['t'];
+  boundary: TurnBoundary;
+  pinnedKeys: readonly string[];
+  motion: boolean;
+  pinProcess: () => void;
+  processButton: RefObject<HTMLButtonElement>;
+}) {
+  const summaryText = formatOperationClusterSummary(cluster.summary);
+  return (
+    <div className={css.clusterBlock} data-operational-cluster={cluster.key} data-expanded={expanded} data-active={cluster.hasActive ? 'true' : undefined}>
+      <button
+        type="button"
+        className={css.clusterHeader}
+        aria-expanded={expanded}
+        onClick={onToggle}
+      >
+        <span className={css.clusterHeaderLeft}>
+          <span className={css.clusterIcon}>
+            <svg
+              className={css.chevron}
+              data-open={expanded}
+              viewBox="0 0 16 16"
+              width="12"
+              height="12"
+              aria-hidden="true"
+            >
+              <path d="m6 4 4 4-4 4" />
+            </svg>
+          </span>
+          <span className={css.clusterSummary}>{summaryText}</span>
+        </span>
+        <span className={css.clusterHeaderRight}>
+          <span className={css.clusterHint}>{expanded ? '收起详情' : '展开查看详细'}</span>
+        </span>
+      </button>
+      {expanded && (
+        <div className={css.clusterBody}>
+          {cluster.items.map((item: ReaderFlowEntry) =>
+            item.kind === 'node' ? (
+              <Fragment key={item.key}>
+                <BlockBoundary>
+                  <ProcessNode
+                    useSession={shared.useSession}
+                    t={t}
+                    nodeKey={item.nodeKey}
+                    open={expanded}
+                    motion={motion}
+                    onRead={pinProcess}
+                    returnFocusTo={processButton}
+                  />
+                </BlockBoundary>
+                <BlockBoundary>
+                  <AssistantNode
+                    {...shared}
+                    boundary={boundary}
+                    nodeKey={item.nodeKey}
+                    pinned={pinnedKeys.includes(item.nodeKey)}
+                    processOpen={expanded}
+                    motion={motion}
+                    onRead={pinProcess}
+                    returnFocusTo={processButton}
+                  />
+                </BlockBoundary>
+                <BlockBoundary>
+                  <MainNode
+                    {...shared}
+                    boundary={boundary}
+                    nodeKey={item.nodeKey}
+                    pinned={pinnedKeys.includes(item.nodeKey)}
+                    processOpen={expanded}
+                  />
+                </BlockBoundary>
+              </Fragment>
+            ) : (
+              <Fragment key={item.key}>
+                <BlockBoundary>
+                  <ProcessFragment
+                    open={expanded}
+                    motion={motion}
+                    onRead={pinProcess}
+                    returnFocusTo={processButton}
+                    nodeKey={item.key}
+                    framed
+                  >
+                    <ToolActivity
+                      {...shared}
+                      entry={item}
+                      motion={motion}
+                      turnClosed={boundary.status === 'closed'}
+                      onRead={pinProcess}
+                    />
+                  </ProcessFragment>
+                </BlockBoundary>
+                {item.block && (
+                  <BlockBoundary>
+                    <ToolMedia {...shared} block={item.block} open={expanded} />
+                  </BlockBoundary>
+                )}
+              </Fragment>
+            )
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedProcessKeys, rewindHidden, rewindSpans, ...props }: ReaderProps & { group: ReaderGroup; motion: boolean; pinnedKeys: readonly string[]; selectedProcessKeys: readonly string[]; rewindHidden: ReadonlySet<number>; rewindSpans: readonly RewindSpan[] }) {
   const chat = props.useSession(snapshot => snapshot.chat);
   const turn = props.useSession(snapshot => group.turn === null ? undefined : snapshot.chat.timeline.turns.get(group.turn));
   const boundary = useMemo(() => boundaryOf(turn), [turn]);
@@ -146,7 +334,12 @@ const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedP
   const firstKind = props.useSession(snapshot => snapshot.chat.nodes.get(group.keys[0])?.kind);
   const startsWithUser = firstKind === 'user';
   const mainKeys = startsWithUser ? group.keys.slice(1) : group.keys;
-  const flow = useMemo(() => readerFlow({ ...group, keys: mainKeys }, turn, key => chat.nodes.get(key)), [chat, group, mainKeys, turn]);
+  const flow = useMemo(() => readerFlow({ ...group, keys: mainKeys }, turn, key => chat.nodes.get(key), { hidden: rewindHidden, spans: rewindSpans }), [chat, group, mainKeys, turn, rewindHidden, rewindSpans]);
+  const groupedFlow = useMemo(() => groupOperationalFlow(flow, key => chat.nodes.get(key)), [flow, chat]);
+  const [clusterExpanded, setClusterExpanded] = useState<Record<string, boolean>>({});
+  const toggleCluster = useCallback((clusterKey: string) => {
+    setClusterExpanded(prev => ({ ...prev, [clusterKey]: !prev[clusterKey] }));
+  }, []);
   const hasProcess = flow.some(item => item.kind === 'tool' || hasProcessContent(chat.nodes.get(item.nodeKey), boundary));
   // Only a real, still-active text selection delays folding. Merely clicking,
   // focusing or scrolling the live card does not create a permanent override.
@@ -154,6 +347,7 @@ const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedP
   const expanded = holdingSelection || processExpanded(expansionChoice, boundary);
   const shared = { useSession: props.useSession, renderSlotChain: props.renderSlotChain, loadImage: props.loadImage };
   const terminal = terminalLabel(boundary.reason);
+  const showTerminal = terminal && boundary.reason !== 'error' && boundary.reason !== 'max-tokens';
   return <section className={css.turn} data-reader-turn={group.turn ?? 'unresolved'} data-reader-turn-state={boundary.status} data-reader-turn-result={boundary.reason ?? undefined}>
     {startsWithUser && <BlockBoundary><MainNode {...shared} boundary={boundary} nodeKey={group.keys[0]} /></BlockBoundary>}
     {hasProcess && <Disclosure open={expanded} onChange={setExpanded} controls={flowId} buttonRef={processButton}
@@ -162,18 +356,52 @@ const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedP
       <GroupStatus group={group} useSession={props.useSession} motion={motion} />
     </div>}
     <div id={flowId} className={css.mainFlow} data-reader-flow>
-      {flow.map(item => item.kind === 'node' ? <Fragment key={item.key}>
-        <BlockBoundary><ProcessNode useSession={props.useSession} t={props.t} nodeKey={item.nodeKey} open={expanded} motion={motion} onRead={pinProcess} returnFocusTo={processButton} /></BlockBoundary>
-        <BlockBoundary><AssistantNode {...shared} boundary={boundary} nodeKey={item.nodeKey} pinned={pinnedKeys.includes(item.nodeKey)} processOpen={expanded} motion={motion} onRead={pinProcess} returnFocusTo={processButton} /></BlockBoundary>
-        <BlockBoundary><MainNode {...shared} boundary={boundary} nodeKey={item.nodeKey} pinned={pinnedKeys.includes(item.nodeKey)} processOpen={expanded} /></BlockBoundary>
-      </Fragment> : <Fragment key={item.key}>
-        <BlockBoundary><ProcessFragment open={expanded} motion={motion} onRead={pinProcess} returnFocusTo={processButton} nodeKey={item.key} framed>
-          <ToolActivity {...shared} entry={item} motion={motion} turnClosed={boundary.status === 'closed'} onRead={pinProcess} />
-        </ProcessFragment></BlockBoundary>
-        {item.block && <BlockBoundary><ToolMedia {...shared} block={item.block} open={expanded} /></BlockBoundary>}
-      </Fragment>)}
+      {groupedFlow.map(entry => {
+        if (entry.kind === 'cluster') {
+          const isClusterOpen = clusterExpanded[entry.key] ?? false;
+          return (
+            <ProcessFragment
+              key={entry.key}
+              open={expanded}
+              motion={motion}
+              onRead={pinProcess}
+              returnFocusTo={processButton}
+              nodeKey={entry.key}
+              framed
+            >
+              <OperationalClusterBlock
+                cluster={entry}
+                expanded={isClusterOpen}
+                onToggle={() => toggleCluster(entry.key)}
+                shared={shared}
+                t={props.t}
+                boundary={boundary}
+                pinnedKeys={pinnedKeys}
+                motion={motion}
+                pinProcess={pinProcess}
+                processButton={processButton}
+              />
+            </ProcessFragment>
+          );
+        }
+        const item = entry.item;
+        return item.kind === 'node' ? (
+          <Fragment key={item.key}>
+            <BlockBoundary><ProcessNode useSession={props.useSession} t={props.t} nodeKey={item.nodeKey} open={expanded} motion={motion} onRead={pinProcess} returnFocusTo={processButton} /></BlockBoundary>
+            <BlockBoundary><AssistantNode {...shared} boundary={boundary} nodeKey={item.nodeKey} pinned={pinnedKeys.includes(item.nodeKey)} processOpen={expanded} motion={motion} onRead={pinProcess} returnFocusTo={processButton} /></BlockBoundary>
+            <BlockBoundary><MainNode {...shared} boundary={boundary} nodeKey={item.nodeKey} pinned={pinnedKeys.includes(item.nodeKey)} processOpen={expanded} /></BlockBoundary>
+          </Fragment>
+        ) : (
+          <Fragment key={item.key}>
+            <BlockBoundary><ProcessFragment open={expanded} motion={motion} onRead={pinProcess} returnFocusTo={processButton} nodeKey={item.key} framed>
+              <ToolActivity {...shared} entry={item} motion={motion} turnClosed={boundary.status === 'closed'} onRead={pinProcess} />
+            </ProcessFragment></BlockBoundary>
+            {item.block && <BlockBoundary><ToolMedia {...shared} block={item.block} open={expanded} /></BlockBoundary>}
+          </Fragment>
+        );
+      })}
     </div>
-    {terminal && <div className={css.notice} data-reader-terminal>{terminal}</div>}
+    {showTerminal && <div className={css.notice} data-reader-terminal>{terminal}</div>}
   </section>;
 });
 
@@ -183,6 +411,18 @@ export function Reader(props: ReaderProps) {
   const order = props.useSession(snapshot => snapshot.chat.order);
   const nodes = props.useSession(snapshot => snapshot.chat.nodes);
   const timeline = props.useSession(snapshot => snapshot.chat.timeline);
+  const rewindToken = props.useSession(snapshot => {
+    let token = '';
+    const chat = snapshot.chat;
+    for (const key of chat.order) {
+      const node = chat.nodes.get(key);
+      if (!node || node.kind !== 'command') continue;
+      const command = node.data as { name?: string; seq?: number; args?: string | null; outcome?: { kind?: string; sourceEventSeq?: number } | null };
+      if (command.name !== 'rewind') continue;
+      token += `${command.seq}:${command.args ?? ''}:${command.outcome?.kind ?? ''}:${command.outcome?.sourceEventSeq ?? ''};`;
+    }
+    return token;
+  });
   const pending = props.useSession(snapshot => snapshot.pending);
   const openError = props.useSession(snapshot => snapshot.openError);
   const loading = props.useSession(snapshot => snapshot.openState === 'loading');
@@ -191,12 +431,45 @@ export function Reader(props: ReaderProps) {
   const motionPreference = props.useStore(state => state.motion);
   const motion = useMotionAllowed(motionPreference);
   const streamMotion = useMemo(() => ({ enabled: motion, activatedAt: activatedAt.current }), [motion]);
-  const groups = useMemo(() => groupNodes(order, key => nodes.get(key)), [order, nodes, timeline]);
+  const rewindHidden = useMemo(() => {
+    return rewindToken ? hiddenSeqsOf({ order, nodes }) : new Set<number>();
+  }, [rewindToken, order, nodes]);
+  const rewindSpans = useMemo(() => {
+    return rewindToken ? rewindSpansOf({ order, nodes }) : [];
+  }, [rewindToken, order, nodes]);
+  const visibleOrder = useMemo(() => order.filter(key => {
+    const node = nodes.get(key);
+    return !!node && !rewindHidden.has(node.anchorSeq);
+  }), [order, nodes, rewindHidden]);
+  const groups = useMemo(() => groupNodes(visibleOrder, key => nodes.get(key)), [visibleOrder, nodes, timeline]);
   const scroll = useReadingScroll(root, motion);
+  const latestUserKey = useMemo(() => {
+    for (let index = visibleOrder.length - 1; index >= 0; index--) {
+      const node = nodes.get(visibleOrder[index]);
+      if (node && (node.kind === 'user' || node.kind === 'steering')) return visibleOrder[index];
+    }
+    return null;
+  }, [visibleOrder, nodes]);
+  const seenUserKeys = useRef(new Set<string>());
+  const previousLatestUserKey = useRef<string | null>(null);
+  useEffect(() => {
+    const previous = previousLatestUserKey.current;
+    const latest = latestUserKey;
+    if (latest && previous && latest !== previous && !seenUserKeys.current.has(latest)) {
+      const previousIndex = visibleOrder.indexOf(previous);
+      const latestIndex = visibleOrder.indexOf(latest);
+      // Only a user message appended after the previous latest user message
+      // should force the viewport to the bottom; loading older history adds
+      // older keys before the current latest and must not yank the reader.
+      if (previousIndex >= 0 && latestIndex > previousIndex) scroll.jump();
+    }
+    if (latest) seenUserKeys.current.add(latest);
+    previousLatestUserKey.current = latest;
+  }, [latestUserKey]);
   const pinnedKeys = usePinnedSelection(root);
   const selectedProcessKeys = usePinnedSelection(root, '[data-reader-process]');
   const [historyError, setHistoryError] = useState(false);
-  return <StreamMotionContext.Provider value={streamMotion}><div ref={root} className={css.root} data-dsh-better-display="0.1.2" data-motion={motion ? 'on' : 'off'}>
+  return <StreamMotionContext.Provider value={streamMotion}><div ref={root} className={css.root} data-dsh-clearview="0.1.6" data-motion={motion ? 'on' : 'off'}>
     <div className={css.column}>
       <div className={css.toolbar} data-ud-check="reader-toolbar">
         <span title="基于真实消息类型和轮次边界整理。当前协议没有独立的正文阶段标记，无法确认的内容会继续保留。">阅读 · 原始记录完整保留</span>
@@ -209,12 +482,16 @@ export function Reader(props: ReaderProps) {
       {historyError && <div className={css.notice}>历史记录加载失败，可再次尝试；现有内容未改变。</div>}
       {openError && <div className={css.error} role="alert">会话暂时无法读取：{openError.message}</div>}
       {loading && groups.length === 0 && <p className={css.empty} role="status">正在读取会话…</p>}
-      {groups.map(group => <TurnGroup key={group.key} {...props} group={group} motion={motion} pinnedKeys={pinnedKeys} selectedProcessKeys={selectedProcessKeys} />)}
+      {groups.map(group => <TurnGroup key={group.key} {...props} group={group} motion={motion} pinnedKeys={pinnedKeys} selectedProcessKeys={selectedProcessKeys} rewindHidden={rewindHidden} rewindSpans={rewindSpans} />)}
       {pending.length > 0 && <div className={css.attention} role="alert" data-reader-attention>
         <strong>{pending.some(item => item.kind === 'question') ? '需要你回答一个问题' : '需要你的确认'}</strong>
         <span>请在下方原生操作区处理。此提示不会收进执行过程。</span>
       </div>}
-      {scroll.detached && <div className={css.jumpDock}><button type="button" className={css.jump} onClick={scroll.jump}>↓ 回到最新</button></div>}
+      {scroll.detached && <div className={css.jumpDock}><button type="button" className={css.jump} onClick={scroll.jump} aria-label="回到最新" title="回到最新">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M8 3v10m-4-4 4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button></div>}
     </div>
   </div></StreamMotionContext.Provider>;
 }

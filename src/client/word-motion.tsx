@@ -67,45 +67,88 @@ function MotionAtom({ children, born, generation, offset }: { children: ReactNod
 }
 
 /** One paragraph of a reasoning transcript, memoized on its own text. */
-const ReasonSegment = memo(function ReasonSegment({ timeline, text, offset, generation }: {
-  timeline: WordTimeline; text: string; offset: number; generation: number;
+const ReasonSegment = memo(function ReasonSegment({ timeline, text, offset, generation, liveFrom }: {
+  timeline: WordTimeline; text: string; offset: number; generation: number; liveFrom: number;
 }) {
-  return <>{timeline.words(text, offset).map(word => word.text.trim()
+  // Settled prefix as plain text, animated frontier as components: only
+  // [liveFrom, end) can still reveal, so a long live paragraph costs the same
+  // per frame as a short one. The frontier never cuts closing punctuation off
+  // its word (shared birth interval) or an opening quote off its window.
+  const cut = Math.max(0, Math.min(text.length, liveFrom - offset));
+  const prefix = cut > 0 ? text.slice(0, cut) : '';
+  const words = timeline.words(text.slice(cut), offset + cut);
+  return <>{prefix}{words.map(word => word.text.trim()
     ? <Word key={word.key} born={word.born} generation={generation} offset={word.key} inline>{word.text}</Word>
     : word.text)}</>;
 }, (previous, next) => previous.timeline === next.timeline
   && previous.text === next.text
   && previous.offset === next.offset
-  && previous.generation === next.generation);
+  && previous.generation === next.generation
+  && previous.liveFrom === next.liveFrom);
+
+interface ParagraphChunk { start: number; end: number; part: string }
+
+/**
+ * Append-only paragraph chunking. The full-text scan ran every frame and
+ * cost O(total length); the cache only rescans from the previous boundary,
+ * and settled chunks keep their exact string reference so the segment memo
+ * holds and re-renders zero times.
+ */
+function paragraphChunks(cache: { current: { text: string; chunks: ParagraphChunk[] } }, text: string): ParagraphChunk[] {
+  const previous = cache.current;
+  let chunks: ParagraphChunk[];
+  if (previous.chunks.length > 0 && text.startsWith(previous.text)) {
+    chunks = previous.chunks.map(chunk => ({ ...chunk }));
+    const last = chunks[chunks.length - 1]!;
+    const boundary = text.indexOf('\n\n', Math.max(last.start, previous.text.length - 1));
+    last.end = boundary === -1 ? text.length : boundary;
+    last.part = text.slice(last.start, last.end);
+    let i = boundary === -1 ? text.length : last.end + 2;
+    while (i < text.length) {
+      const next = text.indexOf('\n\n', i);
+      const end = next === -1 ? text.length : next;
+      chunks.push({ start: i, end, part: text.slice(i, end) });
+      if (next === -1) break;
+      i = end + 2;
+    }
+  } else {
+    chunks = [];
+    let i = 0;
+    while (i < text.length) {
+      const boundary = text.indexOf('\n\n', i);
+      const end = boundary === -1 ? text.length : boundary;
+      chunks.push({ start: i, end, part: text.slice(i, end) });
+      i = boundary === -1 ? text.length : boundary + 2;
+    }
+  }
+  cache.current = { text, chunks };
+  return chunks;
+}
 
 /** Native Think is literal text, not Markdown. Spans never alter its bytes. */
 export function MotionPlainText({ text, enabled, revision }: { text: string; enabled: boolean; revision: number }) {
   const timeline = useRef<WordTimeline>();
   timeline.current ??= new WordTimeline();
-  timeline.current.begin(text, enabled, revision, Number(document.timeline.currentTime ?? performance.now()));
+  const chunkCache = useRef<{ text: string; chunks: ParagraphChunk[] }>({ text: '', chunks: [] });
+  const now = Number(document.timeline.currentTime ?? performance.now());
+  timeline.current.begin(text, enabled, revision, now);
   const current = timeline.current;
   const generation = current.generation;
   const scope = useMemo(() => ({ enabled, generation }), [enabled, generation]);
+  const chunks = paragraphChunks(chunkCache, text);
   if (!current.hasLiveText) return <WordScope.Provider value={scope}><div className={css.reasonPlain}>{text}</div></WordScope.Provider>;
-  // Paragraph-chunk the reasoning text: words() re-segments the WHOLE text on
-  // every revision and React diffed every word element, making the running
-  // step's cost O(total-think) per chunk. Only the trailing paragraph grows
-  // append-only, so memoized earlier paragraphs re-render zero times and the
-  // per-chunk cost tracks the live paragraph only. Word keys stay global
-  // source offsets (segment offset + in-segment index), so reconciliation
-  // across paragraph growth is stable.
+  // Paragraph-chunk the reasoning text so memoized earlier paragraphs
+  // re-render zero times; inside the live paragraph only the reveal frontier
+  // becomes components (see ReasonSegment). Word keys stay global source
+  // offsets (segment offset + in-segment index), so reconciliation across
+  // paragraph growth is stable.
+  const liveFrom = current.liveFloor(now);
   const children: ReactNode[] = [];
-  let offset = 0;
-  let index = 0;
-  for (let i = 0; i < text.length;) {
-    const end = text.indexOf('\n\n', i);
-    const stop = end === -1 ? text.length : end;
+  chunks.forEach((chunk, index) => {
     if (index > 0) children.push('\n\n');
-    children.push(<ReasonSegment key={offset} timeline={current} text={text.slice(i, stop)} offset={offset} generation={generation} />);
-    offset += stop - i + (end === -1 ? 0 : 2);
-    i = end === -1 ? text.length : end + 2;
-    index += 1;
-  }
+    children.push(<ReasonSegment key={chunk.start} timeline={current} text={chunk.part} offset={chunk.start} generation={generation}
+      liveFrom={Math.max(chunk.start, Math.min(liveFrom, chunk.end))} />);
+  });
   return <WordScope.Provider value={scope}><div className={css.reasonPlain}>{children}</div></WordScope.Provider>;
 }
 
@@ -116,12 +159,17 @@ export function MotionMarkdown({ text, streaming, enabled, revision }: { text: s
   timeline.current.begin(text, enabled, revision, Number(document.timeline.currentTime ?? performance.now()));
   const generation = timeline.current.generation;
   const scope = useMemo(() => ({ enabled, generation }), [enabled, generation]);
-  const renderText = useMemo(() => (value: string, offset: number, inline = false): ReactNode => {
+const renderText = useMemo(() => (value: string, offset: number, inline = false): ReactNode => {
     const current = timeline.current!;
     if (!current.hasLiveText) return value;
-    return current.words(value, offset).map(word => word.text.trim()
+    // Same frontier as the reasoning card: settled prefix as plain text,
+    // only the reveal window becomes animated components.
+    const now = Number(document.timeline.currentTime ?? performance.now());
+    const cut = Math.max(0, Math.min(value.length, current.liveFloor(now) - offset));
+    const words = current.words(value.slice(cut), offset + cut).map(word => word.text.trim()
       ? <Word key={word.key} born={word.born} generation={current.generation} offset={word.key} inline={inline || /^\p{P}+$/u.test(word.text)}>{word.text}</Word>
       : word.text);
+    return cut > 0 ? [value.slice(0, cut), ...words] : words;
   }, []);
   const renderAtom = useMemo(() => (children: ReactNode, offset: number): ReactNode => {
     const current = timeline.current!;

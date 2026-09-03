@@ -13,7 +13,7 @@ export interface ReaderBlockOwner {
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     /** Trusted installed renderers may opt in; unknown model payloads never execute code. */
-    'dsh-better-display.block': { kind: 'chain'; scope: 'session'; owner: ReaderBlockOwner };
+    'dsh-clearview.block': { kind: 'chain'; scope: 'session'; owner: ReaderBlockOwner };
   }
 }
 
@@ -23,7 +23,7 @@ export interface ReaderInjected {
 }
 export type ReaderProps = PropsRuntime<'conversation.view'>
   & PropsLocale<'conversation'>
-  & PropsRenderSlots<'dsh-better-display.block'>
+  & PropsRenderSlots<'dsh-clearview.block'>
   & PropsStore<ReturnType<typeof createReaderStore>>
   & ReaderInjected;
 export type BlockRenderProps = Pick<ReaderProps, 'renderSlotChain' | 'loadImage'>;

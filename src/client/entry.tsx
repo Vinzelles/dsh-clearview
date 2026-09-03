@@ -32,7 +32,7 @@ export function installReaderEntry(ctx: Context): () => void {
   });
   return ctx.slots.register({
     name: 'conversation.input.dock',
-    id: 'dsh-better-display-entry',
+    id: 'dsh-clearview-entry',
     store: native,
     inject: () => ({ policy }),
   }, ReaderEntry);

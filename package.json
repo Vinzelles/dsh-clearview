@@ -1,15 +1,15 @@
 {
-  "name": "dsh-better-display",
-  "version": "0.1.2",
+  "name": "dsh-clearview",
+  "version": "0.1.6",
   "description": "A calmer reading view for DeepSeek Harness: native process details, live reasoning, and clean final answers.",
   "type": "module",
   "license": "MIT",
-  "main": "lib/dsh-better-display.js",
-  "types": "lib/types/dsh-better-display.d.ts",
+  "main": "lib/dsh-clearview.js",
+  "types": "lib/types/dsh-clearview.d.ts",
   "exports": {
     ".": {
-      "types": "./lib/types/dsh-better-display.d.ts",
-      "default": "./lib/dsh-better-display.js"
+      "types": "./lib/types/dsh-clearview.d.ts",
+      "default": "./lib/dsh-clearview.js"
     },
     "./client": {
       "types": "./lib/types/client/index.d.ts",
@@ -84,11 +84,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/aa2246740/dsh-better-display.git"
+    "url": "git+https://github.com/Vinzelles/dsh-clearview.git"
   },
-  "homepage": "https://github.com/aa2246740/dsh-better-display#readme",
+  "homepage": "https://github.com/Vinzelles/dsh-clearview#readme",
   "bugs": {
-    "url": "https://github.com/aa2246740/dsh-better-display/issues"
+    "url": "https://github.com/Vinzelles/dsh-clearview/issues"
   },
   "keywords": [
     "deepseek-harness",

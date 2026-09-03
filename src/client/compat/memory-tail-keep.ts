@@ -159,7 +159,7 @@ export function apply(_ctx: any): () => void {
   const work = () => {
     if (!running) return;
     lastRun = Date.now();
-    const roots = Array.prototype.slice.call(document.querySelectorAll('[data-dsh-better-display]')) as HTMLElement[];
+    const roots = Array.prototype.slice.call(document.querySelectorAll('[data-dsh-clearview]')) as HTMLElement[];
     for (const root of roots) {
       try { const snap = cachedSnapshot(root); if (snap) handle(root, snap); } catch { /* 单根失败忽略 */ }
     }
@@ -182,7 +182,7 @@ export function apply(_ctx: any): () => void {
   };
   work();
   timer = setInterval(() => {
-    if (!document.querySelector('[data-dsh-better-display]')) { work(); return; }
+    if (!document.querySelector('[data-dsh-clearview]')) { work(); return; }
     startObserver();
     if (timer) { clearInterval(timer); timer = null; }
   }, 1500);
@@ -194,6 +194,6 @@ export function apply(_ctx: any): () => void {
     if (trailing) clearTimeout(trailing);
     if (observer) observer.disconnect();
   };
-  try { console.info('[dsh-better-display:memory-tail-keep] applied'); } catch { /* 忽略 */ }
+  try { console.info('[dsh-clearview:memory-tail-keep] applied'); } catch { /* 忽略 */ }
   return cleanup;
 }

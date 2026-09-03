@@ -1,17 +1,17 @@
 /**
- * 阅读视图兼容层汇总（原 dsh-custom-patcher patches/client 下与 better-display
+ * 阅读视图兼容层汇总（原 dsh-custom-patcher patches/client 下与 clearview
  * 配套的 12 个补丁内聚于此）：
- *   - styles.ts               7 个 CSS → 运行时注入 <style id="dsh-better-display-compat">
+ *   - styles.ts               7 个 CSS → 运行时注入 <style id="dsh-clearview-compat">
  *   - composer-readability.ts 画布色变量 + 统计行毛玻璃标记
  *   - memory-tail-keep.ts     收尾总结被折叠吞掉时自动展开执行过程
  *   - perf-guard.ts           内容规模超阈值点亮 data-dshcp-heavy 降级动效
  *   - rewind-bridge.ts        dsh-rewind 撤回/复制按钮兼容桥
  *   - turn-metrics-footer.ts  补回轮次统计行
  *
- * 思考跟随追赶（原 reasoning-catchup.ts）已于 0.1.2 内聚进 ReasoningCard
- * 自身的步进循环（reasoningAdvance 自适应滑向实时尾部）：外部观察者与插件
- * 步进两个滚动管理器竞争同一轨道，滑移被插件下一步掐断，正是「滚动反弹」
- * 的来源，故整体移除。
+ * 思考跟随追赶（原 reasoning-catchup.ts）已于 0.1.2 移除：外部观察者与插件
+ * 步进两个滚动管理器竞争同一轨道，滑移被插件下一步掐断，正是「滚动反弹」的
+ * 来源。0.1.3 起跟随改为 ReasoningCard 自身的连续速度匹配控制器
+ * （followAdvance），追赶内聚于逐帧循环，无需任何外围补偿。
  *
  * 由插件客户端 apply(ctx) 启动（startCompat），生命周期挂插件 fiber：
  * 插件卸载时各模块经 ctx.effect 自动清理。
@@ -47,7 +47,7 @@ export function startCompat(ctx: any): void {
       const cleanup = fn(ctx);
       if (typeof cleanup === 'function') cleanups.push(cleanup);
     } catch (err) {
-      try { console.warn(`[dsh-better-display:compat] ${name} failed: ${String(err)}`); } catch { /* 忽略 */ }
+      try { console.warn(`[dsh-clearview:compat] ${name} failed: ${String(err)}`); } catch { /* 忽略 */ }
     }
   }
   const dispose = () => { for (const c of cleanups) { try { c(); } catch { /* 单个失败不阻塞其余 */ } } };

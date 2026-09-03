@@ -21,6 +21,7 @@ export class WordTimeline {
   private enabled = false;
   private revision = 0;
   private floor = 0;
+  private birthOrigin = 0;
   private lastBirth = -Infinity;
   private readonly births: SourceBirth[] = [];
 
@@ -40,6 +41,7 @@ export class WordTimeline {
       // Intervals cover every offset, so resegmented CJK words inherit the time
       // of their characters rather than falling through as instant "history".
       const from = this.source.length;
+      if (this.births.length === 0) this.birthOrigin = from;
       for (const part of segmenter.segment(source.slice(from))) {
         let born = Number.isFinite(this.lastBirth) ? this.lastBirth : null;
         if (part.segment.trim()) {
@@ -68,6 +70,36 @@ export class WordTimeline {
       else high = middle;
     }
     return this.births[low]!.born;
+  }
+
+  /**
+   * The source offset from which text can still reveal or is queued to reveal
+   * at `now`: everything before it has finished its animation and renders as
+   * plain text. This is what keeps a long live paragraph as cheap per frame as
+   * a short one: only [liveFloor, end) becomes animated components. Births are
+   * non-decreasing, so a binary search finds the frontier; closing punctuation
+   * shares its word's interval, so the frontier never cuts a comma off its
+   * preceding word.
+   */
+  liveFloor(now: number): number {
+    const source = this.source ?? '';
+    if (!this.enabled || this.births.length === 0) return source.length;
+    const cutoff = now - WORD_MOTION.duration;
+    let low = 0;
+    let high = this.births.length - 1;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      const born = this.births[middle]!.born;
+      if (born !== null && born > cutoff) high = middle;
+      else low = middle + 1;
+    }
+    const found = this.births[low]!.born;
+    if (found === null || found <= cutoff) return source.length;
+    let cut = low === 0 ? this.birthOrigin : this.births[low - 1]!.end;
+    // Never strand an opening quote in the settled prefix: pull the frontier
+    // back over a quote run so the bracket stays glued to its animated word.
+    while (cut > 0 && cut < source.length && /^[\p{Ps}\p{Pi}]$/u.test(source[cut - 1]!)) cut--;
+    return cut;
   }
 
   words(value: string, offset: number): RevealingWord[] {

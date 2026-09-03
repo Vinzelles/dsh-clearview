@@ -1,6 +1,7 @@
 import type { AssistantBlock, ChatConversationViewNode, ToolCallBlock, TurnLocation } from '@deepseek-ai/dsh-client-runtime/client';
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
 import type { ReaderGroup } from './projection.js';
+import type { RewindSpan } from './rewind-hidden.js';
 
 export type ToolDraft = Extract<AssistantBlock, { kind: 'tool-call' }>;
 export type ToolPhase = 'preparing' | 'running' | 'returned' | 'succeeded' | 'failed' | 'interrupted';
@@ -12,13 +13,28 @@ export interface ToolActivityEntry {
 export type ReaderFlowEntry = ToolActivityEntry | { kind: 'node'; key: string; nodeKey: string; order: number };
 
 /** Public Step data includes tool-only model output before a chat node exists. */
-export function readerFlow(group: ReaderGroup, turn: TurnLocation | undefined, get: (key: string) => ChatConversationViewNode | undefined): ReaderFlowEntry[] {
+export function readerFlow(
+  group: ReaderGroup,
+  turn: TurnLocation | undefined,
+  get: (key: string) => ChatConversationViewNode | undefined,
+  rewind?: { hidden: ReadonlySet<number>; spans: readonly RewindSpan[] },
+): ReaderFlowEntry[] {
   const flow: ReaderFlowEntry[] = [];
   const calls = new Map<string, ToolActivityEntry>();
   const assistantOrder = new Map<number, number>();
+  const stepHidden = (step: TurnLocation['steps'][number]): boolean => {
+    if (!rewind || rewind.spans.length === 0) return false;
+    const start = step.start?.seq;
+    const end = step.end?.seq;
+    return rewind.spans.some(span =>
+      (start !== undefined && start >= span.start && start <= span.end)
+      || (end !== undefined && end >= span.start && end <= span.end)
+    );
+  };
   for (const key of group.keys) {
     const node = get(key);
     if (!node || node.visibility === 'hidden') continue;
+    if (rewind?.hidden.has(node.anchorSeq)) continue;
     const step = node.location.kind === 'step' ? node.location.step.step : 0;
     if (node.kind === 'tool-call') {
       const block = (node.data as { root: ToolCallBlock }).root;
@@ -29,6 +45,7 @@ export function readerFlow(group: ReaderGroup, turn: TurnLocation | undefined, g
     }
   }
   for (const step of turn?.steps ?? []) {
+    if (stepHidden(step)) continue;
     const data = step.data.get('assistant-step');
     let index = 0;
     for (const draft of data?.blocks ?? []) {
@@ -54,7 +71,8 @@ export function stringValue(record: Record<string, unknown> | null, ...keys: str
 
 /** Read only top-level JSON string values, including an unfinished final string.
  * This never executes input or mistakes escaped/nested content for a path field. */
-export function inputFields(raw: string): Record<string, unknown> {
+export function inputFields(raw: string | undefined): Record<string, unknown> {
+  if (!raw) return {};
   try { return objectValue(JSON.parse(raw)) ?? {}; } catch { /* an in-flight argument is normally incomplete */ }
   const fields: Record<string, unknown> = Object.create(null);
   const prefix = raw.slice(0, 262144);
@@ -92,10 +110,9 @@ export function inputFields(raw: string): Record<string, unknown> {
 
 export function toolIdentity(entry: Pick<ToolActivityEntry, 'block' | 'draft'>) {
   const block = entry.block;
-  return {
-    name: block ? 'kind' in block ? block.call?.name ?? entry.draft?.name ?? '工具调用' : block.name : entry.draft?.name ?? '工具调用',
-    raw: block ? 'kind' in block ? block.call?.argsRaw ?? entry.draft?.argsRaw ?? '' : block.argsRaw : entry.draft?.argsRaw ?? '',
-  };
+  const name = (block && ('call' in block && block.call?.name ? block.call.name : (block as any).name)) ?? entry.draft?.name ?? '工具调用';
+  const raw = (block && ('call' in block && block.call?.argsRaw !== undefined ? block.call.argsRaw : (block as any).argsRaw)) ?? entry.draft?.argsRaw ?? '';
+  return { name, raw };
 }
 
 export function executionFacts(block: ToolCallBlock | undefined): { exitCode?: number; signal?: string } {
@@ -124,12 +141,16 @@ export function activitySummary(entry: Pick<ToolActivityEntry, 'block' | 'draft'
   const command = view?.card === 'terminal' ? view.title : stringValue(args, 'command', 'cmd', 'script');
   const description = view?.card === 'terminal' ? view.description : stringValue(args, 'description');
   const file = target?.split(/[/\\]/).at(-1);
-  const category: ToolCategory = /^(write|edit|apply_patch|patch)$/.test(name) || view?.card === 'diff' ? 'write'
-    : /^(read|read_file)$/.test(name) ? 'read'
+  const editorCommand = stringValue(args, 'command');
+  const isEditor = name === 'str_replace_editor';
+  const category: ToolCategory = /^(write|edit|apply_patch|patch)$/.test(name)
+    || (isEditor && (editorCommand === 'str_replace' || editorCommand === 'insert' || editorCommand === 'create'))
+    || view?.card === 'diff' ? 'write'
+    : /^(read|read_file)$/.test(name) || (isEditor && editorCommand === 'view') ? 'read'
     : /^(bash|shell|terminal|exec_command|pwsh)$/.test(name) || view?.card === 'terminal' ? 'terminal'
     : /^(grep|glob|find|search)$/.test(name) ? 'search'
     : /^(web_search|web_fetch|web_open)$/.test(name) ? 'web' : 'other';
-  const title = category === 'write' ? `${name === 'write' ? '写入' : '修改'}${file ? ` ${file}` : name === 'apply_patch' ? '代码补丁' : '文件'}`
+  const title = category === 'write' ? `${name === 'write' || (isEditor && editorCommand === 'create') ? '写入' : '修改'}${file ? ` ${file}` : name === 'apply_patch' ? '代码补丁' : '文件'}`
     : category === 'read' ? `读取${file ? ` ${file}` : '文件'}`
     : category === 'terminal' ? description || '运行命令'
     : category === 'search' ? name === 'glob' ? '查找文件' : '搜索内容'
@@ -141,4 +162,101 @@ export function activitySummary(entry: Pick<ToolActivityEntry, 'block' | 'draft'
 
 export function preparingLabel(name: string): string {
   return /^(write|edit|apply_patch)$/.test(name) ? '正在生成文件内容' : /^(bash|shell|exec_command|pwsh)$/.test(name) ? '正在准备命令' : '正在准备工具输入';
+}
+
+export interface OperationalClusterSummary {
+  commands: number;
+  tools: number;
+  operations: number;
+}
+
+export type OperationalFlowItem =
+  | { kind: 'single'; item: ReaderFlowEntry }
+  | { kind: 'cluster'; key: string; items: ReaderFlowEntry[]; summary: OperationalClusterSummary; hasActive: boolean; hasFailed: boolean };
+
+export function formatOperationClusterSummary(summary: OperationalClusterSummary): string {
+  const parts: string[] = [];
+  if (summary.commands > 0) parts.push(`运行了 ${summary.commands} 条命令`);
+  if (summary.tools > 0) parts.push(`进行了 ${summary.tools} 次工具调用`);
+  if (summary.operations > 0) parts.push(`执行了 ${summary.operations} 个操作`);
+  return parts.join('，');
+}
+
+export function groupOperationalFlow(
+  items: readonly ReaderFlowEntry[],
+  get: (key: string) => ChatConversationViewNode | undefined,
+): OperationalFlowItem[] {
+  const result: OperationalFlowItem[] = [];
+  let currentGroup: ReaderFlowEntry[] = [];
+
+  const flush = () => {
+    if (currentGroup.length === 0) return;
+    if (currentGroup.length === 1) {
+      result.push({ kind: 'single', item: currentGroup[0] });
+    } else {
+      let commands = 0;
+      let tools = 0;
+      let operations = 0;
+      let hasActive = false;
+      let hasFailed = false;
+
+      for (const entry of currentGroup) {
+        if (entry.kind === 'tool') {
+          tools++;
+          const phase = activityPhase(entry);
+          if (phase === 'preparing' || phase === 'running') hasActive = true;
+          if (phase === 'failed') hasFailed = true;
+
+          const summary = activitySummary(entry);
+          if (summary.category === 'terminal') {
+            commands++;
+          } else if (summary.category === 'read' || summary.category === 'write') {
+            operations++;
+          }
+        } else if (entry.kind === 'node') {
+          const node = get(entry.nodeKey);
+          if (node?.kind === 'command') {
+            commands++;
+            operations++;
+            const outcome = (node.data as { outcome?: { kind?: string } | null }).outcome;
+            if (outcome == null) hasActive = true;
+            if (outcome?.kind === 'error') hasFailed = true;
+          }
+        }
+      }
+
+      const first = currentGroup[0]!;
+      result.push({
+        kind: 'cluster',
+        key: `cluster:${first.kind === 'node' ? first.nodeKey : first.callId}`,
+        items: currentGroup,
+        summary: { commands, tools, operations },
+        hasActive,
+        hasFailed,
+      });
+    }
+    currentGroup = [];
+  };
+
+  for (const item of items) {
+    let isOp = false;
+    if (item.kind === 'tool') {
+      isOp = true;
+    } else if (item.kind === 'node') {
+      const node = get(item.nodeKey);
+      if (node?.kind === 'command') {
+        isOp = true;
+      }
+    }
+
+    if (isOp) {
+      currentGroup.push(item);
+    } else {
+      flush();
+      result.push({ kind: 'single', item });
+    }
+  }
+
+  flush();
+  return result;
 }

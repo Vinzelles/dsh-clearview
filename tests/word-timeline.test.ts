@@ -112,6 +112,48 @@ test('a closing mark arriving later does not restart the preceding word', () => 
   assert.equal(next.text, '夜晚。');
 });
 
+test('liveFloor marks the reveal frontier and advances with the clock', () => {
+  const timeline = new WordTimeline();
+  timeline.begin('', true, 0, 0);
+  timeline.begin('one two three', true, 0, 100);
+  assert.equal(timeline.liveFloor(100), 0, 'nothing has settled yet');
+  assert.equal(timeline.liveFloor(460), 4, 'the first word finished its animation');
+  assert.equal(timeline.liveFloor(1000), 13, 'the whole source is settled text');
+});
+
+test('the frontier never strands an opening quote in the settled prefix', () => {
+  const timeline = new WordTimeline();
+  timeline.begin('', true, 0, 0);
+  timeline.begin('「quoted words」', true, 0, 100);
+  // '「' is born at 100 and 'quoted' at 160: at 460 the quote alone would
+  // have settled, so the frontier pulls back to keep the bracket glued.
+  assert.equal(timeline.liveFloor(460), 0);
+});
+
+test('windowed rendering preserves every source byte', () => {
+  const text = '已经完成的段落，正在揭示的文字，还有排队中的后续内容。';
+  const timeline = new WordTimeline();
+  timeline.begin('', true, 0, 0);
+  timeline.begin(text, true, 0, 100);
+  const live = timeline.liveFloor(500);
+  assert.ok(live > 0 && live < text.length, 'a real frontier exists mid-paragraph');
+  const words = timeline.words(text.slice(live), live);
+  assert.equal(text.slice(0, live) + words.map(word => word.text).join(''), text);
+});
+
+test('the reveal window stays bounded while a long single paragraph streams', () => {
+  const timeline = new WordTimeline();
+  const full = '我们需要先理解这个问题的本质，然后逐步验证每一个假设，检查缓存失效的路径是否真的被触发，再对比新旧实现之间的差异。'.repeat(40);
+  timeline.begin('', true, 0, 0);
+  let maxWindow = 0;
+  for (let end = 12; end <= full.length; end += 12) {
+    const now = end * 2; // ~500 chars/s, faster than the reported 170 tok/s
+    timeline.begin(full.slice(0, end), true, 0, now);
+    maxWindow = Math.max(maxWindow, end - timeline.liveFloor(now));
+  }
+  assert.ok(maxWindow < 600, `reveal window grew with the paragraph: ${maxWindow} chars`);
+});
+
 test('incremental source offsets survive freezing and match the final parse', () => {
   const text = '第一段。\n\n第二段 **加粗**。\n\n第三段。\n\n第四段。';
   const parser = new IncrementalMarkdownParser(parseGfm);
