@@ -21,6 +21,16 @@ test('turnPhaseOf: running steps map to phases', () => {
   assert.equal(turnPhaseOf(undefined, 0), 'idle');
 });
 
+test('turnPhaseOf: missing or non-running assistant-step falls back to processing', () => {
+  // 无 assistant-step → processing
+  assert.equal(turnPhaseOf({ status: 'open', steps: [{ step: 0, data: new Map() }] }, 0), 'processing');
+  // 非 running 的 assistant-step（含 tool-call）→ processing 兜底
+  const settled = {
+    step: 0, data: new Map([['assistant-step', { status: 'settled', blocks: [tool], time: 1000 }]]),
+  };
+  assert.equal(turnPhaseOf({ status: 'open', steps: [settled] }, 0), 'processing');
+});
+
 test('latestOpenTurn selects the newest open turn and derives since/key', () => {
   const chat = [
     { kind: 'assistant-step', data: { status: 'running', blocks: [reasoning], time: 1000 } },
