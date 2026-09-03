@@ -1,8 +1,14 @@
 # dsh-clearview
 
-> A calmer reading view for DeepSeek Harness: native process details, live reasoning, and clean final answers.
+> A modern reading view for DeepSeek Harness: native process details, live reasoning, smooth transition, and clean final answers.
 
-让 DeepSeek Harness 的长任务更好读。插件为会话流提供一个独立的 **「阅读」** 页签：执行时按真实顺序呈现原生步骤、思考和进度；一轮成功结束后收起过程，只留下最终回答。原版「对话 / 轨迹」、输入框、模型选择、工具与审批系统全部保留。
+全面美化DSH对话流，使界面看起来更美观、现代、流畅。插件为会话流提供一个独立的 **「阅读」** 页签：执行时按真实顺序呈现原生步骤、思考和进度；一轮成功结束后收起过程，只留下最终回答。原版「对话 / 轨迹」、输入框、模型选择、工具与审批系统全部保留。
+> 本插件基于 https://github.com/aa2246740/dsh-better-display 改造，以前端工程师的理解进行重新优化。
+
+<img width="1727" height="869" alt="comp_clean_text" src="https://github.com/user-attachments/assets/c8378763-17a3-4cc5-ae67-0421bc193519" />
+<img width="1818" height="1098" alt="comparison_dark_off_on_clean" src="https://github.com/user-attachments/assets/74a9b25e-02ec-462c-80e1-0b28813484f8" />
+
+
 
 **只改展示，不改 Agent、SDK、提示词、模型设置或会话记录。**
 
