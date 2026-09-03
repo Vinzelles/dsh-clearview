@@ -36,12 +36,14 @@ export function useTurnActivity(useSession: UseConversationSession): ActivityVie
     }
     return { turn: latest, pending: snapshot.pending.length };
   });
-  // Seconds tick: 1s interval. The derivation below re-runs only when `now`
+  // Seconds tick: 1s interval, gated on an open turn so an idle Reader stops
+  // re-rendering every second. The derivation below re-runs only when `now`
   // or the raw snapshot changes; the bar re-renders at most once per second.
   useEffect(() => {
+    if (!raw.turn) return;
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [raw.turn]);
   return useMemo<ActivityView>(() => {
     const result = latestOpenTurn(raw.turn, raw.pending, []);
     if (!result) return IDLE;

@@ -519,7 +519,7 @@
 @media (pointer: coarse) { .reasonAction { min-height: 44px; } }
 @media (forced-colors: active) { .reasonViewport { -webkit-mask-image: none !important; mask-image: none !important; } }
 @supports not (backdrop-filter: blur(1px)) {
-  .reasonCard, .clusterBlock, .noticeCard, .errorCard {
+  .reasonCard, .clusterBlock, .noticeCard, .errorCard, .activityBar {
     background: var(--dsw-alias-bg-module-platform);
   }
 }
@@ -811,7 +811,7 @@
   color: var(--dsw-alias-label-secondary);
   font-size: 13px;
   line-height: 20px;
-  transition: opacity 200ms ease, transform 200ms ease;
+  transition: opacity 200ms cubic-bezier(.4,0,.2,1), transform 200ms cubic-bezier(.4,0,.2,1);
 }
 .activityText { font-weight: 500; color: var(--dsw-alias-label-primary); white-space: nowrap; }
 .activityTimer { font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-secondary); white-space: nowrap; }
