@@ -31,6 +31,18 @@ test('turnPhaseOf: missing or non-running assistant-step falls back to processin
   assert.equal(turnPhaseOf({ status: 'open', steps: [settled] }, 0), 'processing');
 });
 
+test('turnPhaseOf: settled tail keeps thinking/output but never tool', () => {
+  // 锚定现状：settled 的 assistant-step 尾部 reasoning/text 仍映射 thinking/output
+  const settledReasoning = {
+    step: 0, data: new Map([['assistant-step', { status: 'settled', blocks: [reasoning], time: 1000 }]]),
+  };
+  assert.equal(turnPhaseOf({ status: 'open', steps: [settledReasoning] }, 0), 'thinking');
+  const settledText = {
+    step: 0, data: new Map([['assistant-step', { status: 'settled', blocks: [text], time: 1000 }]]),
+  };
+  assert.equal(turnPhaseOf({ status: 'open', steps: [settledText] }, 0), 'output');
+});
+
 test('latestOpenTurn selects the newest open turn and derives since/key', () => {
   const chat = [
     { kind: 'assistant-step', data: { status: 'running', blocks: [reasoning], time: 1000 } },
@@ -42,6 +54,23 @@ test('latestOpenTurn selects the newest open turn and derives since/key', () => 
   assert.equal(result?.since, 1000);
   assert.equal(typeof result?.key, 'string');
   assert.equal(latestOpenTurn({ status: 'closed' }, 0, chat), null);
+});
+
+test('latestOpenTurn derives since from tool callTime with data.time fallback', () => {
+  const chat = [] as never[];
+  // 末 block 为 tool-call 且带 callTime：since 取 callTime
+  const withCallTime = { kind: 'tool-call', callId: 'call-1', callTime: 2000 };
+  const r1 = latestOpenTurn(
+    { status: 'open', steps: [step(0, [reasoning, withCallTime])] }, 0, chat,
+  );
+  assert.equal(r1?.phase, 'tool');
+  assert.equal(r1?.since, 2000);
+  // 末 block 为 tool-call 但无 callTime：since 回退到 data.time（step() 固定 time: 1000）
+  const r2 = latestOpenTurn(
+    { status: 'open', steps: [step(0, [reasoning, tool])] }, 0, chat,
+  );
+  assert.equal(r2?.phase, 'tool');
+  assert.equal(r2?.since, 1000);
 });
 
 test('activityLabel maps phases to stable copy', () => {
@@ -61,9 +90,13 @@ test('formatSeconds renders duration', () => {
 });
 
 test('phaseKeyOf is stable for same phase and changes across phases', () => {
-  const a = phaseKeyOf({ status: 'open', steps: [step(0, [reasoning])] }, 0, 1000);
-  const b = phaseKeyOf({ status: 'open', steps: [step(0, [reasoning])] }, 0, 1000);
+  const t = { status: 'open', steps: [step(0, [reasoning])] };
+  // 关键不变量：since 变化不影响 key（计时起点不重置 bar）；同一输入也覆盖确定性
+  assert.equal(phaseKeyOf(t, 0, 1000), phaseKeyOf(t, 0, 9999));
+  // 单变量：step 变化 → key 变化
   const c = phaseKeyOf({ status: 'open', steps: [step(1, [text])] }, 1, 1000);
-  assert.equal(a, b);
-  assert.notEqual(a, c);
+  assert.notEqual(phaseKeyOf(t, 0, 1000), c);
+  // 单变量：同 step 内 kind 变化 → key 变化
+  const t0withText = { status: 'open', steps: [step(0, [text])] };
+  assert.notEqual(phaseKeyOf(t, 0, 1000), phaseKeyOf(t0withText, 0, 1000));
 });
