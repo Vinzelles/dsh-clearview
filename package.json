@@ -18,6 +18,9 @@
     "./package.json": "./package.json"
   },
   "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "platform": "web",
       "inject": [
@@ -70,6 +73,7 @@
     "tests",
     "scripts",
     "cordis.yml",
+    "cordis.patch.yml",
     "dshx.yml",
     "tsconfig.json",
     "tsdown.config.ts",
@@ -92,6 +96,7 @@
   },
   "keywords": [
     "deepseek-harness",
+    "dsh-plugin",
     "dshx",
     "conversation",
     "reasoning",
