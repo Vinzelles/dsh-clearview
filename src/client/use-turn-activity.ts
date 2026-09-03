@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { UseConversationSession } from '@deepseek-ai/dsh-client-runtime/client';
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
 import {
-  activityLabel, latestOpenTurn, type ActivityPhase, type TurnSnapshot,
+  activityLabel, latestOpenTurn, phaseStartMs, type ActivityPhase, type TurnSnapshot,
 } from './turn-activity.js';
 
 export interface ActivityView {
@@ -20,7 +20,8 @@ export function useTurnActivity(useSession: UseConversationSession): ActivityVie
   // it re-runs only when the store actually changes.
   const raw = useSession(snapshot => {
     let latest: TurnSnapshot | undefined;
-    for (const turn of snapshot.chat.timeline.turns.values()) {
+    let latestTurnNumber: number | null = null;
+    for (const [num, turn] of snapshot.chat.timeline.turns) {
       if (turn.status !== 'open') continue;
       // TurnSnapshot models step data as a Map, while the runtime hands a
       // keyed Location reader; copy the one business value turn-activity reads.
@@ -33,9 +34,19 @@ export function useTurnActivity(useSession: UseConversationSession): ActivityVie
           return { step: step.step, data };
         }),
       };
+      latestTurnNumber = num;
     }
-    return { turn: latest, pending: snapshot.pending.length, hasOpenTurn: latest !== undefined };
+    return {
+      turn: latest, pending: snapshot.pending.length,
+      hasOpenTurn: latest !== undefined, turnNumber: latestTurnNumber,
+    };
   });
+  // Per-key first-seen origins for the phase timer. The timer origin is the
+  // phase key's first display time on this client, not a step timestamp:
+  // running steps only carry step-level `data.time`, so timing from it would
+  // never restart inside one streaming step (e.g. reasoning→text). The
+  // turn-number prefix keeps a new turn from reusing an older phase's origin.
+  const startedRef = useRef(new Map<string, number>());
   // Seconds tick: 1s interval, gated on an open turn so an idle Reader stops
   // re-rendering every second. The gate uses the stable `hasOpenTurn` boolean,
   // not the `turn` object reference: the snapshot rebuilds `turn` on every
@@ -50,9 +61,10 @@ export function useTurnActivity(useSession: UseConversationSession): ActivityVie
   return useMemo<ActivityView>(() => {
     const result = latestOpenTurn(raw.turn, raw.pending, []);
     if (!result) return IDLE;
-    const seconds = result.phase === 'waiting' || result.since == null
+    const started = phaseStartMs(`${raw.turnNumber ?? 0}:${result.key}`, startedRef.current, now);
+    const seconds = result.phase === 'waiting'
       ? null
-      : Math.max(0, Math.floor((now - result.since) / 1000));
+      : Math.max(0, Math.floor((now - started) / 1000));
     return { label: activityLabel(result.phase), seconds, key: result.key, phase: result.phase };
   }, [raw, now]);
 }
