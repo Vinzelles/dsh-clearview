@@ -110,11 +110,13 @@ const ProcessNode = memo(function ProcessNode({ useSession, t, nodeKey, open, mo
   let content: ReactNode = null;
   if (isNode(node, 'context')) content = <ContextInjectionRow {...node.data} t={t} />;
   else if (isNode(node, 'model-retry')) {
-    const retryTitle = node.data.current.retryState === 'scheduled'
+    const current = node.data.current;
+    const retryTitle = current.retryState === 'scheduled'
       ? '模型请求未成功，正在等待重试'
-      : node.data.current.retryState === 'started' ? '模型请求正在重试'
+      : current.retryState === 'started' ? '模型请求正在重试'
       : '模型重试记录';
-    content = <NoticeCard title={retryTitle} tone="info" hint="展开查看重试记录">
+    const retryMeta = `第 ${current.retry} 次 · ${current.failure.code}${current.failure.status != null ? ` · HTTP ${current.failure.status}` : ''}`;
+    content = <NoticeCard title={retryTitle} meta={retryMeta} hint="展开查看重试记录">
       <JsonTree data={node.data.attempts as unknown as object | unknown[]} label="模型重试记录" expandTopLevel={false} />
     </NoticeCard>;
   } else if (isNode(node, 'compaction')) {

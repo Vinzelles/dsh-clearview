@@ -219,9 +219,21 @@
 .toolState[data-phase=running]::before {
   animation: tool-state-pulse 1.15s ease-in-out infinite;
 }
-.toolActivity[data-tool-phase=running] .nativeToolSummary,
 .toolActivity[data-tool-phase=running] .toolState {
   animation: dsh-cluster-active-pulse 1.8s ease-in-out infinite;
+}
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .toolActivity[data-tool-phase=running] .nativeToolSummary {
+    background-image: linear-gradient(90deg,
+      color-mix(in srgb, var(--dsw-alias-label-secondary) 35%, transparent) 0%,
+      var(--dsw-alias-label-primary) 50%,
+      color-mix(in srgb, var(--dsw-alias-label-secondary) 35%, transparent) 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: dsh-cluster-active-shimmer 2.2s linear infinite;
+  }
 }
 @keyframes tool-state-pulse {
   0%, 100% { opacity: 1; }
@@ -450,9 +462,21 @@
 .reasonCollapsedText { font-weight: 500; min-width: 0; }
 .reasonCollapsedHint { margin-left: auto; flex: none; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
 .reasonCollapsedChevron { flex: none; stroke: currentColor; fill: none; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
-.reasonCollapsed[data-active=true] .reasonCollapsedText,
-.reasonCollapsed[data-active=true] .reasonCollapsedIcon {
+.reasonCollapsed[data-active=true] .reasonCollapsedHint {
   animation: dsh-cluster-active-pulse 1.8s ease-in-out infinite;
+}
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .reasonCollapsed[data-active=true] .reasonCollapsedText {
+    background-image: linear-gradient(90deg,
+      color-mix(in srgb, var(--dsw-alias-label-secondary) 35%, transparent) 0%,
+      var(--dsw-alias-label-primary) 50%,
+      color-mix(in srgb, var(--dsw-alias-label-secondary) 35%, transparent) 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: dsh-cluster-active-shimmer 2.2s linear infinite;
+  }
 }
 .reasonViewport {
   position: relative;
@@ -465,6 +489,9 @@
   scrollbar-color: var(--dsw-alias-border-l1) transparent;
 }
 .reasonCard[data-expanded=true] .reasonViewport { max-height: min(60vh, 560px, var(--reason-reading-height, 560px)); }
+/* Fold-thinking mode reuses the normal preview height; it does not jump to
+   the tall manual-reading viewport when a collapsed row is opened. */
+.reasonCard[data-compact=true] .reasonViewport { max-height: var(--reason-preview-height); }
 .reasonViewport[data-edges=both], .reasonCard[data-following=true][data-overflow=true] .reasonViewport {
   -webkit-mask-image: linear-gradient(transparent 0, black var(--reason-fade), black calc(100% - var(--reason-fade)), transparent 100%);
   mask-image: linear-gradient(transparent 0, black var(--reason-fade), black calc(100% - var(--reason-fade)), transparent 100%);
@@ -531,6 +558,19 @@
 .commandRecord[data-command-state=running] .commandRecordStatus {
   color: var(--dsw-alias-state-business-primary);
   animation: dsh-cluster-active-pulse 1.8s ease-in-out infinite;
+}
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .commandRecord[data-command-state=running] .commandRecordSummary {
+    background-image: linear-gradient(90deg,
+      color-mix(in srgb, var(--dsw-alias-label-secondary) 35%, transparent) 0%,
+      var(--dsw-alias-label-primary) 50%,
+      color-mix(in srgb, var(--dsw-alias-label-secondary) 35%, transparent) 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: dsh-cluster-active-shimmer 2.2s linear infinite;
+  }
 }
 .commandRecord[data-command-state=running] button {
   animation: dsh-cluster-active-pulse 1.8s ease-in-out infinite;
@@ -784,8 +824,9 @@
 [data-motion=off] .toolState::before,
 [data-motion=off] .toolActivity[data-tool-phase=running] .nativeToolSummary,
 [data-motion=off] .toolActivity[data-tool-phase=running] .toolState,
+[data-motion=off] .commandRecord[data-command-state=running] .commandRecordSummary,
 [data-motion=off] .reasonCollapsed[data-active=true] .reasonCollapsedText,
-[data-motion=off] .reasonCollapsed[data-active=true] .reasonCollapsedIcon,
+[data-motion=off] .reasonCollapsed[data-active=true] .reasonCollapsedHint,
 [data-motion=off] .commandRecordDot,
 [data-motion=off] .commandRecord[data-command-state=running] .commandRecordStatus,
 [data-motion=off] .commandRecord[data-command-state=running] button { animation: none !important; }
@@ -794,8 +835,9 @@
   .toolState::before,
   .toolActivity[data-tool-phase=running] .nativeToolSummary,
   .toolActivity[data-tool-phase=running] .toolState,
+  .commandRecord[data-command-state=running] .commandRecordSummary,
   .reasonCollapsed[data-active=true] .reasonCollapsedText,
-  .reasonCollapsed[data-active=true] .reasonCollapsedIcon,
+  .reasonCollapsed[data-active=true] .reasonCollapsedHint,
   .commandRecordDot,
   .commandRecord[data-command-state=running] .commandRecordStatus,
   .commandRecord[data-command-state=running] button { animation: none !important; }
