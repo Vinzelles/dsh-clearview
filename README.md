@@ -76,7 +76,7 @@ dshx activate-new-client dsh-clearview --profile web --port "$DSH_WEB_PORT" --ha
 
 ## 测试
 
-65 项单元测试覆盖：流式顺序与轮次边界、异常保留、长思考两行跟随、Unicode/组合 emoji、Markdown/GFM/公式、流式缓冲、阅读保护守卫（选区/焦点暂停与「回到最新」浮现）、`dsh-rewind` 隐藏契约与执行集群聚合。安装后仍需在真实宿主验证，不能把单元测试通过当作页面已加载。
+66 项单元测试覆盖：流式顺序与轮次边界、异常保留、长思考两行跟随、Unicode/组合 emoji、Markdown/GFM/公式、流式缓冲、阅读保护守卫（选区/焦点暂停与「回到最新」浮现）、`dsh-rewind` 隐藏契约与执行集群聚合。安装后仍需在真实宿主验证，不能把单元测试通过当作页面已加载。
 
 ## 许可与致谢
 
