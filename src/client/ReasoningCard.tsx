@@ -1,17 +1,33 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { IconThinkOutline14 } from '@deepseek-ai/dsh-client-ui-primitives';
 import { followAdvance } from './reasoning-follow.js';
 import css from './Reader.module.css';
 
 const EASING = 'cubic-bezier(.22,1,.36,1)';
 
 /** One real transcript: continuous native-scroll following, plain native reading whenever the user takes over. */
-export function ReasoningCard({ children, step, active, motion, selected, onRead }: {
-  children: ReactNode; step: number; active: boolean; motion: boolean; selected: boolean; onRead: () => void;
+function formatThinkingSeconds(seconds: number): string {
+  if (seconds < 1) return '不到 1 秒';
+  if (seconds < 60) return `${seconds} 秒`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return rest ? `${minutes} 分 ${rest} 秒` : `${minutes} 分钟`;
+}
+
+function formatThinkingSummary(seconds: number | null, charCount: number): string {
+  const duration = seconds == null ? '思考中' : `思考了 ${formatThinkingSeconds(seconds)}`;
+  return `${duration}，共 ${charCount} 个字符`;
+}
+
+export function ReasoningCard({ children, step, active, running = false, motion, selected, onRead, collapsible = false, durationMs = null, startedAt = null, charCount = 0 }: {
+  children: ReactNode; step: number; active: boolean; running?: boolean; motion: boolean; selected: boolean; onRead: () => void;
+  collapsible?: boolean; durationMs?: number | null; startedAt?: number | null; charCount?: number;
 }) {
   const viewport = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const controls = useId();
+  const [collapsed, setCollapsed] = useState(collapsible);
   const [expanded, setExpanded] = useState(false);
   const [following, setFollowing] = useState(true);
   const [overflow, setOverflow] = useState(false);
@@ -27,6 +43,38 @@ export function ReasoningCard({ children, step, active, motion, selected, onRead
   /** Whether this card has already performed its first follow entry. */
   const followSeeded = useRef(false);
   const allowed = following && active && motion && !selected;
+  const [now, setNow] = useState(() => Date.now());
+  const [frozenSeconds, setFrozenSeconds] = useState<number | null>(null);
+  const lastLiveSeconds = useRef<number | null>(null);
+  const previousRunning = useRef(false);
+
+  // Live elapsed timer for collapsed, still-streaming thinking cards. When the
+  // thinking segment stops, freeze the last visible reading instead of leaving
+  // a finished segment as “思考中”.
+  useEffect(() => {
+    if (!collapsible || !collapsed || !running || startedAt == null) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [collapsible, collapsed, running, startedAt]);
+
+  useEffect(() => {
+    if (running) {
+      setFrozenSeconds(null);
+      previousRunning.current = true;
+      return;
+    }
+    if (previousRunning.current && lastLiveSeconds.current != null) {
+      setFrozenSeconds(lastLiveSeconds.current);
+    }
+    previousRunning.current = false;
+  }, [running]);
+
+  // The global "fold thinking" switch is an immediate preference: turning it
+  // on collapses every reasoning card (each can still be reopened), while
+  // turning it off restores the classic always-visible reasoning cards.
+  useEffect(() => {
+    setCollapsed(collapsible);
+  }, [collapsible]);
 
   const pause = useCallback(() => {
     stopFollow.current();
@@ -255,38 +303,73 @@ export function ReasoningCard({ children, step, active, motion, selected, onRead
   }, [expanded, motion, selected]);
   useEffect(() => () => resize.current?.cancel(), []);
 
+  if (running && startedAt != null) {
+    lastLiveSeconds.current = Math.max(1, Math.floor((now - startedAt) / 1000));
+  }
+  const liveSeconds = running && startedAt != null
+    ? lastLiveSeconds.current
+    : null;
+  const summarySeconds = liveSeconds
+    ?? frozenSeconds
+    ?? (durationMs != null ? Math.max(0, Math.round(durationMs / 1000)) : null);
+
   const toggleReading = () => {
     // Resize the same transcript without changing follow intent or position.
     // Wheel, selection and viewport focus still explicitly pause following.
     onRead();
+    if (collapsible) {
+      if (collapsed) {
+        setCollapsed(false);
+        setExpanded(true);
+      } else {
+        setCollapsed(true);
+      }
+      return;
+    }
     setExpanded(value => !value);
   };
 
-  return <div className={css.reasonCard} data-reader-reasoning-card data-reader-anchor data-expanded={expanded} data-following={allowed} data-overflow={overflow} data-ud-motion="reader-reasoning-size">
+  return <div className={css.reasonCard} data-reader-reasoning-card data-reader-anchor data-expanded={expanded} data-following={allowed} data-overflow={overflow} data-collapsed={collapsible && collapsed ? 'true' : undefined} data-compact={collapsible || undefined} data-ud-motion="reader-reasoning-size">
     <div className={css.reasonHeading} data-reader-reasoning-heading data-ud-check="reasoning-identity">
-      <span className={css.reasonLabel} data-reader-reasoning-label>思考</span>
-      <span>步骤 {step}</span>
+      {collapsible && collapsed ? (
+        <button type="button" className={css.reasonCollapsed} aria-expanded={false} data-active={running || undefined} onClick={toggleReading}>
+          <IconThinkOutline14 size={14} className={css.reasonCollapsedIcon} />
+          <span className={css.reasonCollapsedText}>{formatThinkingSummary(summarySeconds, charCount)}</span>
+          <span className={css.reasonCollapsedHint}>展开阅读</span>
+          <svg className={css.reasonCollapsedChevron} viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
+        </button>
+      ) : (
+        <>
+          <span className={css.reasonLabel} data-reader-reasoning-label>
+            <IconThinkOutline14 size={14} className={css.reasonIcon} />
+            思考
+          </span>
+          <span>步骤 {step}</span>
+        </>
+      )}
     </div>
-    <div ref={viewport} id={controls} className={css.reasonViewport} data-reader-reasoning-scroll data-edges={edges}
-      data-ud-motion="reader-reasoning-scroll" role="region" aria-label={`步骤 ${step} 的思考${overflow ? '，可滚动阅读' : ''}`}
-      tabIndex={overflow ? 0 : undefined} onPointerDown={pause} onFocus={pause}>
-      <div className={css.reasonTrack} data-reader-reasoning-track>
-        <div ref={content} className={css.reasonText} data-reader-reasoning-text>{children}</div>
+    {!collapsed && <>
+      <div ref={viewport} id={controls} className={css.reasonViewport} data-reader-reasoning-scroll data-edges={edges}
+        data-ud-motion="reader-reasoning-scroll" role="region" aria-label={`步骤 ${step} 的思考${overflow ? '，可滚动阅读' : ''}`}
+        tabIndex={overflow ? 0 : undefined} onPointerDown={pause} onFocus={pause}>
+        <div className={css.reasonTrack} data-reader-reasoning-track>
+          <div ref={content} className={css.reasonText} data-reader-reasoning-text>{children}</div>
+        </div>
       </div>
-    </div>
-    {(overflow || expanded) && <div className={css.reasonFooter} data-ud-check="reasoning-controls">
-      {active && motion ? <button type="button" className={css.reasonAction} disabled={selected} aria-controls={controls}
-        aria-label={following ? '暂停自动跟随思考' : '继续跟随最新思考'}
-        title={selected ? '取消文字选择后可继续跟随' : undefined}
-        onClick={() => { if (following) pause(); else { onRead(); setFollowing(true); } }}>
-        <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">{following ? <path d="M5.5 4v8m5-8v8" /> : <path d="M8 3v10m-4-4 4 4 4-4" />}</svg>
-        {following ? '暂停跟随' : '跟随最新'}
-      </button> : <span className={css.reasonCaption}>{expanded ? '手动阅读' : '可滚动阅读'}</span>}
-      <button type="button" className={css.reasonAction} aria-expanded={expanded} aria-controls={controls}
-        aria-label={expanded ? '收起完整思考' : '展开阅读完整思考'} onClick={toggleReading}>
-        {expanded ? '收起' : '展开阅读'}
-        <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">{expanded ? <path d="m4 10 4-4 4 4" /> : <path d="m4 6 4 4 4-4" />}</svg>
-      </button>
-    </div>}
+      {(overflow || expanded || collapsible) && <div className={css.reasonFooter} data-ud-check="reasoning-controls">
+        {active && motion ? <button type="button" className={css.reasonAction} disabled={selected} aria-controls={controls}
+          aria-label={following ? '暂停自动跟随思考' : '继续跟随最新思考'}
+          title={selected ? '取消文字选择后可继续跟随' : undefined}
+          onClick={() => { if (following) pause(); else { onRead(); setFollowing(true); } }}>
+          <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">{following ? <path d="M5.5 4v8m5-8v8" /> : <path d="M8 3v10m-4-4 4 4 4-4" />}</svg>
+          {following ? '暂停跟随' : '跟随最新'}
+        </button> : <span className={css.reasonCaption}>{expanded ? '手动阅读' : '可滚动阅读'}</span>}
+        <button type="button" className={css.reasonAction} aria-expanded={!collapsible ? expanded : undefined} aria-controls={controls}
+          aria-label={collapsible ? '收起思考' : expanded ? '收起完整思考' : '展开阅读完整思考'} onClick={toggleReading}>
+          {collapsible ? '收起思考' : expanded ? '收起' : '展开阅读'}
+          <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">{collapsible || expanded ? <path d="m4 10 4-4 4 4" /> : <path d="m4 6 4 4 4-4" />}</svg>
+        </button>
+      </div>}
+    </>}
   </div>;
 }
