@@ -186,10 +186,14 @@ export function activityLabel(phase: ActivityPhase): string {
   }
 }
 
-export function phaseKeyOf(turn: TurnSnapshot, step: number, since: number | null): string {
-  // turn identity + step + phase; since is informational (timing changes do not
-  // reset the bar's seconds — only a phase/step change does).
-  return `${turn.status ?? 'open'}:${step}:${(turn.steps ?? []).find(s => s.step === step)?.data.get('assistant-step') ? 'assistant' : 'none'}`;
+export function phaseKeyOf(turn: TurnSnapshot, step: number, _since: number | null): string {
+  // Phase identity: turn status + step + the latest block's kind. Timing
+  // changes (since) intentionally do not reset the bar's seconds — only a
+  // phase/step change does.
+  const latest = (turn.steps ?? []).find(s => s.step === step);
+  const data = latest?.data.get('assistant-step') as AssistantChatData | undefined;
+  const kind = data?.blocks.at(-1)?.kind ?? 'none';
+  return `${turn.status ?? 'open'}:${step}:${kind}`;
 }
 
 export function formatSeconds(seconds: number): string {
@@ -226,10 +230,10 @@ git commit -m "feat: pure turn-activity derivation for the running activity bar"
 - [ ] **步骤 1：编写 hook（hook 无独立纯逻辑，依赖任务 1 的纯函数，直接实现）**
 
 ```ts
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ChatStore } from '@deepseek-ai/dsh-client-ui-conversation/client';
 import {
-  activityLabel, latestOpenTurn, type ActivityPhase, type TurnActivity,
+  activityLabel, latestOpenTurn, type ActivityPhase, type TurnSnapshot,
 } from './turn-activity.js';
 
 export interface ActivityView {
@@ -239,46 +243,37 @@ export interface ActivityView {
   phase: ActivityPhase;
 }
 
+const IDLE: ActivityView = { label: '', seconds: null, key: null, phase: 'idle' };
+
 export function useTurnActivity(
   useSession: ChatStore['useSession'],
 ): ActivityView {
   const [now, setNow] = useState(() => Date.now());
-  const activity = useSession(snapshot => {
-    const chat = snapshot.chat as {
-      timeline: { turns: Map<number, TurnActivity['turn']> };
-      order: readonly string[];
-      nodes: Map<string, unknown>;
-    };
-    // Latest open turn: iterate turns in reverse insertion order.
-    let latestTurn: TurnActivity['turn'] | undefined;
-    for (const turn of chat.timeline.turns.values()) {
-      if (turn.status === 'open') latestTurn = turn;
-    }
+  // The selector reads only raw snapshot data (never derives with `now`), so
+  // it re-runs only when the store actually changes.
+  const raw = useSession(snapshot => {
+    const chat = snapshot.chat as { timeline: { turns: Map<number, TurnSnapshot> } };
     const pending = (snapshot as { pending?: unknown[] }).pending?.length ?? 0;
-    const result = latestOpenTurn(latestTurn, pending, []);
-    if (!result) return { label: '', seconds: null, key: null, phase: 'idle' as ActivityPhase };
-    return {
-      label: activityLabel(result.phase),
-      seconds: result.phase === 'waiting' ? null : result.since == null ? null : Math.max(0, Math.floor((now - result.since) / 1000)),
-      key: result.key,
-      phase: result.phase,
-    };
+    let latest: TurnSnapshot | undefined;
+    for (const turn of chat.timeline.turns.values()) {
+      if (turn.status === 'open') latest = turn;
+    }
+    return { turn: latest, pending };
   });
-  // Seconds tick: 1s interval; only setState when the visible string changes.
+  // Seconds tick: 1s interval. The derivation below re-runs only when `now`
+  // or the raw snapshot changes; the bar re-renders at most once per second.
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, []);
-  // Reference-compare: if the derived object is structurally identical, keep the
-  // previous one so the consumer (ActivityBar) does not re-render every second.
-  const previous = useRef<ActivityView | null>(null);
-  return useMemo(() => {
-    if (previous.current && previous.current.label === activity.label
-      && previous.current.seconds === activity.seconds
-      && previous.current.key === activity.key) return previous.current;
-    previous.current = activity;
-    return activity;
-  }, [activity]);
+  return useMemo<ActivityView>(() => {
+    const result = latestOpenTurn(raw.turn, raw.pending, []);
+    if (!result) return IDLE;
+    const seconds = result.phase === 'waiting' || result.since == null
+      ? null
+      : Math.max(0, Math.floor((now - result.since) / 1000));
+    return { label: activityLabel(result.phase), seconds, key: result.key, phase: result.phase };
+  }, [raw, now]);
 }
 ```
 
@@ -335,34 +330,19 @@ import { useTurnActivity } from './use-turn-activity.js';
 import { formatSeconds } from './turn-activity.js';
 ```
 
-- [ ] **步骤 2：`GroupStatus` 运行分支复用共享 label**
-
-将 `GroupStatus` 中运行中分支的文案改为共享函数（保持逻辑不变，仅文案来源统一）：
-
-```tsx
-// 原：return last?.kind === 'reasoning' ? '正在思考' : last?.kind === 'text' ? '正在输出' : '正在准备回复';
-return activityLabel(last?.kind === 'reasoning' ? 'thinking' : last?.kind === 'text' ? 'output' : 'processing');
-```
-
-顶部 import `activityLabel`：
-
-```tsx
-import { activityLabel } from './turn-activity.js';
-```
-
-> 说明：`GroupStatus` 保留其组级判定流程（含「执行过程/用时」等关闭态文案）；仅「运行中」的文字改走共享映射，保证与底部条文案一致。
-
-- [ ] **步骤 3：typecheck 验证**
+- [ ] **步骤 2：typecheck 验证**
 
 运行：`npm run typecheck`
-预期：PASS
+预期：PASS（无类型错误）
 
-- [ ] **步骤 4：Commit**
+- [ ] **步骤 3：Commit**
 
 ```bash
 git add src/client/Reader.tsx
 git commit -m "feat: render the running activity bar in the reader (fade + jump)"
 ```
+
+> 说明：`GroupStatus` 的组级文案（含「正在准备工具输入」「正在准备回复」等细节）保持不变，不强制与全局条共用 label——两者粒度不同（组级 vs 全局），共享单一 `activityLabel` 映射即可，不引入 `preparing` 等组级文案到全局条。
 
 ---
 
@@ -470,7 +450,7 @@ git commit -m "docs: record running activity bar in changelog and test counts"
 ## 自检对照（规格 → 任务）
 
 - 常驻悬浮 / 阶段+计时 / 阶段各自计时、切换归零 → 任务 1（`since`/`phaseKeyOf`）+ 任务 2（秒级 tick）+ 任务 3（浮层）
-- 独立 hook 派生 + GroupStatus 共用文案 → 任务 1 `activityLabel` + 任务 2 hook + 任务 3 步骤 2
+- 独立 hook 派生 + 全局条文案集中于 `activityLabel` → 任务 1 `activityLabel` + 任务 2 hook（GroupStatus 组级文案保持不变，不做强行统一）
 - 秒级 setInterval、值不变不重渲染 → 任务 2（引用比较 + `useMemo`）
 - 等待操作清空计时 → 任务 1（`waiting` 计时 null）+ 任务 2（`seconds: null`）
 - 矩形非胶囊、4~6px 圆角、毛玻璃 → 任务 4
