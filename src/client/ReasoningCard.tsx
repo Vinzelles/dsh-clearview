@@ -319,10 +319,13 @@ export function ReasoningCard({ children, step, active, running = false, motion,
     onRead();
     if (collapsible) {
       if (collapsed) {
+        // Reuse the same compact preview height as the non-folded reasoning
+        // card; “展开阅读” remains the explicit way to go full-height.
         setCollapsed(false);
-        setExpanded(true);
+        setExpanded(false);
       } else {
         setCollapsed(true);
+        setExpanded(false);
       }
       return;
     }
