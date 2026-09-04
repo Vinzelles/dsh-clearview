@@ -685,14 +685,7 @@
   line-height: 20px;
 }
 .errorCard > summary::-webkit-details-marker { display: none; }
-.errorCard > summary::before {
-  content: '▸';
-  flex: none;
-  transition: transform 160ms ease;
-}
-.errorCard[open] > summary::before {
-  transform: rotate(90deg);
-}
+.errorCard[open] > summary .chevron { transform: rotate(90deg); }
 .errorCard[open] > summary {
   border-bottom: 1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 22%, transparent);
 }
@@ -736,14 +729,7 @@
   line-height: 20px;
 }
 .noticeCard > summary::-webkit-details-marker { display: none; }
-.noticeCard > summary::before {
-  content: '▸';
-  flex: none;
-  transition: transform 160ms ease;
-}
-.noticeCard[open] > summary::before {
-  transform: rotate(90deg);
-}
+.noticeCard[open] > summary .chevron { transform: rotate(90deg); }
 .noticeCard[open] > summary {
   border-bottom: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 45%, transparent);
 }

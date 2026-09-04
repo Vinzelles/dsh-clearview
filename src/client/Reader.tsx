@@ -79,6 +79,7 @@ function NoticeCard({ title, meta, hint = '展开查看详情', tone = 'error', 
   const bodyClass = tone === 'error' ? css.errorCardBody : css.noticeCardBody;
   return <details className={card} data-tone={tone} data-reader-expandable-notice role={tone === 'error' ? 'alert' : 'status'}>
     <summary>
+      <svg className={css.chevron} viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg>
       <span className={titleClass}>{title}</span>
       {meta && <span className={css.errorCardMeta}>{meta}</span>}
       <span className={css.errorCardHint}>{hint}</span>
@@ -465,8 +466,8 @@ const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedP
           </Fragment>
         );
       })}
+      {showTerminal && <div className={css.notice} data-reader-terminal>{terminal}</div>}
     </div>
-    {showTerminal && <div className={css.notice} data-reader-terminal>{terminal}</div>}
   </section>;
 });
 
