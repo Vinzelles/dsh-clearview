@@ -589,76 +589,17 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Compact/command lifecycle line inside the command record card */
-.commandRecordCompaction {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 2px 0;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
+/* Manual compaction lifecycle row inside the command record card */
+.commandRecordStatus[data-compaction-state=running] {
+  color: var(--dsw-alias-state-business-primary);
 }
-.commandRecordCompaction strong {
-  color: var(--dsw-alias-label-primary);
-  font-weight: 600;
+.commandRecordStatus[data-compaction-state=running] .commandRecordDot {
+  animation: tool-state-pulse 1.15s ease-in-out infinite;
 }
-.commandRecordCompaction span {
-  color: var(--dsw-alias-label-secondary);
-}
-
-/* Automatic compaction marker: one card with visible summary + expandable record */
-.compactionRecord {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary) 28%, transparent);
-  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 7%, transparent);
-  color: var(--dsw-alias-label-secondary);
-  font-size: 13px;
-  line-height: 20px;
-}
-.compactionRecordHeader {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.compactionRecordTitle {
-  color: var(--dsw-alias-label-primary);
-  font-weight: 600;
-  white-space: nowrap;
-}
-.compactionRecordMeta {
-  color: var(--dsw-alias-label-secondary);
-  overflow-wrap: anywhere;
+.commandRecordStatus[data-compaction-state=success] {
+  color: var(--dsw-alias-state-success-primary);
 }
 .meta { font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-tertiary); }
-/* Compacted-context notice */
-.compactionNotice {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 100%;
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary) 30%, transparent);
-  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 8%, transparent);
-  color: var(--dsw-alias-label-secondary);
-  font-size: 13px;
-  line-height: 20px;
-  overflow-wrap: anywhere;
-}
-.compactionNotice strong {
-  color: var(--dsw-alias-label-primary);
-  font-weight: 600;
-  white-space: nowrap;
-}
-.compactionNotice span {
-  color: var(--dsw-alias-label-secondary);
-}
 .stopped { align-self: flex-start; border-radius: 6px; padding: 0 6px; background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 18px; margin-top: 12px; }
 .notice, .error, .attention { border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 22px; overflow-wrap: anywhere; }
 .notice { background: var(--dsw-alias-bg-module-platform); color: var(--dsw-alias-label-secondary); }
