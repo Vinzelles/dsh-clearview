@@ -84,16 +84,3 @@ export function formatSeconds(seconds: number): string {
   const rest = s % 60;
   return rest ? `${m} 分 ${rest} 秒` : `${m} 分钟`;
 }
-
-/**
- * Phase timer origin: a phase key's first-seen local time. Reusing the same
- * key keeps the timer running; a new key (phase/step change) restarts it,
- * which gives per-phase timing even inside one streaming step where only
- * step-level timestamps exist.
- */
-export function phaseStartMs(key: string, seen: Map<string, number>, now: number): number {
-  const existing = seen.get(key);
-  if (existing !== undefined) return existing;
-  seen.set(key, now);
-  return now;
-}

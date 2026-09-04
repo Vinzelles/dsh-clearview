@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  activityLabel, formatSeconds, latestOpenTurn, phaseKeyOf, phaseStartMs, turnPhaseOf,
+  activityLabel, formatSeconds, latestOpenTurn, phaseKeyOf, turnPhaseOf,
 } from '../src/client/turn-activity.ts';
 
 const step = (n: number, blocks: unknown[]) => ({
@@ -99,11 +99,4 @@ test('phaseKeyOf is stable for same phase and changes across phases', () => {
   // 单变量：同 step 内 kind 变化 → key 变化
   const t0withText = { status: 'open', steps: [step(0, [text])] };
   assert.notEqual(phaseKeyOf(t, 0, 1000), phaseKeyOf(t0withText, 0, 1000));
-});
-
-test('phaseStartMs records first-seen time and reuses it for the same key', () => {
-  const seen = new Map<string, number>();
-  assert.equal(phaseStartMs('k', seen, 1000), 1000);
-  assert.equal(phaseStartMs('k', seen, 5000), 1000); // same key: reuse origin
-  assert.equal(phaseStartMs('other', seen, 6000), 6000); // new key: restart
 });
