@@ -3,13 +3,12 @@
   font-family: inherit;
   font-size: 16px;
   line-height: 28px;
-  padding: 16px calc(var(--dsh-composer-side-clearance, 16px) + 16px) 24px;
   min-width: 0;
   flex: 0 0 auto;
   overflow-anchor: auto;
   container-type: inline-size;
 }
-.column { max-width: var(--dsh-chat-content-width, 748px); width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.column { max-width: var(--dsh-chat-content-width, 748px); width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; min-width: 0; min-height: var(--reader-flow-min-height, auto); }
 .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 20px; }
 .textButton, .historyButton, .iconButton, .jump, .disclosureButton, .imageOpen, .dialogClose { font: inherit; cursor: pointer; }
 .textButton { border: 0; background: transparent; color: var(--dsw-alias-label-secondary); padding: 2px 6px; border-radius: 6px; white-space: nowrap; }
@@ -34,36 +33,9 @@
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
 }
-.switchLabel { flex: none; }
-.switchTrack {
-  position: relative;
-  display: inline-block;
-  flex: none;
-  width: 34px;
-  height: 20px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--dsw-alias-label-tertiary) 22%, transparent);
-  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 70%, transparent);
-  transition: background-color 160ms ease, border-color 160ms ease;
-}
-.switchThumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--dsw-alias-bg-base);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
-  transition: transform 180ms cubic-bezier(.22,1,.36,1);
-}
-.switchTrack[data-checked=true] {
-  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 80%, var(--dsw-alias-bg-base));
-  border-color: color-mix(in srgb, var(--dsw-alias-state-business-primary) 60%, transparent);
-}
-.switchTrack[data-checked=true] .switchThumb {
-  transform: translateX(14px);
-}
+.switchLabel[data-checked=true] { color: var(--dsw-alias-label-primary); }
+.switchLabel[data-checked=false] { color: var(--dsw-alias-label-tertiary); }
+.switchButton:hover .switchLabel { color: var(--dsw-alias-label-primary); }
 .root button:focus-visible, .root summary:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 3px; }
 .turn { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .turn + .turn { margin-top: 12px; }
@@ -90,9 +62,10 @@
 .streamWord, .streamInlineWord, .streamAtom { opacity: 1; filter: none; }
 .streamAtom { min-width: 0; }
 @media (prefers-reduced-motion: reduce) { .streamWord, .streamInlineWord, .streamAtom { opacity: 1 !important; filter: none !important; } }
-.retiringContent { min-width: 0; }
+.retiringContent { min-width: 0; padding-bottom: 20px; }
 .retiringContent[data-reader-retiring=retiring] { overflow: hidden; }
 .mainFlow, .blocks { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.mainFlow { padding-bottom: 20px; }
 .mainFlow:empty, .blocks:empty { display: none; }
 .blocks > :first-child { margin-top: 0; }
 .blocks > :last-child { margin-bottom: 0; }
@@ -797,21 +770,31 @@
 .imageDialog::backdrop { background: var(--dsw-alias-bg-mask-photo); }
 .imageDialog img { max-width: 82vw; max-height: 75vh; display: block; object-fit: contain; }
 .dialogClose { position: absolute; right: 8px; top: 4px; border: 0; background: transparent; color: inherit; width: 32px; height: 32px; border-radius: 8px; font-size: 24px; }
-/* Running activity bar: quiet rectangular glass strip, not a pill. */
+/* Running activity bar: floats directly above the sticky composer, using the
+   same bottom offset the compat layer established for .jumpDock (the native
+   12px would hide behind the floating input card). Content-width and centered
+   — a lightweight status strip, not a full-width card. margin-top:auto plus
+   the measured --reader-flow-min-height pin it to the screen bottom even when
+   the transcript is shorter than the scrollport; sticky keeps it there while
+   scrolled up. */
 .activityBar {
-  display: flex;
+  position: sticky;
+  bottom: calc(var(--dsh-composer-height, 152px) + 12px);
+  z-index: 3;
+  align-self: center;
+  margin-top: auto;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 10px 8px 14px;
-  margin: 2px 0 10px;
+  gap: 8px;
+  padding: 4px 10px;
   border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 80%, rgba(255, 255, 255, 0.08));
   border-radius: 6px;
   background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 78%, transparent);
   backdrop-filter: blur(6px);
   color: var(--dsw-alias-label-secondary);
-  font-size: 13px;
-  line-height: 20px;
-  transition: opacity 200ms cubic-bezier(.4,0,.2,1), transform 200ms cubic-bezier(.4,0,.2,1);
+  font-size: 12px;
+  line-height: 18px;
+  transition: opacity 200ms cubic-bezier(.4,0,.2,1);
 }
 .activityText { font-weight: 500; color: var(--dsw-alias-label-primary); white-space: nowrap; }
 .activityTimer { font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-secondary); white-space: nowrap; }
@@ -819,9 +802,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  margin-left: auto;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 6px;
@@ -831,7 +813,7 @@
 }
 .activityJump:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 /* Content left the bottom: fade out but stay clickable/visible enough. */
-.activityBar[data-detached] { opacity: 0.25; transform: translateY(2px); }
+.activityBar[data-detached] { opacity: 0.25; }
 .jumpDock { position: sticky; bottom: 12px; align-self: center; height: 0; z-index: 2; }
 .jump {
   display: inline-flex;
@@ -878,4 +860,4 @@
   .commandRecord[data-command-state=running] button { animation: none !important; }
 }
 @media (pointer: coarse) { .disclosureButton { min-height: 44px; } }
-@media (max-width: 600px) { .root { padding-inline: 20px; } .column { gap: 18px; } .toolbar { font-size: 11px; } .user { max-width: 90%; } }
+@media (max-width: 600px) { .column { gap: 18px; } .toolbar { font-size: 11px; } .user { max-width: 90%; } }
