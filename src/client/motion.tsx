@@ -1,4 +1,4 @@
-import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import css from './Reader.module.css';
 import { StreamMotionContext } from './streaming.js';
@@ -126,7 +126,7 @@ export function ProcessFragment({ open, motion, onRead, returnFocusTo, nodeKey, 
       setPresent(open);
       return;
     }
-    const animation = element.animate([{ height: `${from}px` }, { height: `${target}px` }], { duration: 260, easing: EASING, fill: 'both' });
+    const animation = element.animate([{ height: `${from}px`, opacity: from < 1 ? 0 : 1 }, { height: `${target}px`, opacity: open ? 1 : 0 }], { duration: 260, easing: EASING, fill: 'both' });
     running.current = animation;
     animation.onfinish = () => {
       if (running.current !== animation) return;
@@ -141,6 +141,98 @@ export function ProcessFragment({ open, motion, onRead, returnFocusTo, nodeKey, 
     aria-hidden={!open} onPointerDown={() => { if (open) onRead(); }} onFocusCapture={() => { if (open) onRead(); }} {...(!open ? { inert: '' } : {})}>
     <div className={framed ? css.processFrame : css.processContents}>{children}</div>
   </div>;
+}
+
+/** Inner expand/collapse that stays mounted: same WAAPI height+opacity language as
+ *  ProcessFragment, but without the reader selection markers / process framing. */
+export function CollapseBody({ open, motion, children, className }: {
+  open: boolean; motion: boolean; children: ReactNode; className?: string;
+}) {
+  const body = useRef<HTMLDivElement>(null);
+  const running = useRef<Animation | null>(null);
+  const previous = useRef(open);
+  const [present, setPresent] = useState(open);
+  useLayoutEffect(() => {
+    const element = body.current;
+    if (!element) return;
+    const from = running.current ? element.getBoundingClientRect().height : previous.current ? element.scrollHeight : 0;
+    running.current?.cancel();
+    running.current = null;
+    const changed = previous.current !== open;
+    previous.current = open;
+    if (open) setPresent(true);
+    element.style.height = open ? 'auto' : '0px';
+    const target = open ? element.scrollHeight : 0;
+    if (!motion || !changed || Math.abs(from - target) < 1) {
+      setPresent(open);
+      return;
+    }
+    const animation = element.animate(
+      [{ height: `${from}px`, opacity: from < 1 ? 0 : 1 }, { height: `${target}px`, opacity: open ? 1 : 0 }],
+      { duration: 260, easing: EASING, fill: 'both' },
+    );
+    running.current = animation;
+    animation.onfinish = () => {
+      if (running.current !== animation) return;
+      running.current = null;
+      animation.cancel();
+      setPresent(open);
+    };
+  }, [open, motion]);
+  useEffect(() => () => { running.current?.cancel(); }, []);
+  if (!open && !present) return null;
+  return <div ref={body} className={className} data-ud-motion="reader-collapse-size"
+    aria-hidden={!open} {...(!open ? { inert: '' } : {})}>
+    {children}
+  </div>;
+}
+
+/** Mount enter for live-only surfaces (activity bar, jump pill, approval card):
+ *  transform/opacity only, no unmount exit. Historical mounts render settled. */
+export function MountFade({ mounted, motion, children }: {
+  mounted: boolean; motion: boolean; children: (state: { entering: boolean }) => ReactNode;
+}) {
+  const [systemOK, setSystemOK] = useState(() => !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    && !window.matchMedia('(forced-colors: active)').matches
+    && !document.hidden);
+  useEffect(() => {
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const colors = window.matchMedia('(forced-colors: active)');
+    const update = () => setSystemOK(!reduced.matches && !colors.matches && !document.hidden);
+    reduced.addEventListener('change', update);
+    colors.addEventListener('change', update);
+    document.addEventListener('visibilitychange', update);
+    return () => {
+      reduced.removeEventListener('change', update);
+      colors.removeEventListener('change', update);
+      document.removeEventListener('visibilitychange', update);
+    };
+  }, []);
+  const motionOn = motion && systemOK;
+  // Live arrival only: an already-present mount renders settled (no replay);
+  // a fresh mount after the first paint plays the 220ms enter.
+  const [present, setPresent] = useState(mounted);
+  const [entering, setEntering] = useState(false);
+  const live = useRef(mounted);
+  useLayoutEffect(() => {
+    if (mounted === live.current) return;
+    live.current = mounted;
+    if (mounted) {
+      setPresent(true);
+      if (motionOn) setEntering(true);
+    } else {
+      setPresent(false);
+      setEntering(false);
+    }
+  }, [mounted, motionOn]);
+  useEffect(() => {
+    if (!entering) return;
+    const timer = window.setTimeout(() => setEntering(false), 240);
+    return () => window.clearTimeout(timer);
+  }, [entering]);
+  if (!present) return null;
+  if (!motionOn) return <>{children({ entering: false })}</>;
+  return <>{children({ entering })}</>;
 }
 
 /** Retire only narration that was actually visible; historical rows stay folded. */
@@ -176,6 +268,30 @@ export function RetiringContent({ visible, children }: { visible: boolean; child
 }
 
 // DOM-only behavior: the native Session remains the sole source of business data.
+
+/** `transition: width` needs explicit pixel values — `auto` never animates.
+ *  Track one element's rendered content width so the caller can pin it as an
+ *  explicit width on the animating container and let CSS interpolate between
+ *  content sizes. The ref callback keeps the observer attached for the node's
+ *  whole lifetime (React 18 ref callbacks cannot return cleanup functions). */
+export function useContentWidth(): [(node: HTMLElement | null) => void, number | null] {
+  const [width, setWidth] = useState<number | null>(null);
+  const observerRef = useRef<ResizeObserver | null>(null);
+  const track = useCallback((node: HTMLElement | null) => {
+    observerRef.current?.disconnect();
+    observerRef.current = null;
+    if (!node) return;
+    const observer = new ResizeObserver(entries => {
+      const entry = entries[entries.length - 1];
+      if (entry) setWidth(entry.contentRect.width);
+    });
+    observer.observe(node);
+    observerRef.current = observer;
+  }, []);
+  useEffect(() => () => observerRef.current?.disconnect(), []);
+  return [track, width];
+}
+
 export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean): { detached: boolean; jump: () => void } {
   const port = useRef<HTMLElement | null>(null);
   const following = useRef(true);

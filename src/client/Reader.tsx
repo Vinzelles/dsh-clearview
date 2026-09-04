@@ -10,7 +10,7 @@ import { formatOperationClusterSummary, groupOperationalFlow, isMergedExecutionF
 import type { OperationalFlowItem, ReaderFlowEntry } from './tool-activity.js';
 import { formatSeconds } from './turn-activity.js';
 import { useTurnActivity } from './use-turn-activity.js';
-import { Disclosure, ProcessFragment, RetiringContent, StatusText, useMotionAllowed, usePinnedSelection, useReadingScroll } from './motion.js';
+import { CollapseBody, Disclosure, MountFade, ProcessFragment, RetiringContent, StatusText, useContentWidth, useMotionAllowed, usePinnedSelection, useReadingScroll } from './motion.js';
 import { StreamMotionContext } from './streaming.js';
 import { assistantSegments, boundaryOf, groupNodes, hasProcessContent, hasVisibleBody, isEarlierNarration, processChoiceKey, processExpanded, terminalLabel } from './projection.js';
 import { ContextInjectionRow } from './native/ContextInjectionRow.js';
@@ -317,8 +317,9 @@ function OperationalClusterBlock({
         </span>
       </button>
       {expanded && (
-        <div className={css.clusterBody}>
-          {cluster.items.map((item: ReaderFlowEntry) =>
+        <CollapseBody open={expanded} motion={motion} className={css.clusterBody}>
+          <div className={css.clusterBodyInner}>
+            {cluster.items.map((item: ReaderFlowEntry) =>
             item.kind === 'node' ? (
               <Fragment key={item.key}>
                 <BlockBoundary>
@@ -385,7 +386,8 @@ function OperationalClusterBlock({
               </Fragment>
             )
           )}
-        </div>
+          </div>
+        </CollapseBody>
       )}
     </div>
   );
@@ -517,6 +519,10 @@ export function Reader(props: ReaderProps) {
   }), [order, nodes, rewindHidden]);
   const groups = useMemo(() => groupNodes(visibleOrder, key => nodes.get(key)), [visibleOrder, nodes, timeline]);
   const scroll = useReadingScroll(root, motion);
+  // The activity bar animates its width between label changes: `transition:
+  // width` needs an explicit pixel value, so the content row's natural width
+  // is tracked and pinned back onto the bar.
+  const [trackActivityWidth, activityWidth] = useContentWidth();
   // The activity bar floats above the sticky composer. Sticky alone cannot
   // lift it when the transcript is shorter than the scrollport (no overflow,
   // nothing to stick against): the column must fill the scrollport so
@@ -584,29 +590,37 @@ export function Reader(props: ReaderProps) {
       {openError && <div className={css.error} role="alert">会话暂时无法读取：{openError.message}</div>}
       {loading && groups.length === 0 && <p className={css.empty} role="status">正在读取会话…</p>}
       {groups.map(group => <TurnGroup key={group.key} {...props} group={group} motion={motion} pinnedKeys={pinnedKeys} selectedProcessKeys={selectedProcessKeys} rewindHidden={rewindHidden} rewindSpans={rewindSpans} />)}
-      {pending.length > 0 && <div className={css.attention} role="alert" data-reader-attention>
-        <strong>{pending.some(item => item.kind === 'question') ? '需要你回答一个问题' : '需要你的确认'}</strong>
-        <span>请在下方原生操作区处理。此提示不会收进执行过程。</span>
-      </div>}
-      {activity.key && (
-        <div className={css.activityBar} data-detached={scroll.detached ? 'true' : undefined}
-          data-phase={activity.phase} data-ud-check="reader-activity-bar" role="status">
-          <span className={css.activityText} data-reader-activity-label>{activity.label}</span>
-          {activity.seconds !== null && (
-            <span className={css.activityTimer} data-reader-activity-timer aria-hidden="true">{formatSeconds(activity.seconds)}</span>
-          )}
-          <button type="button" className={css.activityJump} aria-label="回到最新" title="回到最新" onClick={scroll.jump}>
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M8 3v10m-4-4 4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
-        </div>
-      )}
-      {scroll.detached && !activity.key && <div className={css.jumpDock}><button type="button" className={css.jump} onClick={scroll.jump} aria-label="回到最新" title="回到最新">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path d="M8 3v10m-4-4 4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button></div>}
+      {pending.length > 0 && <MountFade mounted={pending.length > 0} motion={motion}>{({ entering }) =>
+        <div className={`${css.attention} ${entering ? css.isEntering : css.isIn}`} role="alert" data-reader-attention>
+          <strong>{pending.some(item => item.kind === 'question') ? '需要你回答一个问题' : '需要你的确认'}</strong>
+          <span>请在下方原生操作区处理。此提示不会收进执行过程。</span>
+        </div>}</MountFade>}
+      <MountFade mounted={!!activity.key} motion={motion}>{({ entering }) => activity.key ? (
+        <button type="button" className={`${css.activityBar} ${entering ? css.isEntering : css.isIn}`}
+          style={activityWidth === null ? undefined : { width: `${activityWidth}px` }}
+          data-detached={scroll.detached ? 'true' : undefined}
+          data-phase={activity.phase} data-ud-check="reader-activity-bar"
+          title={scroll.detached ? '回到最新' : undefined} onClick={scroll.jump}>
+          <span className={css.activityBarContent} ref={trackActivityWidth}>
+            <span className={css.activityText} role="status" data-reader-activity-label>{activity.label}</span>
+            {activity.seconds !== null && (
+              <span className={css.activityTimer} data-reader-activity-timer aria-hidden="true">{formatSeconds(activity.seconds)}</span>
+            )}
+            <span className={css.activityJump} aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path d="M8 3v10m-4-4 4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </span>
+          </span>
+        </button>
+      ) : null}</MountFade>
+      <MountFade mounted={scroll.detached && !activity.key} motion={motion}>{({ entering }) => scroll.detached && !activity.key ? (
+        <div className={`${css.jumpDock} ${entering ? css.isEntering : css.isIn}`}><button type="button" className={css.jump} onClick={scroll.jump} aria-label="回到最新" title="回到最新">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M8 3v10m-4-4 4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button></div>
+      ) : null}</MountFade>
     </div>
   </div></StreamMotionContext.Provider>;
 }

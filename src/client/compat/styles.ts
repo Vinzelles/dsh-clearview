@@ -31,16 +31,13 @@ export const COMPAT_CSS = `/* ==== reader-tool-state.css ==== */
 /* ==== reader-composer-layout.css ==== */
 /* 阅读视图 × 悬浮输入框布局适配：不给任何大块区域加实底（保持原生透底美学）。
  *   1. 「回到最新」按钮 sticky bottom 抬到输入框正上方（原生 12px 会被悬浮输入框盖住）；
- *   2. 按钮药丸自身补实（画布色由 composer-readability 解析为 --dshcp-canvas-solid）；
+ *   2. 按钮视觉已并入插件主体（与运行状态条同款毛玻璃，见 Reader.module.css .jump），
+ *      不再需要 canvas-solid 实底补丁；
  *   3. 底部统计行容器局部毛玻璃（容器由 JS 标记 [data-dshcp-stats-row]，
  *      类名带构建 hash，CSS 无法稳定命中）。 */
 
 [data-dsh-clearview] [class*="jumpDock"] {
   bottom: calc(var(--dsh-composer-height, 152px) + 12px) !important;
-}
-
-[data-dsh-clearview] [class*="jumpDock"] [class*="jump"] {
-  background: var(--dshcp-canvas-solid, rgb(17, 17, 17)) !important;
 }
 
 [data-composer-seat] [data-dshcp-stats-row] {
@@ -121,6 +118,7 @@ export const COMPAT_CSS = `/* ==== reader-tool-state.css ==== */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: opacity 160ms ease;
 }
 
 [data-dsh-clearview] section[data-reader-turn] > .dshcp-turn-footer {
@@ -131,7 +129,6 @@ export const COMPAT_CSS = `/* ==== reader-tool-state.css ==== */
 @media (hover: hover) {
   [data-dsh-clearview] .dshcp-turn-footer {
     opacity: 0;
-    transition: opacity 80ms ease;
   }
 
   [data-dsh-clearview] section[data-reader-turn]:hover .dshcp-turn-footer,

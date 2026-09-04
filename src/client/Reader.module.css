@@ -11,7 +11,7 @@
 .column { max-width: var(--dsh-chat-content-width, 748px); width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; min-width: 0; min-height: var(--reader-flow-min-height, auto); }
 .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 20px; }
 .textButton, .historyButton, .iconButton, .jump, .disclosureButton, .imageOpen, .dialogClose { font: inherit; cursor: pointer; }
-.textButton { border: 0; background: transparent; color: var(--dsw-alias-label-secondary); padding: 2px 6px; border-radius: 6px; white-space: nowrap; }
+.textButton { border: 0; background: transparent; color: var(--dsw-alias-label-secondary); padding: 2px 6px; border-radius: 6px; white-space: nowrap; transition: background-color 160ms ease, color 160ms ease; }
 .textButton:hover, .iconButton:hover, .disclosureButton:hover { background: var(--dsw-alias-interactive-bg-hover); }
 /* Toolbar switches */
 .switchButton {
@@ -33,6 +33,7 @@
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
 }
+.switchButton, .switchLabel { transition: background-color 160ms ease, color 160ms ease; }
 .switchLabel[data-checked=true] { color: var(--dsw-alias-label-primary); }
 .switchLabel[data-checked=false] { color: var(--dsw-alias-label-tertiary); }
 .switchButton:hover .switchLabel { color: var(--dsw-alias-label-primary); }
@@ -62,7 +63,7 @@
 .streamWord, .streamInlineWord, .streamAtom { opacity: 1; filter: none; }
 .streamAtom { min-width: 0; }
 @media (prefers-reduced-motion: reduce) { .streamWord, .streamInlineWord, .streamAtom { opacity: 1 !important; filter: none !important; } }
-.retiringContent { min-width: 0; padding-bottom: 20px; }
+.retiringContent { min-width: 0; }
 .retiringContent[data-reader-retiring=retiring] { overflow: hidden; }
 .mainFlow, .blocks { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .mainFlow { padding-bottom: 20px; }
@@ -71,7 +72,7 @@
 .blocks > :last-child { margin-bottom: 0; }
 .blocks :global(.md-table-wide) { max-width: 100%; }
 .disclosure { min-width: 0; }
-.disclosureButton { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 32px; border: 0; background: transparent; border-radius: 7px; color: var(--dsw-alias-label-tertiary); font-size: 14px; line-height: 24px; font-weight: 400; padding: 4px 6px; margin-left: -6px; text-align: left; }
+.disclosureButton { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 32px; border: 0; background: transparent; border-radius: 7px; color: var(--dsw-alias-label-tertiary); font-size: 14px; line-height: 24px; font-weight: 400; padding: 4px 6px; margin-left: -6px; text-align: left; transition: background-color 160ms ease, color 160ms ease; }
 .disclosureStatus {
   flex: none;
   padding: 0 6px;
@@ -95,7 +96,7 @@
   --think-shimmer: 2000ms;
   --think-base: var(--dsw-alias-label-secondary);
   --think-highlight: var(--dsw-alias-label-primary);
-  --think-ease: ease-in-out;
+  --think-ease: cubic-bezier(.22,1,.36,1);
   position: relative; display: inline-block; max-width: 100%; text-align: left;
 }
 .thinkSizer { display: block; visibility: hidden; white-space: nowrap; }
@@ -210,7 +211,7 @@
 }
 @keyframes tool-state-pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: .25; }
+  50% { opacity: .55; }
 }
 .toolLedger { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; padding: 10px 14px 0; color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 18px; font-variant-numeric: tabular-nums; }
 .toolEngine { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -220,7 +221,7 @@
    and the card's own border stands in for the toolDetails frame. */
 .errorCard > .toolDetails { margin-left: 0; border: 0; }
 .toolTabs { display: flex; align-items: center; gap: 15px; padding: 0 14px; }
-.toolTabs > button { background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 10px 1px 8px; font: inherit; font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-secondary); cursor: pointer; }
+.toolTabs > button { background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 10px 1px 8px; font: inherit; font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-secondary); cursor: pointer; transition: color 160ms ease, border-color 160ms ease; }
 .toolTabs > button[aria-selected=true] { color: var(--dsw-alias-label-primary); border-bottom-color: var(--dsw-alias-state-business-primary); }
 .toolPanel { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; font-size: 13px; line-height: 22px; }
 .toolPanel:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: -3px; }
@@ -267,6 +268,7 @@
   cursor: pointer;
   border-radius: 7px;
   user-select: none;
+  transition: background-color 160ms ease;
 }
 .clusterHeader:hover {
   background: var(--dsw-alias-interactive-bg-hover);
@@ -323,9 +325,17 @@
 .clusterBody {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px 12px 12px 28px;
+  min-width: 0;
   border-top: 1px solid var(--dsw-alias-border-l2);
+}
+/* Padding + gaps live on the inner stack so the WAAPI height animation on
+   .clusterBody never snaps content at its start/end frames. */
+.clusterBodyInner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 12px 12px 28px;
 }
 
 .clusterBlock[data-active="true"] .clusterSummary,
@@ -334,7 +344,7 @@
 }
 @keyframes dsh-cluster-active-pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.28; }
+  50% { opacity: 0.55; }
 }
 @supports (background-clip: text) or (-webkit-background-clip: text) {
   .clusterBlock[data-active="true"] .clusterSummary {
@@ -434,6 +444,7 @@
   line-height: 20px;
   text-align: left;
   cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
 }
 .reasonCollapsed:hover {
   background: var(--dsw-alias-interactive-bg-hover);
@@ -491,7 +502,7 @@
 .reasonText { padding: 8px 0 12px; font-size: 14px; line-height: 24px; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }
 .reasonText .readingText > div { font-size: inherit; line-height: inherit; color: inherit; }
 .reasonFooter { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0 0; font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-secondary); }
-.reasonAction { display: inline-flex; justify-content: center; align-items: center; gap: 5px; min-height: 28px; padding: 4px 6px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; white-space: nowrap; }
+.reasonAction { display: inline-flex; justify-content: center; align-items: center; gap: 5px; min-height: 28px; padding: 4px 6px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; white-space: nowrap; transition: background-color 160ms ease, color 160ms ease; }
 .reasonAction:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .reasonAction:disabled { cursor: default; opacity: .65; }
 .reasonAction svg { flex: none; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
@@ -500,32 +511,35 @@
 @media (pointer: coarse) { .reasonAction { min-height: 44px; } }
 @media (forced-colors: active) { .reasonViewport { -webkit-mask-image: none !important; mask-image: none !important; } }
 @supports not (backdrop-filter: blur(1px)) {
-  .reasonCard, .clusterBlock, .noticeCard, .errorCard, .activityBar {
+  .reasonCard, .clusterBlock, .noticeCard, .errorCard, .activityBar, .jump, .commandRecord {
     background: var(--dsw-alias-bg-module-platform);
   }
 }
 .detail { font-size: 13px; line-height: 22px; color: var(--dsw-alias-label-secondary); }
 .detail > summary { cursor: pointer; padding: 3px 0; }
 .detail[open] > summary { margin-bottom: 8px; }
+/* Command / compaction records use the same card chrome as the process cards
+   (tool cluster, notice, error): border, 10px radius, translucent module
+   background with blur. The lifecycle state is carried by the status text
+   (dot + label color, running pulse/shimmer) instead of a whole-card tint, so
+   the record reads as a member of the card family. */
 .commandRecord {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
   max-width: 100%;
-  padding: 4px 8px 4px 12px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 35%, transparent);
-  transition: background-color 160ms ease;
+  padding: 6px 12px 8px;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 80%, rgba(255, 255, 255, 0.08));
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-module-platform);
+  background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 50%, transparent);
+  backdrop-filter: blur(6px);
+  transition: background-color 160ms ease, border-color 160ms ease;
 }
-.commandRecord[data-command-state=running] {
-  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 8%, transparent);
-}
-.commandRecord[data-command-state=success] {
-  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 7%, transparent);
-}
-.commandRecord[data-command-state=error] {
-  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 7%, transparent);
+.commandRecord:hover {
+  background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 82%, transparent);
+  border-color: color-mix(in srgb, var(--dsw-alias-border-l1) 75%, rgba(255, 255, 255, 0.12));
 }
 .commandRecordStatus {
   display: flex;
@@ -533,8 +547,8 @@
   gap: 6px;
   min-width: 0;
   padding: 0 2px;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 13px;
+  line-height: 20px;
 }
 .commandRecord[data-command-state=running] .commandRecordStatus {
   color: var(--dsw-alias-state-business-primary);
@@ -581,6 +595,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 12px;
+  line-height: 18px;
   color: var(--dsw-alias-label-secondary);
 }
 .commandRecord button {
@@ -687,93 +703,145 @@
 .attention span { color: var(--dsw-alias-label-secondary); }
 .unknown { background: var(--dsw-alias-bg-module-platform); border: 1px solid var(--dsw-alias-border-l2); border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 22px; }
 .unknown p { margin: 0 0 6px; }
-.historyButton { align-self: center; background: transparent; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 4px 12px; font-size: 12px; color: var(--dsw-alias-label-secondary); }
+.historyButton { align-self: center; background: transparent; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 4px 12px; font-size: 12px; color: var(--dsw-alias-label-secondary); transition: background-color 160ms ease, color 160ms ease, opacity 160ms ease; }
 .historyButton:disabled { opacity: .55; cursor: default; }
 .empty { padding: 40px 0; color: var(--dsw-alias-label-tertiary); text-align: center; }
 .answerActions { display: flex; align-items: center; gap: 8px; margin: 13px 0 0 -6px; min-height: 28px; }
-.iconButton { display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; padding: 6px; background: transparent; color: var(--dsw-alias-label-tertiary); }
+.iconButton { display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; padding: 6px; background: transparent; color: var(--dsw-alias-label-tertiary); transition: background-color 160ms ease, color 160ms ease, transform 160ms cubic-bezier(.22,1,.36,1); }
+.iconButton:hover { color: var(--dsw-alias-label-primary); }
+.iconButton:active { transform: scale(0.92); }
 .iconButton svg { fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
 .imageFigure { margin: 0; width: min(100%, 460px); align-self: flex-start; }
 .imageFrame { position: relative; border-radius: 12px; background: var(--dsw-alias-bg-module-platform); border: 1px solid var(--dsw-alias-border-l2); overflow: hidden; max-height: 520px; min-height: 96px; }
 .imageOpen { border: 0; padding: 0; position: absolute; inset: 0; background: transparent; display: flex; width: 100%; height: 100%; }
-.imageOpen img { display: block; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity 200ms cubic-bezier(.4,0,.2,1); }
+.imageOpen img { display: block; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity 200ms cubic-bezier(.22,1,.36,1); }
 .imageOpen img[data-ready=true] { opacity: 1; }
 .imagePlaceholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 8px; color: var(--dsw-alias-label-tertiary); font-size: 13px; pointer-events: none; }
 .imagePlaceholder button { pointer-events: auto; }
 .imageFigure figcaption { color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 20px; margin-top: 6px; overflow-wrap: anywhere; }
 .imageDialog { border: 1px solid var(--dsw-alias-border-l2); padding: 38px 20px 20px; border-radius: 16px; background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary); max-width: 90vw; max-height: 90vh; }
-.imageDialog::backdrop { background: var(--dsw-alias-bg-mask-photo); }
+.imageDialog::backdrop { background: var(--dsw-alias-bg-mask-photo); opacity: 0; transition: opacity 200ms cubic-bezier(.22,1,.36,1); }
+.imageDialog[open]::backdrop { opacity: 1; }
 .imageDialog img { max-width: 82vw; max-height: 75vh; display: block; object-fit: contain; }
-.dialogClose { position: absolute; right: 8px; top: 4px; border: 0; background: transparent; color: inherit; width: 32px; height: 32px; border-radius: 8px; font-size: 24px; }
+.dialogClose { position: absolute; right: 8px; top: 4px; border: 0; background: transparent; color: inherit; width: 32px; height: 32px; border-radius: 8px; font-size: 24px; transition: background-color 160ms ease, transform 160ms cubic-bezier(.22,1,.36,1); }
+.dialogClose:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.dialogClose:active { transform: scale(0.9); }
 /* Running activity bar: floats directly above the sticky composer, using the
    same bottom offset the compat layer established for .jumpDock (the native
    12px would hide behind the floating input card). Content-width and centered
    — a lightweight status strip, not a full-width card. margin-top:auto plus
    the measured --reader-flow-min-height pin it to the screen bottom even when
    the transcript is shorter than the scrollport; sticky keeps it there while
-   scrolled up. */
+   scrolled up.
+
+   The whole bar IS the jump-to-latest button: the arrow is a decorative icon
+   (no own border/box), and label changes animate because useContentWidth pins
+   the content row's natural width onto this bar as an explicit pixel width —
+   `transition: width` cannot animate `auto`. That measurement is a content-box
+   width, and the UA stylesheet gives <button> box-sizing: border-box, so
+   content-box is pinned back explicitly or every width lands 22px short
+   (padding 20px + border 2px) and the label overflows the bar. */
 .activityBar {
   position: sticky;
   bottom: calc(var(--dsh-composer-height, 152px) + 12px);
-  z-index: 3;
+  /* Above the primitives' sticky code-block banner (z-index 6) so scrolling
+     banners never float over the floating status bar. */
+  z-index: 7;
   align-self: center;
   margin-top: auto;
+  box-sizing: content-box;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
   padding: 4px 10px;
   border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 80%, rgba(255, 255, 255, 0.08));
   border-radius: 6px;
   background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 78%, transparent);
   backdrop-filter: blur(6px);
   color: var(--dsw-alias-label-secondary);
+  font: inherit;
   font-size: 12px;
   line-height: 18px;
-  transition: opacity 200ms cubic-bezier(.4,0,.2,1);
+  cursor: default;
+  /* The measured row renders instantly while the pinned width is still
+     animating toward it; clipping inside the rounded border reads as the bar
+     unfolding instead of label overhang floating past the edge. */
+  overflow: hidden;
+  transition: width 200ms cubic-bezier(.22,1,.36,1), opacity 200ms cubic-bezier(.22,1,.36,1), transform 200ms cubic-bezier(.22,1,.36,1);
 }
+/* The measured row must keep its natural width while the bar's explicit width
+   is still catching up: flex:none stops the observer from chasing its own
+   compression — the bar clips the transient overhang instead. */
+.activityBarContent { display: inline-flex; align-items: center; flex: none; }
 .activityText { font-weight: 500; color: var(--dsw-alias-label-primary); white-space: nowrap; }
-.activityTimer { font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-secondary); white-space: nowrap; }
+.activityTimer { margin-left: 8px; font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-secondary); white-space: nowrap; }
+/* Decorative arrow: borderless icon. Already-at-latest folds it away.
+   The slot's width/margin change MUST be instant, never transitioned: the
+   slot is part of the measured row, so a transitioned width would move the
+   row every frame and re-target the bar's own width transition every frame —
+   the bar would chase the arrow forever instead of animating once. Only the
+   icon cross-fades; it anchors to the slot's left edge so it holds position
+   while the bar's single width transition catches up. */
 .activityJump {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--dsw-alias-label-secondary);
-  cursor: pointer;
+  position: relative;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-left: 8px;
 }
-.activityJump:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
-/* Content left the bottom: fade out but stay clickable/visible enough. */
-.activityBar[data-detached] { opacity: 0.25; }
-.jumpDock { position: sticky; bottom: 12px; align-self: center; height: 0; z-index: 2; }
+.activityBar:not([data-detached]) .activityJump { width: 0; margin-left: 0; }
+.activityJump svg { position: absolute; left: 0; top: 0; transition: opacity 160ms ease; }
+.activityBar:not([data-detached]) .activityJump svg { opacity: 0; }
+/* Content left the bottom: fade out but stay clickable. */
+.activityBar[data-detached] { opacity: 0.25; transform: translateY(2px); cursor: pointer; }
+.jumpDock { position: sticky; bottom: 12px; align-self: center; height: 0; z-index: 7; }
+/* Same visual language as .activityBar (frosted square, not the old circle):
+   6px corners, the same mixed border, the same translucent blurred fill.
+   z-index 7 outranks the primitives' sticky code-block banner (z-index 6 in
+   @deepseek-ai/dsh-client-ui-primitives CodeBlock.module.css — not editable
+   from here), which otherwise floats over the dock while scrolling past. */
 .jump {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 28px;
+  height: 28px;
   padding: 0;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 50%;
-  background: var(--dsw-alias-bg-base);
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 80%, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 78%, transparent);
+  backdrop-filter: blur(6px);
   color: var(--dsw-alias-label-secondary);
-  box-shadow: 0 2px 8px var(--dsw-alias-border-l1);
   transform: translateY(-100%);
+  transition: color 160ms ease, transform 200ms cubic-bezier(.22,1,.36,1), opacity 200ms cubic-bezier(.22,1,.36,1);
 }
 .jump:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
 }
+.jump:active { transform: translateY(-100%) scale(0.92); }
 .jump svg {
   flex: none;
 }
 
-[data-motion=off] .chevron, [data-motion=off] .imageOpen img, [data-motion=off] .activityBar { transition: none; }
-[data-motion=off] .toolState::before,
+/* Mount enter for live-only floating surfaces: transform/opacity only.
+   Historical mounts render settled (no replay); exits unmount instantly.
+   First paint is settled: the entering class only appears when MountFade
+   detects a fresh live mount, so a historical bar/pill never flashes.
+   isIn owns the settled state's transition list — keep width in it or label
+   changes lose their animation once the bar settles. */
+.activityBar.isEntering, .attention.isEntering { opacity: 0; transform: translateY(6px); transition: none; }
+.activityBar.isIn, .attention.isIn { opacity: 1; transform: none; transition: width 200ms cubic-bezier(.22,1,.36,1), opacity 220ms cubic-bezier(.22,1,.36,1), transform 220ms cubic-bezier(.22,1,.36,1); }
+.activityBar[data-detached].isIn { opacity: 0.25; transform: translateY(2px); }
+.jumpDock.isEntering { opacity: 0; transition: none; }
+/* Detached hover/click feedback. Placed after the mount-enter block on
+   purpose: same specificity as [data-detached].isIn, and only the later rule
+   wins. Hover restores full visibility and lights the arrow so the whole-bar
+   click reads as "back to latest"; press nudges it back toward its slot. */
+.activityBar[data-detached]:hover { opacity: 1; transform: none; }
+.activityBar[data-detached]:hover .activityJump { color: var(--dsw-alias-label-primary); }
+.activityBar[data-detached]:active { transform: translateY(2px) scale(0.98); }
+.jumpDock.isIn { opacity: 1; transition: opacity 220ms cubic-bezier(.22,1,.36,1); }
+[data-motion=off] .chevron, [data-motion=off] .imageOpen img, [data-motion=off] .activityBar, [data-motion=off] .jump, [data-motion=off] .textButton, [data-motion=off] .switchButton, [data-motion=off] .iconButton, [data-motion=off] .disclosureButton, [data-motion=off] .clusterHeader, [data-motion=off] .reasonCollapsed, [data-motion=off] .reasonAction, [data-motion=off] .activityJump, [data-motion=off] .activityJump svg, [data-motion=off] .dialogClose, [data-motion=off] .historyButton, [data-motion=off] .toolTabs > button { transition: none; }
+[data-motion=off] .isEntering, [data-motion=off] .isIn { transition: none; }
 [data-motion=off] .toolActivity[data-tool-phase=running] .nativeToolSummary,
 [data-motion=off] .toolActivity[data-tool-phase=running] .toolState,
 [data-motion=off] .commandRecord[data-command-state=running] .commandRecordSummary,
@@ -783,7 +851,7 @@
 [data-motion=off] .commandRecord[data-command-state=running] .commandRecordStatus,
 [data-motion=off] .commandRecord[data-command-state=running] button { animation: none !important; }
 @media (prefers-reduced-motion: reduce) {
-  .chevron, .imageOpen img, .activityBar { transition: none; }
+  .chevron, .imageOpen img, .activityBar, .jump, .textButton, .switchButton, .iconButton, .disclosureButton, .clusterHeader, .reasonCollapsed, .reasonAction, .activityJump, .activityJump svg, .dialogClose, .historyButton, .toolTabs > button, .isEntering, .isIn { transition: none; }
   .toolState::before,
   .toolActivity[data-tool-phase=running] .nativeToolSummary,
   .toolActivity[data-tool-phase=running] .toolState,
