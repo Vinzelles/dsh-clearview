@@ -28,3 +28,29 @@ export function readingFollowAction(
   if (guards.selected || guards.focused) return gap > READING_SURFACE_GAP ? 'surface' : 'none';
   return 'follow';
 }
+
+/**
+ * What a reader-caused scroll event (never one of our own eased writes) does
+ * to follow intent. Position alone is NOT intent: re-attaching is reserved for
+ * a downward reader gesture (`wantDown`) that actually settled at the bottom
+ * surface. An upward pass that lands inside the surface gap — or a
+ * scroll-anchoring event that carries no reader gesture at all — holds the
+ * current intent. The position-only rule is what used to re-pin follow after
+ * a small or interrupted scroll-up, so the next content growth yanked the
+ * reader back to the bottom.
+ *
+ * A down-gesture that lands OUTSIDE the surface stays pending: a smooth
+ * scroll, fling or scrollbar drag emits a run of scroll events, and only the
+ * one that crosses into the surface may resume follow. Consuming the gesture
+ * on an out-of-surface event is what kept the jump pill up after the reader
+ * had already reached the bottom by hand.
+ */
+export function readingScrollAction(
+  following: boolean,
+  wantDown: boolean,
+  atSurface: boolean,
+): { following: boolean; wantDown: boolean } {
+  if (!atSurface) return { following: false, wantDown };
+  if (wantDown) return { following: true, wantDown: false };
+  return { following, wantDown };
+}
