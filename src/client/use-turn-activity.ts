@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { UseConversationSession } from '@deepseek-ai/dsh-client-runtime/client';
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
 import {
-  activityLabel, latestOpenTurn, phaseStartMs, type ActivityPhase, type TurnSnapshot,
+  activityLabel, latestOpenTurn, type ActivityPhase, type TurnSnapshot,
 } from './turn-activity.js';
 
 export interface ActivityView {
@@ -20,8 +20,7 @@ export function useTurnActivity(useSession: UseConversationSession): ActivityVie
   // it re-runs only when the store actually changes.
   const raw = useSession(snapshot => {
     let latest: TurnSnapshot | undefined;
-    let latestTurnNumber: number | null = null;
-    for (const [num, turn] of snapshot.chat.timeline.turns) {
+    for (const turn of snapshot.chat.timeline.turns.values()) {
       if (turn.status !== 'open') continue;
       // TurnSnapshot models step data as a Map, while the runtime hands a
       // keyed Location reader; copy the one business value turn-activity reads.
@@ -34,37 +33,35 @@ export function useTurnActivity(useSession: UseConversationSession): ActivityVie
           return { step: step.step, data };
         }),
       };
-      latestTurnNumber = num;
     }
-    return {
-      turn: latest, pending: snapshot.pending.length,
-      hasOpenTurn: latest !== undefined, turnNumber: latestTurnNumber,
-    };
+    return { turn: latest, pending: snapshot.pending.length, hasOpenTurn: latest !== undefined };
   });
-  // Per-key first-seen origins for the phase timer. The timer origin is the
-  // phase key's first display time on this client, not a step timestamp:
-  // running steps only carry step-level `data.time`, so timing from it would
-  // never restart inside one streaming step (e.g. reasoning→text). The
-  // turn-number prefix keeps a new turn from reusing an older phase's origin.
-  const startedRef = useRef(new Map<string, number>());
   // Seconds tick: 1s interval, gated on an open turn so an idle Reader stops
   // re-rendering every second. The gate uses the stable `hasOpenTurn` boolean,
   // not the `turn` object reference: the snapshot rebuilds `turn` on every
   // store update while streaming, which would tear down and recreate the
-  // interval before it can fire. The derivation below re-runs only when `now`
-  // or the raw snapshot changes; the bar re-renders at most once per second.
+  // interval before it can fire. An immediate tick on gate-open keeps `now`
+  // fresh the moment a turn appears (the frozen idle value would otherwise
+  // lag behind the real start).
   useEffect(() => {
     if (!raw.hasOpenTurn) return;
+    setNow(Date.now());
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [raw.hasOpenTurn]);
   return useMemo<ActivityView>(() => {
     const result = latestOpenTurn(raw.turn, raw.pending, []);
     if (!result) return IDLE;
-    const started = phaseStartMs(`${raw.turnNumber ?? 0}:${result.key}`, startedRef.current, now);
-    const seconds = result.phase === 'waiting'
+    // Timer origin is the step's real event timestamp (`since`), never a
+    // local first-seen estimate: a first-seen origin inflates after an idle
+    // gap (the tick is gated off while idle) and resets on session switches
+    // or remounts, while the data timestamp is correct across both. The
+    // clock therefore restarts when the turn moves to a new step (each step
+    // carries its own `data.time`); inside one streaming step, where the
+    // protocol exposes no block-level timestamps, it keeps running.
+    const seconds = result.phase === 'waiting' || result.since == null
       ? null
-      : Math.max(0, Math.floor((now - started) / 1000));
+      : Math.max(0, Math.floor((now - result.since) / 1000));
     return { label: activityLabel(result.phase), seconds, key: result.key, phase: result.phase };
   }, [raw, now]);
 }
