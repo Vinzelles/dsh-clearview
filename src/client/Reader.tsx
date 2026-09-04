@@ -92,10 +92,7 @@ function Switch({ label, checked, onChange, title }: {
 }) {
   return (
     <button type="button" className={css.switchButton} role="switch" aria-checked={checked} onClick={onChange} title={title}>
-      <span className={css.switchLabel}>{label}</span>
-      <span className={css.switchTrack} data-checked={checked} aria-hidden="true">
-        <span className={css.switchThumb} />
-      </span>
+      <span className={css.switchLabel} data-checked={checked}>{label}</span>
     </button>
   );
 }
@@ -391,7 +388,7 @@ const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedP
   const boundary = useMemo(() => boundaryOf(turn), [turn]);
   const choiceKey = processChoiceKey(group.key, boundary);
   const expansionChoice = props.useStore(state => state.expanded[choiceKey]);
-  const collapseThinking = props.useStore(state => state.collapseThinking ?? true);
+  const collapseThinking = props.useStore(state => state.collapseThinking ?? false);
   const flowId = useId();
   const processButton = useRef<HTMLButtonElement>(null);
   const setExpanded = useCallback((value: boolean) => props.actions.setExpanded(choiceKey, value), [props.actions, choiceKey]);
@@ -495,7 +492,7 @@ export function Reader(props: ReaderProps) {
   const hasMore = props.useSession(snapshot => snapshot.hasMore);
   const loadingOlder = props.useSession(snapshot => snapshot.loadingOlder);
   const motionPreference = props.useStore(state => state.motion);
-  const collapseThinking = props.useStore(state => state.collapseThinking ?? true);
+  const collapseThinking = props.useStore(state => state.collapseThinking ?? false);
   const motion = useMotionAllowed(motionPreference);
   const activity = useTurnActivity(props.useSession);
   const streamMotion = useMemo(() => ({ enabled: motion, activatedAt: activatedAt.current }), [motion]);
@@ -511,6 +508,31 @@ export function Reader(props: ReaderProps) {
   }), [order, nodes, rewindHidden]);
   const groups = useMemo(() => groupNodes(visibleOrder, key => nodes.get(key)), [visibleOrder, nodes, timeline]);
   const scroll = useReadingScroll(root, motion);
+  // The activity bar floats above the sticky composer. Sticky alone cannot
+  // lift it when the transcript is shorter than the scrollport (no overflow,
+  // nothing to stick against): the column must fill the scrollport so
+  // margin-top:auto can push the bar to the screen bottom. Measure host
+  // height minus the composer (a live CSS variable the host maintains on
+  // the scroller) minus our own vertical padding.
+  useEffect(() => {
+    const content = root.current;
+    if (!content) return;
+    const host = content.closest<HTMLElement>('[data-conversation-scroll]');
+    if (!host) return;
+    const fit = () => {
+      const composer = parseFloat(getComputedStyle(host).getPropertyValue('--dsh-composer-height')) || 152;
+      const own = getComputedStyle(content);
+      const padding = (parseFloat(own.paddingTop) || 0) + (parseFloat(own.paddingBottom) || 0);
+      content.style.setProperty('--reader-flow-min-height', `${Math.max(0, host.clientHeight - composer - padding)}px`);
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(host);
+    // The host writes --dsh-composer-height onto the scroller's style attr.
+    const attributes = new MutationObserver(fit);
+    attributes.observe(host, { attributes: true, attributeFilter: ['style'] });
+    return () => { observer.disconnect(); attributes.disconnect(); };
+  }, []);
   const latestUserKey = useMemo(() => {
     for (let index = visibleOrder.length - 1; index >= 0; index--) {
       const node = nodes.get(visibleOrder[index]);
@@ -571,7 +593,7 @@ export function Reader(props: ReaderProps) {
           </button>
         </div>
       )}
-      {scroll.detached && <div className={css.jumpDock}><button type="button" className={css.jump} onClick={scroll.jump} aria-label="回到最新" title="回到最新">
+      {scroll.detached && !activity.key && <div className={css.jumpDock}><button type="button" className={css.jump} onClick={scroll.jump} aria-label="回到最新" title="回到最新">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <path d="M8 3v10m-4-4 4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
