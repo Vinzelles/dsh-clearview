@@ -49,9 +49,14 @@ function CommandRecord({ node }: { node: CommandRecordNode }) {
         {outcomeText && <span className={css.commandRecordSummary} title={outcomeText}>{outcomeText}</span>}
       </div>
       {isNode(node, 'manual-compaction') && (
-        <div className={css.commandRecordCompaction} data-reader-compaction-record>
-          <strong>{node.data.compaction ? '上下文已整理' : '正在整理上下文…'}</strong>
-          {node.data.compaction && <span>原始记录仍保留。</span>}
+        <div
+          className={css.commandRecordStatus}
+          data-reader-compaction-record
+          data-compaction-state={node.data.compaction ? 'success' : 'running'}
+        >
+          <span className={css.commandRecordDot} data-state={node.data.compaction ? 'success' : 'running'} aria-hidden />
+          <span className={css.commandRecordLabel}>{node.data.compaction ? '上下文已整理' : '正在整理上下文…'}</span>
+          {node.data.compaction && <span className={css.commandRecordSummary}>原始记录仍保留。</span>}
         </div>
       )}
       <JsonBlock label="命令记录" payload={node.data} />
@@ -61,10 +66,11 @@ function CommandRecord({ node }: { node: CommandRecordNode }) {
 
 function CompactionRecord({ node }: { node: ChatNode<'compaction'> }) {
   return (
-    <div className={css.compactionRecord} data-reader-compaction-record>
-      <div className={css.compactionRecordHeader}>
-        <strong className={css.compactionRecordTitle}>上下文已整理</strong>
-        <span className={css.compactionRecordMeta}>原始记录仍保留。</span>
+    <div className={css.commandRecord} data-reader-compaction-record data-command-state="success">
+      <div className={css.commandRecordStatus}>
+        <span className={css.commandRecordDot} data-state="success" aria-hidden />
+        <span className={css.commandRecordLabel}>上下文已整理</span>
+        <span className={css.commandRecordSummary}>原始记录仍保留。</span>
       </div>
       <JsonBlock label="压缩记录" payload={node.data} />
     </div>
