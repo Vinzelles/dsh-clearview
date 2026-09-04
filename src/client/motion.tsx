@@ -2,7 +2,7 @@ import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode, RefObject } from 'react';
 import css from './Reader.module.css';
 import { StreamMotionContext } from './streaming.js';
-import { READING_SURFACE_GAP, readingFollowAction } from './reading-follow.js';
+import { READING_SURFACE_GAP, readingFollowAction, readingScrollAction } from './reading-follow.js';
 
 const EASING = 'cubic-bezier(.22,1,.36,1)';
 
@@ -188,6 +188,17 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean):
     let followFrame = 0;
     let lastFrameAt = 0;
     let lastWrittenTop: number | null = null;
+    // A downward reader gesture (wheel / key / touch / scrollbar drag) that
+    // is still pending. It survives scroll events that land outside the
+    // bottom surface — a smooth scroll, fling or long drag emits a run of
+    // events, and the one that crosses into the surface is what resumes
+    // follow. An upward gesture supersedes it; settling at the surface
+    // consumes it. (An upward pass that lands inside the surface gap, or a
+    // scroll-anchoring event without any reader gesture, holds the current
+    // intent instead of re-pinning — the snap-back bug.)
+    let wantDown = false;
+    let touchY: number | null = null;
+    let pointerY: number | null = null;
     const selected = () => {
       const selection = document.getSelection();
       return selection && !selection.isCollapsed && selection.anchorNode && content.contains(selection.anchorNode);
@@ -196,24 +207,71 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean):
       const active = document.activeElement;
       return active instanceof HTMLElement && active !== document.body && content.contains(active);
     };
+    const releaseFollow = () => {
+      cancelAnimationFrame(followFrame); followFrame = 0;
+      if (following.current) { following.current = false; setDetached(true); }
+    };
     const onScroll = () => {
-      // Our easing frames must not be mistaken for a user leaving the bottom.
+      // Our easing frames must not be mistaken for a reader leaving the bottom.
       if (lastWrittenTop !== null && Math.abs(scroll.scrollTop - lastWrittenTop) < 1) return;
-      following.current = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < READING_SURFACE_GAP;
+      const atSurface = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < READING_SURFACE_GAP;
+      const next = readingScrollAction(following.current, wantDown, atSurface);
+      wantDown = next.wantDown;
+      if (next.following !== following.current) {
+        following.current = next.following;
+        if (!next.following) releaseFollow();
+      }
+      // Any reader-caused scroll resyncs the pill: a detached reader who has
+      // scrolled by hand is seen as reading, and a guard-hold pill clears the
+      // moment the reader moves (the guard exit is the jump button itself).
       setDetached(!following.current);
-      if (!following.current) { cancelAnimationFrame(followFrame); followFrame = 0; }
     };
     const onWheel = (event: WheelEvent) => {
+      // The wheel takes the scroll over from our easing frames; the down
+      // gesture records intent, the up gesture leaves the bottom explicitly
+      // before the position is even known.
       cancelAnimationFrame(followFrame); followFrame = 0; lastWrittenTop = null;
-      if (event.deltaY < 0) { following.current = false; setDetached(true); }
+      if (event.deltaY < 0) { wantDown = false; releaseFollow(); }
+      else if (event.deltaY > 0) wantDown = true;
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLElement && event.target.closest('textarea,input,[contenteditable=true]')) return;
       if (['PageUp', 'Home', 'ArrowUp'].includes(event.key)) {
         cancelAnimationFrame(followFrame); followFrame = 0; lastWrittenTop = null;
-        following.current = false; setDetached(true);
+        wantDown = false; releaseFollow();
+        return;
       }
+      // Downward keys count only when no focused control in the reader is
+      // about to handle them (Space on a button toggles it, not the scroll).
+      if (event.target instanceof HTMLElement && event.target.closest('button,a,select,summary,[role="button"],[role="switch"]')) return;
+      if (['PageDown', 'End', 'ArrowDown', ' '].includes(event.key)) wantDown = true;
     };
+    const onTouchStart = (event: TouchEvent) => { touchY = event.touches[0]?.clientY ?? null; };
+    const onTouchMove = (event: TouchEvent) => {
+      const y = event.touches[0]?.clientY;
+      if (touchY === null || y === undefined) return;
+      const dy = y - touchY;
+      if (dy > 1) { wantDown = false; releaseFollow(); }
+      else if (dy < -1) wantDown = true;
+      touchY = y;
+    };
+    const onTouchEnd = () => { touchY = null; };
+    // A scrollbar drag emits no wheel events at all — only scroll events. A
+    // press that lands on the scroller itself is a scrollbar grab (content
+    // presses target children, so selection or control clicks never count
+    // as scroll gestures).
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.target !== scroll) return;
+      pointerY = event.clientY;
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      if (pointerY === null) return;
+      const dy = event.clientY - pointerY;
+      if (dy > 1) { wantDown = false; releaseFollow(); }
+      else if (dy < -1) wantDown = true;
+      pointerY = event.clientY;
+    };
+    const onPointerEnd = () => { pointerY = null; };
     const writeTop = (top: number) => { scroll.scrollTop = top; lastWrittenTop = scroll.scrollTop; };
     const follow = (now: number) => {
       followFrame = 0;
@@ -254,10 +312,22 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean):
     scroll.addEventListener('scroll', onScroll, { passive: true });
     scroll.addEventListener('wheel', onWheel, { passive: true });
     scroll.addEventListener('keydown', onKey);
+    scroll.addEventListener('touchstart', onTouchStart, { passive: true });
+    scroll.addEventListener('touchmove', onTouchMove, { passive: true });
+    scroll.addEventListener('touchend', onTouchEnd, { passive: true });
+    scroll.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    scroll.addEventListener('pointerdown', onPointerDown);
+    scroll.addEventListener('pointermove', onPointerMove, { passive: true });
+    scroll.addEventListener('pointerup', onPointerEnd);
+    scroll.addEventListener('pointercancel', onPointerEnd);
     return () => {
       cancelAnimationFrame(firstFrame); cancelAnimationFrame(followFrame); observer.disconnect();
       scroll.removeEventListener('scroll', onScroll); scroll.removeEventListener('wheel', onWheel);
       scroll.removeEventListener('keydown', onKey);
+      scroll.removeEventListener('touchstart', onTouchStart); scroll.removeEventListener('touchmove', onTouchMove);
+      scroll.removeEventListener('touchend', onTouchEnd); scroll.removeEventListener('touchcancel', onTouchEnd);
+      scroll.removeEventListener('pointerdown', onPointerDown); scroll.removeEventListener('pointermove', onPointerMove);
+      scroll.removeEventListener('pointerup', onPointerEnd); scroll.removeEventListener('pointercancel', onPointerEnd);
     };
   }, [root, motion]);
   return { detached, jump: () => {
