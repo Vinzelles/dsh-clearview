@@ -164,6 +164,35 @@ export function preparingLabel(name: string): string {
   return /^(write|edit|apply_patch)$/.test(name) ? '正在生成文件内容' : /^(bash|shell|exec_command|pwsh)$/.test(name) ? '正在准备命令' : '正在准备工具输入';
 }
 
+/**
+ * A settled execution failure that its error card fully presents: the card
+ * embeds the tool's own details layout (result / input / raw record, the same
+ * toolDetails the tool row uses), so the flow suppresses the per-tool activity
+ * row instead of showing the same execution in two seats (row + card). Every
+ * failed tool call merges — terminal, search, file edits, web and the rest.
+ */
+export function isMergedExecutionFailure(entry: Pick<ToolActivityEntry, 'block' | 'draft'>, turnClosed = false): boolean {
+  const block = entry.block;
+  if (!block || !('kind' in block)) return false;
+  return activityPhase(entry, turnClosed) === 'failed';
+}
+
+/**
+ * Some execution failures carry their exit code only inside the error text
+ * (e.g. `Error: grep search failed (exit 2)`, `Error: exit code: 1 (no
+ * output)`) while the block's meta/resultView stays empty. Recover a
+ * non-zero exit code from such text so the merged card can state the real
+ * exit status instead of a clean-settle indicator. Returns undefined when
+ * the text carries no usable code — the caller then falls back to a failure
+ * label instead of fabricating a number.
+ */
+export function exitCodeFromOutput(text: string, failed: boolean): number | undefined {
+  if (!failed) return undefined;
+  const match = text.match(/\(exit (\d+)\)|exit code[:：]\s*(\d+)/i);
+  const value = match ? Number(match[1] ?? match[2]) : NaN;
+  return Number.isFinite(value) && value !== 0 ? value : undefined;
+}
+
 export interface OperationalClusterSummary {
   commands: number;
   tools: number;

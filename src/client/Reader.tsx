@@ -6,7 +6,7 @@ import { JsonBlock, JsonTree, MarkdownText } from '@deepseek-ai/dsh-client-ui-pr
 import { BlockBoundary, Blocks, contentBlocks, CopyAnswer } from './Blocks.js';
 import { ReasoningCard } from './ReasoningCard.js';
 import { ToolActivity, ToolMedia } from './ToolActivity.js';
-import { formatOperationClusterSummary, groupOperationalFlow, preparingLabel, readerFlow } from './tool-activity.js';
+import { formatOperationClusterSummary, groupOperationalFlow, isMergedExecutionFailure, preparingLabel, readerFlow } from './tool-activity.js';
 import type { OperationalFlowItem, ReaderFlowEntry } from './tool-activity.js';
 import { formatSeconds } from './turn-activity.js';
 import { useTurnActivity } from './use-turn-activity.js';
@@ -350,24 +350,26 @@ function OperationalClusterBlock({
               </Fragment>
             ) : (
               <Fragment key={item.key}>
-                <BlockBoundary>
-                  <ProcessFragment
-                    open={expanded}
-                    motion={motion}
-                    onRead={pinProcess}
-                    returnFocusTo={processButton}
-                    nodeKey={item.key}
-                    framed
-                  >
-                    <ToolActivity
-                      {...shared}
-                      entry={item}
+                {!isMergedExecutionFailure(item, boundary.status === 'closed') && (
+                  <BlockBoundary>
+                    <ProcessFragment
+                      open={expanded}
                       motion={motion}
-                      turnClosed={boundary.status === 'closed'}
                       onRead={pinProcess}
-                    />
-                  </ProcessFragment>
-                </BlockBoundary>
+                      returnFocusTo={processButton}
+                      nodeKey={item.key}
+                      framed
+                    >
+                      <ToolActivity
+                        {...shared}
+                        entry={item}
+                        motion={motion}
+                        turnClosed={boundary.status === 'closed'}
+                        onRead={pinProcess}
+                      />
+                    </ProcessFragment>
+                  </BlockBoundary>
+                )}
                 {item.block && (
                   <BlockBoundary>
                     <ToolMedia {...shared} block={item.block} open={expanded} />
@@ -456,9 +458,9 @@ const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedP
           </Fragment>
         ) : (
           <Fragment key={item.key}>
-            <BlockBoundary><ProcessFragment open={expanded} motion={motion} onRead={pinProcess} returnFocusTo={processButton} nodeKey={item.key} framed>
+            {!isMergedExecutionFailure(item, boundary.status === 'closed') && <BlockBoundary><ProcessFragment open={expanded} motion={motion} onRead={pinProcess} returnFocusTo={processButton} nodeKey={item.key} framed>
               <ToolActivity {...shared} entry={item} motion={motion} turnClosed={boundary.status === 'closed'} onRead={pinProcess} />
-            </ProcessFragment></BlockBoundary>
+            </ProcessFragment></BlockBoundary>}
             {item.block && <BlockBoundary><ToolMedia {...shared} block={item.block} open={expanded} /></BlockBoundary>}
           </Fragment>
         );
