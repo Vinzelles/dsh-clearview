@@ -1,8 +1,9 @@
-import { Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import type { ChatConversationViewNode } from '@deepseek-ai/dsh-client-runtime/client';
 import type { ChatNode, ChatNodeKind } from '@deepseek-ai/dsh-client-ui-conversation/client';
 import { JsonBlock, JsonTree, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives';
+import { FileChangesPanel } from './FileChanges.js';
 import { BlockBoundary, Blocks, contentBlocks, CopyAnswer } from './Blocks.js';
 import { ReasoningCard } from './ReasoningCard.js';
 import { ToolActivity, ToolMedia } from './ToolActivity.js';
@@ -37,61 +38,89 @@ function commandRecordState(node: CommandRecordNode): 'running' | 'success' | 'e
   return outcome == null ? 'running' : outcome.kind === 'success' ? 'success' : 'error';
 }
 
+/** The record payload as a plain read-only block: the card itself is the only
+ *  expandable, so the body shows the content directly (no inner toggle). */
+function RecordJson({ label, payload }: { label: string; payload: unknown }) {
+  const text = useMemo(() => {
+    try {
+      return JSON.stringify(payload, null, 2) ?? String(payload);
+    } catch {
+      return String(payload);
+    }
+  }, [payload]);
+  return <div className={css.toolRawSection}>
+    <h4 className={css.toolRawLabel}>{label}</h4>
+    <pre className={css.toolRaw}>{text}</pre>
+  </div>;
+}
+
 function CommandRecord({ node }: { node: CommandRecordNode }) {
-  const state = commandRecordState(node);
   const outcomeText = commandOutcomeText(node);
-  const label = state === 'running' ? '执行中…' : state === 'success' ? '已完成' : '失败';
+  if (isNode(node, 'manual-compaction')) {
+    const failed = node.data.command.outcome?.kind === 'error';
+    const compacted = !failed && node.data.compaction != null;
+    return (
+      <NoticeCard
+        title={failed ? '上下文压缩失败' : compacted ? '上下文已整理' : '正在整理上下文…'}
+        meta={failed ? outcomeText : compacted ? '原始记录仍保留。' : undefined}
+        tone={failed ? 'error' : 'info'}
+        state={failed ? 'error' : compacted ? 'success' : 'running'}
+        markers={{ 'data-reader-command-record': '', 'data-reader-compaction-record': '' }}
+      >
+        <RecordJson label="命令记录" payload={node.data} />
+      </NoticeCard>
+    );
+  }
+  const state = commandRecordState(node);
   return (
-    <div className={css.commandRecord} data-reader-command-record data-command-state={state}>
-      <div className={css.commandRecordStatus}>
-        <span className={css.commandRecordDot} data-state={state} aria-hidden />
-        <span className={css.commandRecordLabel}>{label}</span>
-        {outcomeText && <span className={css.commandRecordSummary} title={outcomeText}>{outcomeText}</span>}
-      </div>
-      {isNode(node, 'manual-compaction') && (
-        <div
-          className={css.commandRecordStatus}
-          data-reader-compaction-record
-          data-compaction-state={node.data.compaction ? 'success' : 'running'}
-        >
-          <span className={css.commandRecordDot} data-state={node.data.compaction ? 'success' : 'running'} aria-hidden />
-          <span className={css.commandRecordLabel}>{node.data.compaction ? '上下文已整理' : '正在整理上下文…'}</span>
-          {node.data.compaction && <span className={css.commandRecordSummary}>原始记录仍保留。</span>}
-        </div>
-      )}
-      <JsonBlock label="命令记录" payload={node.data} />
-    </div>
+    <NoticeCard
+      title={state === 'running' ? '命令执行中…' : state === 'success' ? '命令执行完成' : '命令执行失败'}
+      meta={outcomeText}
+      tone={state === 'error' ? 'error' : 'info'}
+      state={state}
+      markers={{ 'data-reader-command-record': '' }}
+    >
+      <RecordJson label="命令记录" payload={node.data} />
+    </NoticeCard>
   );
 }
 
 function CompactionRecord({ node }: { node: ChatNode<'compaction'> }) {
   return (
-    <div className={css.commandRecord} data-reader-compaction-record data-command-state="success">
-      <div className={css.commandRecordStatus}>
-        <span className={css.commandRecordDot} data-state="success" aria-hidden />
-        <span className={css.commandRecordLabel}>上下文已整理</span>
-        <span className={css.commandRecordSummary}>原始记录仍保留。</span>
-      </div>
-      <JsonBlock label="压缩记录" payload={node.data} />
-    </div>
+    <NoticeCard
+      title="上下文已整理"
+      meta="原始记录仍保留。"
+      tone="info"
+      state="success"
+      markers={{ 'data-reader-compaction-record': '' }}
+    >
+      <RecordJson label="压缩记录" payload={node.data} />
+    </NoticeCard>
   );
 }
 
-function NoticeCard({ title, meta, hint = '展开查看详情', tone = 'error', children }: {
-  title: ReactNode; meta?: ReactNode; hint?: string; tone?: 'error' | 'info'; children?: ReactNode;
+function NoticeCard({ title, meta, hint = '展开查看详情', tone = 'error', state, markers, children }: {
+  title: ReactNode; meta?: ReactNode; hint?: string; tone?: 'error' | 'info';
+  state?: 'running' | 'success' | 'error'; markers?: Record<string, string | undefined>; children?: ReactNode;
 }) {
   const card = tone === 'error' ? css.errorCard : css.noticeCard;
   const titleClass = tone === 'error' ? css.errorCardTitle : css.noticeCardTitle;
   const bodyClass = tone === 'error' ? css.errorCardBody : css.noticeCardBody;
-  return <details className={card} data-tone={tone} data-reader-expandable-notice role={tone === 'error' ? 'alert' : 'status'}>
-    <summary>
-      <svg className={css.chevron} viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg>
-      <span className={titleClass}>{title}</span>
-      {meta && <span className={css.errorCardMeta}>{meta}</span>}
-      <span className={css.errorCardHint}>{hint}</span>
-    </summary>
-    <div className={bodyClass}>{children}</div>
-  </details>;
+  const { enabled } = useContext(StreamMotionContext);
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={card} data-tone={tone} data-state={state} data-open={open} data-reader-expandable-notice role={tone === 'error' ? 'alert' : 'status'} {...markers}>
+      <button type="button" data-open={open} aria-expanded={open} onClick={() => setOpen(value => !value)}>
+        <svg className={css.chevron} data-open={open} viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg>
+        <span className={titleClass}>{title}</span>
+        {meta && <span className={css.errorCardMeta}>{meta}</span>}
+        <span className={css.errorCardHint}>{hint}</span>
+      </button>
+      <CollapseBody open={open} motion={enabled}>
+        <div className={bodyClass}>{children}</div>
+      </CollapseBody>
+    </div>
+  );
 }
 
 function Switch({ label, checked, onChange, title }: {
@@ -128,18 +157,7 @@ const ProcessNode = memo(function ProcessNode({ useSession, t, nodeKey, open, mo
   } else if (isNode(node, 'compaction')) {
     content = <CompactionRecord node={node} />;
   } else if (isNode(node, 'command') || isNode(node, 'manual-compaction')) {
-    const outcomeText = commandOutcomeText(node);
-    const failed = isNode(node, 'command')
-      ? node.data.outcome?.kind === 'error'
-      : node.data.command.outcome?.kind === 'error';
-    const label = isNode(node, 'command') ? '命令执行失败' : '上下文压缩失败';
-    if (failed) {
-      content = <NoticeCard title={label} meta={outcomeText} hint="展开查看完整记录">
-        <JsonBlock label="命令记录" payload={node.data} />
-      </NoticeCard>;
-    } else {
-      content = <CommandRecord node={node} />;
-    }
+    content = <CommandRecord node={node} />;
   }
   return content && <ProcessFragment open={open} motion={motion} onRead={onRead} returnFocusTo={returnFocusTo} nodeKey={nodeKey} framed>{content}</ProcessFragment>;
 });
@@ -316,8 +334,7 @@ function OperationalClusterBlock({
           <span className={css.clusterHint}>{expanded ? '收起详情' : '展开查看详细'}</span>
         </span>
       </button>
-      {expanded && (
-        <CollapseBody open={expanded} motion={motion} className={css.clusterBody}>
+      <CollapseBody open={expanded} motion={motion} className={css.clusterBody}>
           <div className={css.clusterBodyInner}>
             {cluster.items.map((item: ReaderFlowEntry) =>
             item.kind === 'node' ? (
@@ -388,12 +405,11 @@ function OperationalClusterBlock({
           )}
           </div>
         </CollapseBody>
-      )}
     </div>
   );
 }
 
-const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedProcessKeys, rewindHidden, rewindSpans, ...props }: ReaderProps & { group: ReaderGroup; motion: boolean; pinnedKeys: readonly string[]; selectedProcessKeys: readonly string[]; rewindHidden: ReadonlySet<number>; rewindSpans: readonly RewindSpan[] }) {
+const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedProcessKeys, rewindHidden, rewindSpans, flowTail, ...props }: ReaderProps & { group: ReaderGroup; motion: boolean; pinnedKeys: readonly string[]; selectedProcessKeys: readonly string[]; rewindHidden: ReadonlySet<number>; rewindSpans: readonly RewindSpan[]; flowTail?: ReactNode }) {
   const chat = props.useSession(snapshot => snapshot.chat);
   const turn = props.useSession(snapshot => group.turn === null ? undefined : snapshot.chat.timeline.turns.get(group.turn));
   const boundary = useMemo(() => boundaryOf(turn), [turn]);
@@ -475,6 +491,7 @@ const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedP
         );
       })}
       {showTerminal && <div className={css.notice} data-reader-terminal>{terminal}</div>}
+      {flowTail}
     </div>
   </section>;
 });
@@ -506,6 +523,8 @@ export function Reader(props: ReaderProps) {
   const collapseThinking = props.useStore(state => state.collapseThinking ?? false);
   const motion = useMotionAllowed(motionPreference);
   const activity = useTurnActivity(props.useSession);
+  // 阅读流空闲判定（文件改动展示区的可见条件之一）：无开放轮次活动、无待处理交互、窗口已加载。
+  const conversationIdle = !activity.key && pending.length === 0 && !loading;
   const streamMotion = useMemo(() => ({ enabled: motion, activatedAt: activatedAt.current }), [motion]);
   const rewindHidden = useMemo(() => {
     return rewindToken ? hiddenSeqsOf({ order, nodes }) : new Set<number>();
@@ -574,6 +593,21 @@ export function Reader(props: ReaderProps) {
   const pinnedKeys = usePinnedSelection(root);
   const selectedProcessKeys = usePinnedSelection(root, '[data-reader-process]');
   const [historyError, setHistoryError] = useState(false);
+  // 「本会话文件改动」作为最后一个轮次 mainFlow 的收尾插槽（见 groups.map）。
+  const fileChanges = (
+    <FileChangesPanel
+      useSession={props.useSession}
+      useSessions={props.useSessions}
+      sessionId={props.sessionId}
+      order={visibleOrder}
+      nodes={nodes}
+      motion={motion}
+      hasMore={hasMore}
+      conversationIdle={conversationIdle}
+      openFile={props.openFile}
+      listDirNames={props.listDirNames}
+    />
+  );
   return <StreamMotionContext.Provider value={streamMotion}><div ref={root} className={css.root} data-dsh-clearview="0.1.7" data-motion={motion ? 'on' : 'off'}>
     <div className={css.column}>
       <div className={css.toolbar} data-ud-check="reader-toolbar">
@@ -589,7 +623,7 @@ export function Reader(props: ReaderProps) {
       {historyError && <div className={css.notice}>历史记录加载失败，可再次尝试；现有内容未改变。</div>}
       {openError && <div className={css.error} role="alert">会话暂时无法读取：{openError.message}</div>}
       {loading && groups.length === 0 && <p className={css.empty} role="status">正在读取会话…</p>}
-      {groups.map(group => <TurnGroup key={group.key} {...props} group={group} motion={motion} pinnedKeys={pinnedKeys} selectedProcessKeys={selectedProcessKeys} rewindHidden={rewindHidden} rewindSpans={rewindSpans} />)}
+      {groups.map((group, index) => <TurnGroup key={group.key} {...props} group={group} motion={motion} pinnedKeys={pinnedKeys} selectedProcessKeys={selectedProcessKeys} rewindHidden={rewindHidden} rewindSpans={rewindSpans} flowTail={index === groups.length - 1 ? fileChanges : undefined} />)}
       {pending.length > 0 && <MountFade mounted={pending.length > 0} motion={motion}>{({ entering }) =>
         <div className={`${css.attention} ${entering ? css.isEntering : css.isIn}`} role="alert" data-reader-attention>
           <strong>{pending.some(item => item.kind === 'question') ? '需要你回答一个问题' : '需要你的确认'}</strong>
@@ -602,6 +636,13 @@ export function Reader(props: ReaderProps) {
           data-phase={activity.phase} data-ud-check="reader-activity-bar"
           title={scroll.detached ? '回到最新' : undefined} onClick={scroll.jump}>
           <span className={css.activityBarContent} ref={trackActivityWidth}>
+            <span className={css.activitySpinner} aria-hidden="true" data-reader-activity-spinner>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path className={css.activityStarMain} d="M6.5 4C7.16 7.58 8.43 8.84 12 9.5C8.43 10.16 7.16 11.43 6.5 15C5.84 11.43 4.58 10.16 1 9.5C4.58 8.84 7.16 7.58 6.5 4Z"/>
+                <path className={css.activityStarMid} d="M12.6 1.4C12.91 3.09 13.51 3.69 15.2 4C13.51 4.31 12.91 4.91 12.6 6.6C12.29 4.91 11.69 4.31 10 4C11.69 3.69 12.29 3.09 12.6 1.4Z"/>
+                <path className={css.activityStarTiny} d="M12.4 10.5C12.63 11.73 13.07 12.17 14.3 12.4C13.07 12.63 12.63 13.07 12.4 14.3C12.17 13.07 11.73 12.63 10.5 12.4C11.73 12.17 12.17 11.73 12.4 10.5Z"/>
+              </svg>
+            </span>
             <span className={css.activityText} role="status" data-reader-activity-label>{activity.label}</span>
             {activity.seconds !== null && (
               <span className={css.activityTimer} data-reader-activity-timer aria-hidden="true">{formatSeconds(activity.seconds)}</span>

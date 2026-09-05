@@ -49,8 +49,15 @@ export const COMPAT_CSS = `/* ==== reader-tool-state.css ==== */
 
 /* ==== reader-perf-long-content.css ==== */
 /* 长会话性能：
- * 1) 离屏轮次跳过渲染（content-visibility:auto + contain-intrinsic-size auto 记住
- *    上次真实高度）。只作用于「已关闭且不是最后两轮」的 section：进行中的轮次永远
+ * 1) 离屏轮次跳过渲染（content-visibility:auto）。关键约束：只有「高度已知」的
+ *    轮次才参与离屏渲染（data-cv-armed，由 perf-guard 在轮次渲染后点亮，并把实测
+ *    高度写进内联 contain-intrinsic-size）。从未渲染的轮次保持完整布局（真实几何，
+ *    向上滚动进入时不会发生 480px 占位 → 真实高度的尺寸跳变）；已渲染轮次再离屏时
+ *    占位尺寸 = 真实尺寸，elide/render 交换尺寸中性。背景：带 480px 回退占位的 CV
+ *    交换若发生在滚动手势中途、且锚点位于交换盒内/旁，原生 scroll anchoring 会按
+ *    「交换引发的重排」错误补偿，把视口拽到更靠上的位置（用户报告的「向上滚动突然
+ *    跳到更上方」）。实测：未 armed 时交换步跳变 ~146px；armed（内联精确高度）后
+ *    18 步上滚 0 跳变。只作用于「已关闭且不是最后两轮」的 section：进行中的轮次永远
  *    完整渲染；最后两轮保持渲染（tail-keep 需要点击最近一轮 Disclosure，rewind 桥
  *    与统计行集中在视口底部附近）。
  * 2) 重载降级（data-dshcp-heavy，由 perf-guard 按内容规模点亮）：逐词 WAAPI 动画去
@@ -58,9 +65,11 @@ export const COMPAT_CSS = `/* ==== reader-tool-state.css ==== */
  *    忙碌态 shimmer 停掉（display:none 后基色文字仍可见）。思考卡片跟随与过程展开
  *    高度动画是核心体验，不降级。 */
 
-/* Only heavy sessions opt into off-screen rendering; smaller conversations stay
- * fully laid out so native scroll anchoring has stable geometry while reading. */
-[data-dsh-clearview][data-dshcp-heavy="on"] section[data-reader-turn][data-reader-turn-state="closed"]:not(:last-of-type):not(:nth-last-of-type(2)) {
+/* Only armed turns opt into off-screen rendering: never-rendered turns keep
+ * true geometry (no placeholder swap, no scroll-anchoring surprise), and armed
+ * turns carry their measured height inline so elision stays size-neutral.
+ * The 480px fallback covers only the armed-but-unpinned edge case. */
+[data-dsh-clearview][data-dshcp-heavy="on"] section[data-reader-turn][data-reader-turn-state="closed"][data-cv-armed="1"]:not(:last-of-type):not(:nth-last-of-type(2)) {
   content-visibility: auto;
   contain-intrinsic-size: auto 480px;
 }

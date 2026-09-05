@@ -125,6 +125,8 @@ export interface MarkdownRenderContext {
   readonly renderText?: (value: string, offset: number, inline?: boolean) => ReactNode
   /** Reader addition: keep atomic code content behind the source-order gate. */
   readonly renderAtom?: (children: ReactNode, offset: number) => ReactNode
+  /** Reader addition: keep an inline atom (an inline-code chip shell) behind the source-order gate. */
+  readonly renderInlineAtom?: (children: ReactNode, offset: number) => ReactNode
   readonly sourceOffset?: number
   /** Streaming arm: fences render plain and TeX stays literal. */
   readonly streaming: boolean
@@ -245,36 +247,32 @@ function renderNode(node: Md.RootContent, key: Key, context: MarkdownRenderConte
     case 'inlineCode': {
       // Parity with mdast-util-to-hast: inline code renders line endings as spaces.
       const value = node.value.replace(/\r?\n|\r/g, ' ')
-      // Native code chips are inline-flex. Keep a single inline formatting
-      // context so motion spans do not become flex items or drop code spaces.
-      const content = context.renderText ? <span>{context.renderText(value, (context.sourceOffset ?? 0) + (node.position?.start.offset ?? 0), true)}</span> : value
+      const offset = (context.sourceOffset ?? 0) + (node.position?.start.offset ?? 0)
+      // With an inline-atom gate the whole chip (chrome + text) reveals as one
+      // unit at its first source character; without it the per-word motion
+      // leaves the chip background painting ahead of its text, sometimes lines
+      // ahead of its reveal. Inside the atom the content is plain, like fences.
+      const content = context.renderInlineAtom ? value
+        : context.renderText ? <span>{context.renderText(value, offset, true)}</span>
+        : value
       // An inline-code token that is entirely an absolute HTTP(S) URL keeps
       // its code chrome and gains the same safe external anchor as a link;
       // commands, partial URLs, and other schemes stay inert. The value is
       // authored text, not a parsed destination, so no normalizeUri: port,
       // path, and query render unchanged.
       const href = inlineCodeHttpUrl(value)
-      if (href !== undefined) return <code key={key}>{renderSafeLink(href, [content], 'link')}</code>
       // A token the owner's file-mention vocabulary recognizes opens that
       // file; the resolver, not this renderer, decides what names a file.
       // Inside an anchor the token stays inert — a button cannot nest there.
       const mention = context.inLink === true ? undefined : context.fileMentions?.resolve(value)
-      if (mention !== undefined) {
-        return (
-          <code key={key}>
-            <button
-              type="button"
-              className={css.fileMention}
-              title={mention.title}
-              aria-label={mention.label}
-              onClick={mention.open}
-            >
-              {content}
-            </button>
-          </code>
-        )
-      }
-      return <code key={key}>{content}</code>
+      const chip = href !== undefined
+        ? <code>{renderSafeLink(href, [content], 'link')}</code>
+        : mention !== undefined
+          ? <code><button type="button" className={css.fileMention} title={mention.title} aria-label={mention.label} onClick={mention.open}>{content}</button></code>
+          : <code>{content}</code>
+      return context.renderInlineAtom
+        ? <Fragment key={key}>{context.renderInlineAtom(chip, offset)}</Fragment>
+        : <Fragment key={key}>{chip}</Fragment>
     }
     case 'html':
       // No HTML parser enters the pipeline: raw HTML stays literal text.

@@ -66,6 +66,13 @@ function MotionAtom({ children, born, generation, offset }: { children: ReactNod
   return <div ref={element} className={css.streamAtom} data-reader-atom data-source-start={offset} data-source-birth={born ?? undefined}>{children}</div>;
 }
 
+/** An inline atom (an inline-code chip) reveals as one unit — chrome and text together. */
+function InlineMotionAtom({ children, born, generation, offset }: { children: ReactNode; born: number | null; generation: number; offset: number }) {
+  const element = useRef<HTMLSpanElement>(null);
+  useSourceReveal(element, born, generation, null);
+  return <span ref={element} className={css.streamInlineAtom} data-reader-atom data-source-start={offset} data-source-birth={born ?? undefined}>{children}</span>;
+}
+
 /** One paragraph of a reasoning transcript, memoized on its own text. */
 const ReasonSegment = memo(function ReasonSegment({ timeline, text, offset, generation, liveFrom }: {
   timeline: WordTimeline; text: string; offset: number; generation: number; liveFrom: number;
@@ -175,7 +182,11 @@ const renderText = useMemo(() => (value: string, offset: number, inline = false)
     const current = timeline.current!;
     return current.hasLiveText ? <MotionAtom born={current.bornAt(offset)} generation={current.generation} offset={offset}>{children}</MotionAtom> : children;
   }, []);
+  const renderInlineAtom = useMemo(() => (children: ReactNode, offset: number): ReactNode => {
+    const current = timeline.current!;
+    return current.hasLiveText ? <InlineMotionAtom born={current.bornAt(offset)} generation={current.generation} offset={offset}>{children}</InlineMotionAtom> : children;
+  }, []);
   return <WordScope.Provider value={scope}>
-    <MarkdownText text={text} streaming={streaming} codeLabels={CODE_LABELS} renderText={renderText} renderAtom={renderAtom} />
+    <MarkdownText text={text} streaming={streaming} codeLabels={CODE_LABELS} renderText={renderText} renderAtom={renderAtom} renderInlineAtom={renderInlineAtom} />
   </WordScope.Provider>;
 }

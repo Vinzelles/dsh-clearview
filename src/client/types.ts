@@ -20,6 +20,10 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export interface ReaderInjected {
   loadOlder: () => Promise<void>;
   loadImage: (attachment: ImageAttachmentRef) => Promise<{ data: Uint8Array; mediaType: string }>;
+  /** 用 Host 默认程序打开文件（绝对或工作区相对路径均可）。 */
+  openFile?: (path: string) => Promise<void>;
+  /** 列一个目录（相对会话 cwd 或绝对路径）下的条目名集合；用于文件改动卡的存在性校准。 */
+  listDirNames?: (path: string) => Promise<ReadonlySet<string>>;
 }
 export type ReaderProps = PropsRuntime<'conversation.view'>
   & PropsLocale<'conversation'>

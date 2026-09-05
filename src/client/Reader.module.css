@@ -60,9 +60,10 @@
 .readingText button { min-width: 24px; min-height: 24px; }
 .streamWord { display: inline-block; }
 .streamInlineWord { display: inline; }
-.streamWord, .streamInlineWord, .streamAtom { opacity: 1; filter: none; }
-.streamAtom { min-width: 0; }
-@media (prefers-reduced-motion: reduce) { .streamWord, .streamInlineWord, .streamAtom { opacity: 1 !important; filter: none !important; } }
+.streamWord, .streamInlineWord, .streamAtom, .streamInlineAtom { opacity: 1; filter: none; }
+.streamAtom, .streamInlineAtom { min-width: 0; }
+.streamInlineAtom { display: inline; }
+@media (prefers-reduced-motion: reduce) { .streamWord, .streamInlineWord, .streamAtom, .streamInlineAtom { opacity: 1 !important; filter: none !important; } }
 .retiringContent { min-width: 0; }
 .retiringContent[data-reader-retiring=retiring] { overflow: hidden; }
 .mainFlow, .blocks { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
@@ -129,9 +130,12 @@
   .thinkText[data-reader-status-copy=outgoing] { display: none !important; }
   .thinkText::before { display: none !important; }
 }
-.chevron { flex: none; stroke: currentColor; fill: none; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; transition: transform 260ms cubic-bezier(.22,1,.36,1); }
+.chevron { flex: none; stroke: currentColor; fill: none; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; transition: transform 260ms cubic-bezier(.22,1,.36,1), opacity 160ms ease; }
 .chevron[data-open=true] { transform: rotate(90deg); }
 .disclosureBody { overflow: hidden; height: 0; }
+/* CollapseBody's animated shell: clips its children while the WAAPI height
+   animation is shorter than the content, so nothing paints outside the card. */
+.collapseBody { overflow: hidden; }
 .processContents { display: flow-root; border-left: 1px solid var(--dsw-alias-border-l2); padding: 3px 0 2px 17px; margin: 0 0 0 6px; color: var(--dsw-alias-label-secondary); font-size: 14px; line-height: 24px; }
 .processContents > :last-child { margin-bottom: 0; }
 .processFrame { min-width: 0; padding-right: 2px; }
@@ -148,6 +152,13 @@
 .toolActivity[data-tool-phase=failed] .nativeToolRow,
 .toolActivity[data-tool-phase=interrupted] .nativeToolRow {
   background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 7%, transparent);
+}
+/* The whole tool row is the click target (expandOnRowClick); the host
+   primitives only swap the leading icon on hover, so give the row itself the
+   same interactive background as the other clickable rows. Placed after the
+   phase tints so it wins the specificity tie. */
+.toolActivity .nativeToolRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 .rowSeparator { flex: none; width: 2px; height: 2px; margin: 0 8px; border-radius: 1px; background: var(--dsw-alias-label-caption); }
 .nativeToolSummary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsw-alias-label-tertiary); font-size: 14px; line-height: 24px; }
@@ -193,10 +204,20 @@
 .toolState[data-phase=running]::before {
   animation: tool-state-pulse 1.15s ease-in-out infinite;
 }
+/* Every in-flight phase carries the same status motion, not just `running`:
+   a terminal command's long execution is what made the pulse/shimmer visible,
+   while write/read/search rows spend most of their visible lifetime in
+   `preparing` (the model streams the tool input — for write that is the whole
+   file content) and their actual execution settles in milliseconds. Gating the
+   motion on `running` alone left those rows visually static; the row tint above
+   already treats preparing and running as one active state, so the chip pulse
+   and summary sweep do the same. */
+.toolActivity[data-tool-phase=preparing] .toolState,
 .toolActivity[data-tool-phase=running] .toolState {
   animation: dsh-cluster-active-pulse 1.8s ease-in-out infinite;
 }
 @supports (background-clip: text) or (-webkit-background-clip: text) {
+  .toolActivity[data-tool-phase=preparing] .nativeToolSummary,
   .toolActivity[data-tool-phase=running] .nativeToolSummary {
     background-image: linear-gradient(90deg,
       color-mix(in srgb, var(--dsw-alias-label-secondary) 35%, transparent) 0%,
@@ -219,9 +240,10 @@
 /* Inside a merged failure card the same toolDetails block is reused as-is; the
    22px indent only aligns with the tool row's disclosure, so it is dropped,
    and the card's own border stands in for the toolDetails frame. */
-.errorCard > .toolDetails { margin-left: 0; border: 0; }
+.errorCard .toolDetails { margin-left: 0; border: 0; }
 .toolTabs { display: flex; align-items: center; gap: 15px; padding: 0 14px; }
 .toolTabs > button { background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 10px 1px 8px; font: inherit; font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-secondary); cursor: pointer; transition: color 160ms ease, border-color 160ms ease; }
+.toolTabs > button:hover { color: var(--dsw-alias-label-primary); }
 .toolTabs > button[aria-selected=true] { color: var(--dsw-alias-label-primary); border-bottom-color: var(--dsw-alias-state-business-primary); }
 .toolPanel { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; font-size: 13px; line-height: 22px; }
 .toolPanel:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: -3px; }
@@ -242,6 +264,10 @@
   width: 100%;
   min-width: 0;
   border-radius: 10px;
+  /* The card is the clip for the expanding body: the WAAPI height animation
+     makes .clusterBody shorter than its content mid-flight, and without this
+     the inner stack paints past the rounded card edge. */
+  overflow: hidden;
   background: var(--dsw-alias-bg-module-platform);
   background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 50%, transparent);
   backdrop-filter: blur(6px);
@@ -327,6 +353,10 @@
   flex-direction: column;
   min-width: 0;
   border-top: 1px solid var(--dsw-alias-border-l2);
+  /* Clip the inner stack while the animated height is still shorter than its
+     content (same role .disclosureBody plays for ProcessFragment); the card
+     above clips the remaining corner artifacts to the rounded border. */
+  overflow: hidden;
 }
 /* Padding + gaps live on the inner stack so the WAAPI height animation on
    .clusterBody never snaps content at its start/end frames. */
@@ -335,7 +365,7 @@
   flex-direction: column;
   gap: 8px;
   min-width: 0;
-  padding: 8px 12px 12px 28px;
+  padding: 8px 12px 12px 12px;
 }
 
 .clusterBlock[data-active="true"] .clusterSummary,
@@ -451,7 +481,12 @@
   color: var(--dsw-alias-label-primary);
 }
 .reasonCollapsedIcon { flex: none; color: inherit; }
-.reasonCollapsedText { font-weight: 500; min-width: 0; }
+/* Settled collapsed rows stay one visual step below the body: the inherited
+   secondary alias still reads as solid, so the finished "思考 · N 秒" summary
+   is dropped to 0.72 (the same finished-thinking treatment .reasonPlain gets)
+   — the more transparent the summary, the clearer it separates from the 16px
+   body text. Running rows lift back to full opacity for their shimmer. */
+.reasonCollapsedText { font-weight: 500; min-width: 0; opacity: 0.72; }
 .reasonCollapsedHint { margin-left: auto; flex: none; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
 .reasonCollapsedChevron { flex: none; stroke: currentColor; fill: none; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 .reasonCollapsed[data-active=true] .reasonCollapsedHint {
@@ -467,6 +502,8 @@
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+    /* Running rows animate at full opacity; only the settled row fades. */
+    opacity: 1;
     animation: dsh-cluster-active-shimmer 2.2s linear infinite;
   }
 }
@@ -476,7 +513,11 @@
   overflow: auto;
   scroll-behavior: auto;
   overflow-anchor: none;
-  overscroll-behavior-y: contain;
+  /* 不要加 overscroll-behavior-y: contain：思考视口是 mainFlow 里最大的嵌套
+     垂直滚动区，contain 会让「滚轮落在它顶部/底部边缘」时整个滚轮事件被吞掉
+     （实测 outerDelta=0），表现为鼠标在主流程区滚动无反应、必须移到两侧空白
+     才能滚动。去掉后边缘滚轮按嵌套滚动惯例回传给阅读器滚动区，与 .toolRaw、
+     pre、上下文注入块等其他嵌套滚动区行为一致。 */
   scrollbar-width: thin;
   scrollbar-color: var(--dsw-alias-border-l1) transparent;
 }
@@ -511,108 +552,22 @@
 @media (pointer: coarse) { .reasonAction { min-height: 44px; } }
 @media (forced-colors: active) { .reasonViewport { -webkit-mask-image: none !important; mask-image: none !important; } }
 @supports not (backdrop-filter: blur(1px)) {
-  .reasonCard, .clusterBlock, .noticeCard, .errorCard, .activityBar, .jump, .commandRecord {
+  .reasonCard, .clusterBlock, .noticeCard, .errorCard, .activityBar, .jump {
     background: var(--dsw-alias-bg-module-platform);
   }
 }
 .detail { font-size: 13px; line-height: 22px; color: var(--dsw-alias-label-secondary); }
-.detail > summary { cursor: pointer; padding: 3px 0; }
+.detail > summary { cursor: pointer; padding: 3px 6px; margin: 0 -6px; border-radius: 6px; transition: background-color 160ms ease; }
+.detail > summary:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .detail[open] > summary { margin-bottom: 8px; }
-/* Command / compaction records use the same card chrome as the process cards
-   (tool cluster, notice, error): border, 10px radius, translucent module
-   background with blur. The lifecycle state is carried by the status text
-   (dot + label color, running pulse/shimmer) instead of a whole-card tint, so
-   the record reads as a member of the card family. */
-.commandRecord {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  max-width: 100%;
-  padding: 6px 12px 8px;
-  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 80%, rgba(255, 255, 255, 0.08));
-  border-radius: 10px;
-  background: var(--dsw-alias-bg-module-platform);
-  background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 50%, transparent);
-  backdrop-filter: blur(6px);
-  transition: background-color 160ms ease, border-color 160ms ease;
-}
-.commandRecord:hover {
-  background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 82%, transparent);
-  border-color: color-mix(in srgb, var(--dsw-alias-border-l1) 75%, rgba(255, 255, 255, 0.12));
-}
-.commandRecordStatus {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  padding: 0 2px;
-  font-size: 13px;
-  line-height: 20px;
-}
-.commandRecord[data-command-state=running] .commandRecordStatus {
+/* Command / compaction records are the same expandable card as the other
+   notices (single-line summary, whole row clickable); the lifecycle state is
+   carried by the title color (running pulse / success green / error red). */
+.noticeCard[data-state=running] .noticeCardTitle {
   color: var(--dsw-alias-state-business-primary);
   animation: dsh-cluster-active-pulse 1.8s ease-in-out infinite;
 }
-@supports (background-clip: text) or (-webkit-background-clip: text) {
-  .commandRecord[data-command-state=running] .commandRecordSummary {
-    background-image: linear-gradient(90deg,
-      color-mix(in srgb, var(--dsw-alias-label-secondary) 35%, transparent) 0%,
-      var(--dsw-alias-label-primary) 50%,
-      color-mix(in srgb, var(--dsw-alias-label-secondary) 35%, transparent) 100%);
-    background-size: 200% 100%;
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    animation: dsh-cluster-active-shimmer 2.2s linear infinite;
-  }
-}
-.commandRecord[data-command-state=running] button {
-  animation: dsh-cluster-active-pulse 1.8s ease-in-out infinite;
-}
-.commandRecord[data-command-state=success] .commandRecordStatus {
-  color: var(--dsw-alias-state-success-primary);
-}
-.commandRecord[data-command-state=error] .commandRecordStatus {
-  color: var(--dsw-alias-state-error-primary);
-}
-.commandRecordDot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  flex: none;
-}
-.commandRecord[data-command-state=running] .commandRecordDot {
-  animation: tool-state-pulse 1.15s ease-in-out infinite;
-}
-.commandRecordLabel {
-  font-weight: 500;
-  flex: none;
-}
-.commandRecordSummary {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
-}
-.commandRecord button {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* Manual compaction lifecycle row inside the command record card */
-.commandRecordStatus[data-compaction-state=running] {
-  color: var(--dsw-alias-state-business-primary);
-}
-.commandRecordStatus[data-compaction-state=running] .commandRecordDot {
-  animation: tool-state-pulse 1.15s ease-in-out infinite;
-}
-.commandRecordStatus[data-compaction-state=success] {
+.noticeCard[data-state=success] .noticeCardTitle {
   color: var(--dsw-alias-state-success-primary);
 }
 .meta { font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-tertiary); }
@@ -623,42 +578,75 @@
 .error p { margin: 6px 0; }
 .errorCard {
   border: 1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 32%, transparent);
-  border-radius: 10px;
+  /* Collapsed rows share the 6px radius of the native tool row; opening rounds
+     the card back to the 10px card-family radius. */
+  border-radius: 6px;
   background: var(--dsw-alias-interactive-bg-hover-danger);
   background: color-mix(in srgb, var(--dsw-alias-interactive-bg-hover-danger) 45%, transparent);
   backdrop-filter: blur(6px);
   color: var(--dsw-alias-state-error-primary);
   overflow: hidden;
+  transition: border-radius 160ms ease, background-color 160ms ease, border-color 160ms ease;
 }
-.errorCard > summary {
+.errorCard[data-open=true] { border-radius: 10px; }
+/* Shared expandable-card header: a real <button> (not a <summary>) so the
+   body can stay mounted and animate through CollapseBody. Collapsed = one
+   24px process line (13px/20px, so the shrunken row keeps a small font);
+   open = roomier header. */
+.errorCard > button,
+.noticeCard > button {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px 10px;
-  padding: 8px 12px;
-  cursor: pointer;
-  list-style: none;
+  width: 100%;
+  padding: 2px 12px;
+  min-height: 24px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   font-size: 13px;
   line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+  /* Padding drives the collapsed 24px ↔ open header height; the separator is
+     an inset shadow so it never shifts layout, and both animate with the body. */
+  box-shadow: inset 0 -1px 0 transparent;
+  transition: background-color 160ms ease, padding 160ms ease, box-shadow 160ms ease;
 }
-.errorCard > summary::-webkit-details-marker { display: none; }
-.errorCard[open] > summary .chevron { transform: rotate(90deg); }
-.errorCard[open] > summary {
-  border-bottom: 1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 22%, transparent);
+.errorCard > button:hover,
+.noticeCard > button:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.errorCard[data-open=true] > button {
+  padding: 8px 12px;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--dsw-alias-state-error-primary) 22%, transparent);
+}
+.noticeCard[data-open=true] > button {
+  padding: 8px 12px;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--dsw-alias-border-l2) 45%, transparent);
 }
 .errorCardTitle {
   font-weight: 500;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .errorCardMeta {
   font-variant-numeric: tabular-nums;
   opacity: 0.85;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .errorCardHint {
   margin-left: auto;
+  flex: none;
   font-size: 12px;
   line-height: 18px;
   opacity: 0.75;
+  white-space: nowrap;
 }
 .errorCardBody {
   padding: 10px 12px 12px;
@@ -667,43 +655,79 @@
 .errorCardBody .blocks { gap: 8px; }
 .noticeCard {
   border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 65%, transparent);
-  border-radius: 10px;
+  /* Same collapsed/open radius rhythm as .errorCard. */
+  border-radius: 6px;
   background: var(--dsw-alias-bg-module-platform);
   background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 45%, transparent);
   backdrop-filter: blur(6px);
   color: var(--dsw-alias-label-secondary);
   overflow: hidden;
+  transition: border-radius 160ms ease, background-color 160ms ease, border-color 160ms ease;
 }
-.noticeCard > summary {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px 10px;
-  padding: 8px 12px;
-  cursor: pointer;
-  list-style: none;
-  font-size: 13px;
-  line-height: 20px;
-}
-.noticeCard > summary::-webkit-details-marker { display: none; }
-.noticeCard[open] > summary .chevron { transform: rotate(90deg); }
-.noticeCard[open] > summary {
-  border-bottom: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 45%, transparent);
-}
+.noticeCard[data-open=true] { border-radius: 10px; }
 .noticeCardTitle {
   font-weight: 500;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .noticeCardBody {
   padding: 10px 12px 12px;
   color: var(--dsw-alias-label-secondary);
 }
 .noticeCardBody .blocks { gap: 8px; }
+/* 上下文压缩记录（manual-compaction / compaction，data-reader-compaction-record）：
+   对话中的关键节点，设计为状态卡片突出显示——常驻卡片 chrome（边框 + 半透明
+   底色 + 毛玻璃）并按状态着色（运行=业务蓝、成功=绿、失败=红），状态圆点 +
+   着色标题是视觉主体；仍可展开但交互被弱化：无提示文案、无 hover 盒子，
+   右侧只有一枚小尺寸低亮度的 chevron 静置暗示。 */
+.noticeCard[data-reader-compaction-record][data-state=running] {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-business-primary) 45%, transparent);
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent);
+}
+.noticeCard[data-reader-compaction-record][data-state=success] {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 45%, transparent);
+  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent);
+}
+.errorCard[data-reader-compaction-record] {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, transparent);
+  background: color-mix(in srgb, var(--dsw-alias-interactive-bg-hover-danger) 60%, transparent);
+}
+.errorCard[data-reader-compaction-record] > button:hover,
+.noticeCard[data-reader-compaction-record] > button:hover { background: transparent; }
+.errorCard[data-reader-compaction-record] .errorCardHint,
+.noticeCard[data-reader-compaction-record] .errorCardHint { display: none; }
+.errorCard[data-reader-compaction-record] > button .chevron,
+.noticeCard[data-reader-compaction-record] > button .chevron { opacity: 0.45; }
+.errorCard[data-reader-compaction-record] > button:hover .chevron,
+.noticeCard[data-reader-compaction-record] > button:hover .chevron { opacity: 0.9; }
+/* 状态卡片比普通可展开行更高（36px，与展开态卡片头部同一高度），flex 垂直居中；
+   展开与收起共用该高度，头部不再因开合跳变。 */
+.noticeCard[data-reader-compaction-record] > button,
+.errorCard[data-reader-compaction-record] > button {
+  min-height: 36px;
+  padding: 8px 12px;
+  align-items: center;
+}
+/* 右侧打勾：整理完成的状态徽标（仅 success；运行中/失败不显示），
+   margin-left:auto 把它推到卡片最右缘。 */
+.noticeCard[data-reader-compaction-record][data-state=success] > button::after {
+  content: '';
+  flex: none;
+  margin-left: auto;
+  width: 14px;
+  height: 14px;
+  background: var(--dsw-alias-state-success-primary);
+  -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="m3 8.5 3.5 3.5L13 5" fill="none" stroke="black" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>') center / contain no-repeat;
+  mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="m3 8.5 3.5 3.5L13 5" fill="none" stroke="black" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>') center / contain no-repeat;
+}
 .attention { display: flex; flex-direction: column; gap: 3px; border: 1px solid var(--dsw-alias-state-business-primary); color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-base); }
 .attention span { color: var(--dsw-alias-label-secondary); }
 .unknown { background: var(--dsw-alias-bg-module-platform); border: 1px solid var(--dsw-alias-border-l2); border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 22px; }
 .unknown p { margin: 0 0 6px; }
 .historyButton { align-self: center; background: transparent; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 4px 12px; font-size: 12px; color: var(--dsw-alias-label-secondary); transition: background-color 160ms ease, color 160ms ease, opacity 160ms ease; }
+.historyButton:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 .historyButton:disabled { opacity: .55; cursor: default; }
 .empty { padding: 40px 0; color: var(--dsw-alias-label-tertiary); text-align: center; }
 .answerActions { display: flex; align-items: center; gap: 8px; margin: 13px 0 0 -6px; min-height: 28px; }
@@ -712,10 +736,11 @@
 .iconButton:active { transform: scale(0.92); }
 .iconButton svg { fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
 .imageFigure { margin: 0; width: min(100%, 460px); align-self: flex-start; }
-.imageFrame { position: relative; border-radius: 12px; background: var(--dsw-alias-bg-module-platform); border: 1px solid var(--dsw-alias-border-l2); overflow: hidden; max-height: 520px; min-height: 96px; }
+.imageFrame { position: relative; border-radius: 12px; background: var(--dsw-alias-bg-module-platform); border: 1px solid var(--dsw-alias-border-l2); overflow: hidden; max-width: 100%; max-height: 520px; min-height: 96px; }
 .imageOpen { border: 0; padding: 0; position: absolute; inset: 0; background: transparent; display: flex; width: 100%; height: 100%; }
-.imageOpen img { display: block; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity 200ms cubic-bezier(.22,1,.36,1); }
+.imageOpen img { display: block; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity 200ms cubic-bezier(.22,1,.36,1), filter 160ms ease; }
 .imageOpen img[data-ready=true] { opacity: 1; }
+.imageOpen:hover img[data-ready=true] { filter: brightness(1.06); }
 .imagePlaceholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 8px; color: var(--dsw-alias-label-tertiary); font-size: 13px; pointer-events: none; }
 .imagePlaceholder button { pointer-events: auto; }
 .imageFigure figcaption { color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 20px; margin-top: 6px; overflow-wrap: anywhere; }
@@ -752,7 +777,10 @@
   box-sizing: content-box;
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
+  /* Left inset is optically compensated: the sparkle's left tip is a thin
+     point (reads further away than it is) while the right side is visually
+     dense (companion stars), so geometric symmetry looks lopsided. */
+  padding: 4px 10px 4px 6px;
   border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 80%, rgba(255, 255, 255, 0.08));
   border-radius: 6px;
   background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 78%, transparent);
@@ -772,6 +800,21 @@
    is still catching up: flex:none stops the observer from chasing its own
    compression — the bar clips the transient overhang instead. */
 .activityBarContent { display: inline-flex; align-items: center; flex: none; }
+/* Four-point AI sparkle: a large star with two companions, twinkling on
+   non-integer staggered periods (5s/3.4s/2.6s) so the combined pattern never
+   visibly repeats or reads as a spinner — no rotation anywhere. The star
+   breathes scale+opacity; waiting freezes it (a paused-for-user bar must not
+   look busy); motion-off/reduced-motion settles it at full brightness. */
+.activitySpinner { display: inline-flex; margin-right: 7px; color: var(--dsw-alias-state-business-primary); }
+.activitySpinner path { fill: currentColor; transform-origin: center; transform-box: fill-box; }
+.activityStarMain { animation: activity-twinkle 5s cubic-bezier(.45, 0, .55, 1) infinite; }
+.activityStarMid { animation: activity-twinkle 3.4s cubic-bezier(.45, 0, .55, 1) -1.2s infinite; color: var(--dsw-alias-label-secondary); }
+.activityStarTiny { animation: activity-twinkle 2.6s cubic-bezier(.45, 0, .55, 1) -2s infinite; color: var(--dsw-alias-label-secondary); }
+@keyframes activity-twinkle {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.25; transform: scale(0.72); }
+}
+.activityBar[data-phase=waiting] .activitySpinner path { animation-play-state: paused; }
 .activityText { font-weight: 500; color: var(--dsw-alias-label-primary); white-space: nowrap; }
 .activityTimer { margin-left: 8px; font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-secondary); white-space: nowrap; }
 /* Decorative arrow: borderless icon. Already-at-latest folds it away.
@@ -822,14 +865,112 @@
   flex: none;
 }
 
+/* 本会话文件改动：会话空闲后挂在阅读流 mainFlow 末尾。
+   v3.1：空态整体不渲染；折叠态纯文字行（无边框/背景，与「执行过程」等
+   文字行同语言），展开后浮起为卡片（边框 + 卡片底色）。 */
+.fileChanges {
+  min-width: 0;
+}
+.fileChanges[data-open=true] {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  padding: 10px 14px 12px;
+  background: var(--dsw-alias-bg-module-platform);
+}
+.fileHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 3px 6px;
+  margin: 0 -6px;
+  border-radius: 7px;
+  color: var(--dsw-alias-label-secondary);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.fileHeader:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.fileTitle { flex: none; color: var(--dsw-alias-label-secondary); font-size: 13px; font-weight: 500; line-height: 22px; }
+.fileMeta { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 20px; }
+.fileBadges { flex: none; display: inline-flex; align-items: center; gap: 6px; max-width: 60%; overflow: hidden; }
+.fileBadge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-bg-module);
+  border: 1px solid var(--dsw-alias-border-l2);
+}
+.fileBadge::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--dsw-alias-label-tertiary); }
+.fileBadge[data-tone=added]::before { background: var(--dsw-alias-state-success-primary); }
+.fileBadge[data-tone=modified]::before { background: var(--dsw-alias-state-business-primary); }
+.fileBadge[data-tone=deleted]::before { background: var(--dsw-alias-state-error-primary); }
+.fileBadge[data-tone=none]::before { display: none; }
+.fileBody { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin: 8px 0 2px; }
+.fileRow { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.fileRowHead { flex: none; display: inline-flex; align-items: center; gap: 6px; min-width: 64px; }
+.fileRowDot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--dsw-alias-label-tertiary); }
+.fileRow[data-tone=added] .fileRowDot { background: var(--dsw-alias-state-success-primary); }
+.fileRow[data-tone=modified] .fileRowDot { background: var(--dsw-alias-state-business-primary); }
+.fileRow[data-tone=deleted] .fileRowDot { background: var(--dsw-alias-state-error-primary); }
+.fileRowLabel { color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 22px; font-weight: 500; }
+.fileRowCount { color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 22px; font-variant-numeric: tabular-nums; }
+.fileChips {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.fileChip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 300px;
+  padding: 2px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-module);
+  color: var(--dsw-alias-label-secondary);
+  font: 12px/20px ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+button.fileChip { cursor: pointer; transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease; }
+button.fileChip:hover { background: var(--dsw-alias-interactive-bg-hover); border-color: var(--dsw-alias-border-l3, var(--dsw-alias-border-l2)); color: var(--dsw-alias-label-primary); }
+.fileChipMore {
+  flex: none;
+  padding: 2px 10px;
+  border: 1px dashed var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.fileChipMore:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); }
+
 /* Mount enter for live-only floating surfaces: transform/opacity only.
    Historical mounts render settled (no replay); exits unmount instantly.
    First paint is settled: the entering class only appears when MountFade
    detects a fresh live mount, so a historical bar/pill never flashes.
    isIn owns the settled state's transition list — keep width in it or label
    changes lose their animation once the bar settles. */
-.activityBar.isEntering, .attention.isEntering { opacity: 0; transform: translateY(6px); transition: none; }
+.activityBar.isEntering, .attention.isEntering, .fileChanges.isEntering { opacity: 0; transform: translateY(6px); transition: none; }
 .activityBar.isIn, .attention.isIn { opacity: 1; transform: none; transition: width 200ms cubic-bezier(.22,1,.36,1), opacity 220ms cubic-bezier(.22,1,.36,1), transform 220ms cubic-bezier(.22,1,.36,1); }
+.fileChanges.isIn { opacity: 1; transform: none; transition: opacity 220ms cubic-bezier(.22,1,.36,1), transform 220ms cubic-bezier(.22,1,.36,1); }
 .activityBar[data-detached].isIn { opacity: 0.25; transform: translateY(2px); }
 .jumpDock.isEntering { opacity: 0; transition: none; }
 /* Detached hover/click feedback. Placed after the mount-enter block on
@@ -840,27 +981,27 @@
 .activityBar[data-detached]:hover .activityJump { color: var(--dsw-alias-label-primary); }
 .activityBar[data-detached]:active { transform: translateY(2px) scale(0.98); }
 .jumpDock.isIn { opacity: 1; transition: opacity 220ms cubic-bezier(.22,1,.36,1); }
-[data-motion=off] .chevron, [data-motion=off] .imageOpen img, [data-motion=off] .activityBar, [data-motion=off] .jump, [data-motion=off] .textButton, [data-motion=off] .switchButton, [data-motion=off] .iconButton, [data-motion=off] .disclosureButton, [data-motion=off] .clusterHeader, [data-motion=off] .reasonCollapsed, [data-motion=off] .reasonAction, [data-motion=off] .activityJump, [data-motion=off] .activityJump svg, [data-motion=off] .dialogClose, [data-motion=off] .historyButton, [data-motion=off] .toolTabs > button { transition: none; }
+[data-motion=off] .chevron, [data-motion=off] .imageOpen img, [data-motion=off] .activityBar, [data-motion=off] .jump, [data-motion=off] .textButton, [data-motion=off] .switchButton, [data-motion=off] .iconButton, [data-motion=off] .disclosureButton, [data-motion=off] .clusterHeader, [data-motion=off] .reasonCollapsed, [data-motion=off] .reasonAction, [data-motion=off] .activityJump, [data-motion=off] .activityJump svg, [data-motion=off] .dialogClose, [data-motion=off] .historyButton, [data-motion=off] .toolTabs > button, [data-motion=off] .nativeToolRow, [data-motion=off] .detail > summary, [data-motion=off] .errorCard, [data-motion=off] .noticeCard, [data-motion=off] .errorCard > button, [data-motion=off] .noticeCard > button { transition: none; }
 [data-motion=off] .isEntering, [data-motion=off] .isIn { transition: none; }
+[data-motion=off] .toolActivity[data-tool-phase=preparing] .nativeToolSummary,
+[data-motion=off] .toolActivity[data-tool-phase=preparing] .toolState,
 [data-motion=off] .toolActivity[data-tool-phase=running] .nativeToolSummary,
 [data-motion=off] .toolActivity[data-tool-phase=running] .toolState,
-[data-motion=off] .commandRecord[data-command-state=running] .commandRecordSummary,
 [data-motion=off] .reasonCollapsed[data-active=true] .reasonCollapsedText,
 [data-motion=off] .reasonCollapsed[data-active=true] .reasonCollapsedHint,
-[data-motion=off] .commandRecordDot,
-[data-motion=off] .commandRecord[data-command-state=running] .commandRecordStatus,
-[data-motion=off] .commandRecord[data-command-state=running] button { animation: none !important; }
+[data-motion=off] .activitySpinner path,
+[data-motion=off] .noticeCard[data-state=running] .noticeCardTitle { animation: none !important; }
 @media (prefers-reduced-motion: reduce) {
-  .chevron, .imageOpen img, .activityBar, .jump, .textButton, .switchButton, .iconButton, .disclosureButton, .clusterHeader, .reasonCollapsed, .reasonAction, .activityJump, .activityJump svg, .dialogClose, .historyButton, .toolTabs > button, .isEntering, .isIn { transition: none; }
+  .chevron, .imageOpen img, .activityBar, .jump, .textButton, .switchButton, .iconButton, .disclosureButton, .clusterHeader, .reasonCollapsed, .reasonAction, .activityJump, .activityJump svg, .dialogClose, .historyButton, .toolTabs > button, .nativeToolRow, .detail > summary, .errorCard, .noticeCard, .errorCard > button, .noticeCard > button, .fileChanges, .fileHeader, .fileChip, .fileChipMore, .isEntering, .isIn { transition: none; }
   .toolState::before,
+  .toolActivity[data-tool-phase=preparing] .nativeToolSummary,
+  .toolActivity[data-tool-phase=preparing] .toolState,
   .toolActivity[data-tool-phase=running] .nativeToolSummary,
   .toolActivity[data-tool-phase=running] .toolState,
-  .commandRecord[data-command-state=running] .commandRecordSummary,
   .reasonCollapsed[data-active=true] .reasonCollapsedText,
   .reasonCollapsed[data-active=true] .reasonCollapsedHint,
-  .commandRecordDot,
-  .commandRecord[data-command-state=running] .commandRecordStatus,
-  .commandRecord[data-command-state=running] button { animation: none !important; }
+  .activitySpinner path,
+  .noticeCard[data-state=running] .noticeCardTitle { animation: none !important; }
 }
-@media (pointer: coarse) { .disclosureButton { min-height: 44px; } }
+@media (pointer: coarse) { .disclosureButton { min-height: 44px; } button.fileChip, .fileChipMore { min-height: 32px; } }
 @media (max-width: 600px) { .column { gap: 18px; } .toolbar { font-size: 11px; } .user { max-width: 90%; } }
