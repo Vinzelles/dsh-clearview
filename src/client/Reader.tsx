@@ -608,7 +608,7 @@ export function Reader(props: ReaderProps) {
       listDirNames={props.listDirNames}
     />
   );
-  return <StreamMotionContext.Provider value={streamMotion}><div ref={root} className={css.root} data-dsh-clearview="0.1.7" data-motion={motion ? 'on' : 'off'}>
+  return <StreamMotionContext.Provider value={streamMotion}><div ref={root} className={css.root} data-dsh-clearview="0.1.8" data-motion={motion ? 'on' : 'off'}>
     <div className={css.column}>
       <div className={css.toolbar} data-ud-check="reader-toolbar">
         <Switch label={`折叠思考${collapseThinking ? '开' : '关'}`} checked={collapseThinking} onChange={() => props.actions.setCollapseThinking(!collapseThinking)}
