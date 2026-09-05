@@ -1,9 +1,10 @@
-import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { memo, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ToolCallBlock, ToolResultNode } from '@deepseek-ai/dsh-client-runtime/client';
 import { DiffBlock, DisclosureRow, JsonTree, ReadBlock, SearchBlock, TerminalBlock, WebBlock,
   IconApiOutline14, IconBrowseOutline16, IconEditOutline16, IconSearchOutline16, IconSkillOutline16, IconSparkle16 } from '@deepseek-ai/dsh-client-ui-primitives';
 import { Blocks, contentBlocks } from './Blocks.js';
-import { ProcessFragment } from './motion.js';
+import { CollapseBody, ProcessFragment } from './motion.js';
+import { StreamMotionContext } from './streaming.js';
 import { activityPhase, activitySummary, executionFacts, exitCodeFromOutput, toolIdentity } from './tool-activity.js';
 import type { ToolActivityEntry, ToolCategory, ToolPhase } from './tool-activity.js';
 import type { BlockRenderProps } from './types.js';
@@ -173,6 +174,8 @@ export const ToolActivity = memo(function ToolActivityView({ entry, motion, turn
 // recursively.
 export function ToolMedia({ block, depth = 0, open = true, ...render }: BlockRenderProps & { block: ToolCallBlock; depth?: number; open?: boolean }) {
   if (depth > 6) return null;
+  const { enabled } = useContext(StreamMotionContext);
+  const [cardOpen, setCardOpen] = useState(false);
   const settled = 'kind' in block;
   const failed = activityPhase({ block }) === 'failed';
   const media = settled ? contentBlocks(block.content).filter(item => item.kind === 'image' || item.kind === 'other') : [];
@@ -182,16 +185,18 @@ export function ToolMedia({ block, depth = 0, open = true, ...render }: BlockRen
   const exitCode = facts.exitCode ?? (failed ? exitCodeFromOutput(text, true) : undefined);
   return <>
     {failed && open && model && (
-      <details className={css.errorCard} data-reader-tool-error>
-        <summary>
-          <svg className={css.chevron} viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg>
+      <div className={css.errorCard} data-reader-tool-error data-open={cardOpen}>
+        <button type="button" data-open={cardOpen} aria-expanded={cardOpen} onClick={() => setCardOpen(value => !value)}>
+          <svg className={css.chevron} data-open={cardOpen} viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg>
           <span className={css.errorCardTitle}>{toolIdentity({ block }).name} 执行未成功</span>
           {exitCode !== undefined && <span className={css.errorCardMeta}>退出码 {exitCode}</span>}
           <span className={css.errorCardHint}>展开查看详情</span>
-        </summary>
-        <ToolDetails entry={{ kind: 'tool', key: `reader-tool:${block.callId}`, callId: block.callId, step: 0, order: 0, block }}
-          model={model} phase="failed" {...render} />
-      </details>
+        </button>
+        <CollapseBody open={cardOpen} motion={enabled}>
+          <ToolDetails entry={{ kind: 'tool', key: `reader-tool:${block.callId}`, callId: block.callId, step: 0, order: 0, block }}
+            model={model} phase="failed" {...render} />
+        </CollapseBody>
+      </div>
     )}
     {media.length > 0 && <Blocks {...render} blocks={media} source="tool" />}
     {block.subCalls.map(child => <ToolMedia key={child.callId} {...render} block={child} depth={depth + 1} open={open} />)}

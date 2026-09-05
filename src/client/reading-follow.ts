@@ -1,7 +1,11 @@
 /** Pure decision table for the reader's conversation-level follow, so the
- *  DOM hook stays wiring only. The reading guards (a live text selection or
- *  focus inside the reader) intentionally pause auto-follow — but a pause the
- *  reader cannot see or end is the silent-stall bug this table fixes. */
+ *  DOM hook stays wiring only. The reading guards — a live text selection, or
+ *  focus on a text-editing surface inside the reader — intentionally pause
+ *  auto-follow; incidental focus on a control (a clicked disclosure, a tab,
+ *  the scrollable thinking card) does NOT, or it silently stalls the viewport
+ *  at the bottom and the jump dock surfaces at turn end with a real offset.
+ *  A guard pause the reader cannot see or end is the silent-stall bug this
+ *  table makes visible (`surface`). */
 
 /** Same gap budget the scroll attribution uses to call a position "at bottom". */
 export const READING_SURFACE_GAP = 72;

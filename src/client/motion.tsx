@@ -1,5 +1,6 @@
 import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
+import clsx from 'clsx';
 import css from './Reader.module.css';
 import { StreamMotionContext } from './streaming.js';
 import { READING_SURFACE_GAP, readingFollowAction, readingScrollAction } from './reading-follow.js';
@@ -181,7 +182,7 @@ export function CollapseBody({ open, motion, children, className }: {
   }, [open, motion]);
   useEffect(() => () => { running.current?.cancel(); }, []);
   if (!open && !present) return null;
-  return <div ref={body} className={className} data-ud-motion="reader-collapse-size"
+  return <div ref={body} className={clsx(className, css.collapseBody)} data-ud-motion="reader-collapse-size"
     aria-hidden={!open} {...(!open ? { inert: '' } : {})}>
     {children}
   </div>;
@@ -321,7 +322,16 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean):
     };
     const focused = () => {
       const active = document.activeElement;
-      return active instanceof HTMLElement && active !== document.body && content.contains(active);
+      if (!active || !(active instanceof HTMLElement) || active === document.body || !content.contains(active)) return false;
+      // Only a text-editing surface is a "reading guard." Incidental focus on a
+      // control the reader merely clicked or keyboard-tabbbed (a disclosure, a
+      // process/tool tab, the scrollable thinking card) must NOT pause follow —
+      // that silent stall is what left the viewport off the bottom and surfaced
+      // the jump dock at turn end with a real offset (the reader has no text
+      // inputs, so in practice this rarely fires). Explicit scroll intent is
+      // still captured by the wheel / key / touch / pointer handlers below.
+      return active.isContentEditable
+        || active.matches('textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])');
     };
     const releaseFollow = () => {
       cancelAnimationFrame(followFrame); followFrame = 0;

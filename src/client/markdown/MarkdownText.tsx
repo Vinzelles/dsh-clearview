@@ -33,6 +33,7 @@ function renderSettled(
   fileMentions: MarkdownFileMentions | undefined,
   renderText: MarkdownRenderContext['renderText'],
   renderAtom: MarkdownRenderContext['renderAtom'],
+  renderInlineAtom: MarkdownRenderContext['renderInlineAtom'],
 ): ReactNode[] {
   const root = parseGfmWithMath(text)
   const targets = createReferenceTargets()
@@ -40,6 +41,7 @@ function renderSettled(
   const context: MarkdownRenderContext = {
     renderText,
     renderAtom,
+    renderInlineAtom,
     streaming: false,
     codeLabels,
     fileMentions,
@@ -73,7 +75,7 @@ class StreamingRenderer {
   private lastRendered: ReactNode[] = []
 
   /** @param codeLabels - Fence copy labels baked into cached elements; the owner replaces the renderer when they change. */
-  constructor(private readonly codeLabels: MarkdownCodeLabels | undefined, private readonly renderText: MarkdownRenderContext['renderText'], private readonly renderAtom: MarkdownRenderContext['renderAtom']) {}
+  constructor(private readonly codeLabels: MarkdownCodeLabels | undefined, private readonly renderText: MarkdownRenderContext['renderText'], private readonly renderAtom: MarkdownRenderContext['renderAtom'], private readonly renderInlineAtom: MarkdownRenderContext['renderInlineAtom']) {}
 
   /**
    * Render the current accumulated text. Idempotent per text value, so React
@@ -106,6 +108,7 @@ class StreamingRenderer {
       const frozenContext: MarkdownRenderContext = {
         renderText: this.renderText,
         renderAtom: this.renderAtom,
+        renderInlineAtom: this.renderInlineAtom,
         streaming: true,
         codeLabels: this.codeLabels,
         fileMentions: undefined,
@@ -126,6 +129,7 @@ class StreamingRenderer {
     const tailContext: MarkdownRenderContext = {
       renderText: this.renderText,
       renderAtom: this.renderAtom,
+      renderInlineAtom: this.renderInlineAtom,
       streaming: true,
       codeLabels: this.codeLabels,
       fileMentions: undefined,
@@ -162,26 +166,27 @@ class StreamingRenderer {
  * relative links, and unsafe protocols are disabled, while absolute HTTP(S)
  * images render directly.
  */
-export const MarkdownText = memo(function MarkdownText({ text, streaming = false, codeLabels, fileMentions, renderText, renderAtom }: {
+export const MarkdownText = memo(function MarkdownText({ text, streaming = false, codeLabels, fileMentions, renderText, renderAtom, renderInlineAtom }: {
   text: string
   streaming?: boolean
   codeLabels?: MarkdownCodeLabels | undefined
   fileMentions?: MarkdownFileMentions | undefined
   renderText?: MarkdownRenderContext['renderText']
   renderAtom?: MarkdownRenderContext['renderAtom']
+  renderInlineAtom?: MarkdownRenderContext['renderInlineAtom']
 }) {
   const streamRef = useRef<StreamingRenderer | null>(null)
   const streamLabelsRef = useRef<MarkdownCodeLabels | undefined>(codeLabels)
   const children = useMemo(() => {
     if (!streaming) {
       streamRef.current = null
-      return renderSettled(text, codeLabels, fileMentions, renderText, renderAtom)
+      return renderSettled(text, codeLabels, fileMentions, renderText, renderAtom, renderInlineAtom)
     }
     if (streamRef.current === null || streamLabelsRef.current !== codeLabels) {
-      streamRef.current = new StreamingRenderer(codeLabels, renderText, renderAtom)
+      streamRef.current = new StreamingRenderer(codeLabels, renderText, renderAtom, renderInlineAtom)
       streamLabelsRef.current = codeLabels
     }
     return streamRef.current.render(text)
-  }, [text, streaming, codeLabels, fileMentions, renderText, renderAtom])
+  }, [text, streaming, codeLabels, fileMentions, renderText, renderAtom, renderInlineAtom])
   return <div className={css.markdown}>{children}</div>
 })

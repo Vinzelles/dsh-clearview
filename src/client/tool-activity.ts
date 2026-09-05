@@ -198,6 +198,7 @@ export interface OperationalClusterSummary {
   tools: number;
   operations: number;
   failed: number;
+  skills: number;
 }
 
 export type OperationalFlowItem =
@@ -206,6 +207,7 @@ export type OperationalFlowItem =
 
 export function formatOperationClusterSummary(summary: OperationalClusterSummary): string {
   const parts: string[] = [];
+  if (summary.skills > 0) parts.push(`使用了 ${summary.skills} 个技能`);
   if (summary.commands > 0) parts.push(`运行了 ${summary.commands} 条命令`);
   if (summary.tools > 0) parts.push(`进行了 ${summary.tools} 次工具调用`);
   if (summary.operations > 0) parts.push(`执行了 ${summary.operations} 个操作`);
@@ -228,6 +230,7 @@ export function groupOperationalFlow(
       let tools = 0;
       let operations = 0;
       let failed = 0;
+      let skills = 0;
       let hasActive = false;
       let hasFailed = false;
 
@@ -239,6 +242,7 @@ export function groupOperationalFlow(
           if (phase === 'failed') { hasFailed = true; failed++; }
 
           const summary = activitySummary(entry);
+          if (summary.name === 'skill') skills++;
           if (summary.category === 'terminal') {
             commands++;
           } else if (summary.category === 'read' || summary.category === 'write') {
@@ -263,7 +267,7 @@ export function groupOperationalFlow(
         kind: 'cluster',
         key: `cluster:${first.kind === 'node' ? first.nodeKey : first.callId}`,
         items: currentGroup,
-        summary: { commands, tools, operations, failed },
+        summary: { commands, tools, operations, failed, skills },
         hasActive,
         hasFailed,
       });

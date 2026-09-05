@@ -1,4 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis';
+import { resolveWorkspacePath } from '@deepseek-ai/dsh-client-runtime/client';
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client';
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
 import { Reader } from './Reader.js';
@@ -9,7 +10,7 @@ import type { ReaderInjected } from './types.js';
 
 export type { ReaderBlockOwner } from './types.js';
 export const name = 'dsh-clearview-client';
-export const inject = ['slots', 'sessions'];
+export const inject = ['slots', 'sessions', 'workspaces'];
 
 export function apply(ctx: Context): void {
   startCompat(ctx);
@@ -39,6 +40,17 @@ export function apply(ctx: Context): void {
           const receipt = await session().readAttachment(attachment.attachmentId);
           if (!receipt.ok) throw new Error(receipt.error.message);
           return { data: Uint8Array.from(receipt.value.data), mediaType: receipt.value.attachment.mediaType };
+        },
+        openFile: path => {
+          // 与原生对话视图同一打开器：工作区相对路径按会话 cwd 解析后交给 Host。
+          const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd;
+          return ctx.workspaces.openPath(resolveWorkspacePath(cwd, path));
+        },
+        listDirNames: async path => {
+          // 目录条目名集合（存在性校准用）：相对路径按会话 cwd 解析。
+          const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd;
+          const listing = await ctx.workspaces.listDirectory(resolveWorkspacePath(cwd, path));
+          return new Set(listing.entries.map(entry => entry.name));
         },
       };
       faces.set(sessionId, face);
