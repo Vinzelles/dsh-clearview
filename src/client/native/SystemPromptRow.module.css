@@ -1,0 +1,36 @@
+/* The reader-side system prompt row: the context disclosure's 24px header
+   rhythm and 141px code scrollport, titled for the request's system field. */
+
+.root {
+  min-width: 0;
+}
+
+.root[data-open] {
+  padding-bottom: 4px;
+}
+
+.chevron {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.body {
+  box-sizing: border-box;
+  width: calc(100% - 22px);
+  max-height: 141px;
+  margin: 4px 0 0 22px;
+  overflow: auto;
+  padding: 10px 16px 12px 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--dsw-alias-markdown-code-block);
+  color: var(--dsw-alias-label-tertiary);
+  font: 400 11px/16px var(--ds-font-family-code);
+}
+
+.text {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

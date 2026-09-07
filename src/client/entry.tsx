@@ -4,10 +4,13 @@ import type { ChatStore } from '@deepseek-ai/dsh-client-ui-conversation/client';
 import type { PropsRuntime, PropsStore, StoreDecl } from '@deepseek-ai/dsh-client-ui-slots';
 import { ReaderEntryPolicy, readerEntryRequested } from './entry-policy.js';
 
+// 0.1.1 的原生会话 store persist 键是 'dsh.conversation.chat'，0.1.2 收敛为
+// 'dsh.conversation'。两版共有的稳定身份：persist 前缀 + setView 动作。
 function isChatStore(store: StoreDecl | undefined): store is ChatStore {
   return typeof store === 'object' && store !== null
-    && store.spec.persist === 'dsh.conversation.chat'
-    && typeof store.spec.actions.setView === 'function';
+    && typeof store.spec.persist === 'string'
+    && store.spec.persist.startsWith('dsh.conversation')
+    && typeof (store.spec.actions as Record<string, unknown>).setView === 'function';
 }
 
 type EntryProps = PropsRuntime<'conversation.input.dock'> & PropsStore<ChatStore> & { policy: ReaderEntryPolicy };

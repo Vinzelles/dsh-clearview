@@ -1,5 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis';
-import { resolveWorkspacePath } from '@deepseek-ai/dsh-client-runtime/client';
+import { resolveWorkspacePath } from './path-utils.js';
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client';
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
 import { Reader } from './Reader.js';
@@ -10,7 +10,9 @@ import type { ReaderInjected } from './types.js';
 
 export type { ReaderBlockOwner } from './types.js';
 export const name = 'dsh-clearview-client';
-export const inject = ['slots', 'sessions', 'workspaces'];
+// 'remote' 是 0.1.2 打开文件 / 列目录的通道（0.1.1 走 workspaces 服务，用不到但
+// 两版都提供该服务，注入无害）。
+export const inject = ['slots', 'sessions', 'workspaces', 'remote'];
 
 export function apply(ctx: Context): void {
   startCompat(ctx);
@@ -42,15 +44,39 @@ export function apply(ctx: Context): void {
           return { data: Uint8Array.from(receipt.value.data), mediaType: receipt.value.attachment.mediaType };
         },
         openFile: path => {
-          // 与原生对话视图同一打开器：工作区相对路径按会话 cwd 解析后交给 Host。
+          // 0.1.1：workspaces 服务有 openPath。0.1.2 的 workspaces 服务不再携带
+          // 打开能力，改走 session 远端 openWorkspacePath（与原生对话视图同一打开器）。
           const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd;
-          return ctx.workspaces.openPath(resolveWorkspacePath(cwd, path));
+          const workspaces = ctx.workspaces as { openPath?: (path: string) => Promise<void> } | undefined;
+          if (typeof workspaces?.openPath === 'function') return workspaces.openPath(resolveWorkspacePath(cwd, path));
+          const remote = (ctx as unknown as { remote?: { session?: { openWorkspacePath?: (input: { path: string }) => Promise<{ ok: boolean; error?: { message: string } }> } } }).remote;
+          const open = remote?.session?.openWorkspacePath;
+          if (typeof open !== 'function') throw new Error('宿主未提供文件打开能力。');
+          return (async () => {
+            const result = await open.call(remote!.session, { path: resolveWorkspacePath(cwd, path) });
+            if (!result.ok) throw new Error(result.error?.message ?? '路径打开失败。');
+          })();
         },
         listDirNames: async path => {
-          // 目录条目名集合（存在性校准用）：相对路径按会话 cwd 解析。
+          // 目录条目名集合（存在性校准用）。0.1.1：workspaces.listDirectory；
+          // 0.1.2：directoryPicker 远端（同一浏览能力，不同挂载面）。
           const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd;
-          const listing = await ctx.workspaces.listDirectory(resolveWorkspacePath(cwd, path));
-          return new Set(listing.entries.map(entry => entry.name));
+          const resolved = resolveWorkspacePath(cwd, path);
+          const workspaces = ctx.workspaces as {
+            listDirectory?: (path: string, signal?: AbortSignal) => Promise<{ entries: readonly { name: string }[] }>;
+          } | undefined;
+          if (typeof workspaces?.listDirectory === 'function') {
+            const listing = await workspaces.listDirectory(resolved);
+            return new Set(listing.entries.map(entry => entry.name));
+          }
+          type PickerResult = { ok: boolean; value?: { entries: readonly { name: string }[] }; error?: { message: string } };
+          type Picker = { list?: (path: string, signal?: AbortSignal) => Promise<PickerResult> };
+          const remote = (ctx as unknown as { remote?: { directoryPicker?: Picker } }).remote;
+          const list = remote?.directoryPicker?.list;
+          if (typeof list !== 'function') throw new Error('宿主未提供目录列取能力。');
+          const result = await list.call(remote!.directoryPicker, resolved);
+          if (!result.ok) throw new Error(result.error?.message ?? '目录列取失败。');
+          return new Set(result.value!.entries.map(entry => entry.name));
         },
       };
       faces.set(sessionId, face);

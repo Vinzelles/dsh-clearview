@@ -1,5 +1,147 @@
 # Changelog
 
+## 0.1.14
+
+- **全面兼容性核查补漏：`JsonBlock` 与 `CodeBlock` 的同族「必传文案」缺口**。对插件
+  功能全集 × 0.1.2 实际契约逐项复核时发现，0.1.13 只修了带 `labels` 形参的组件，
+  同批 cordis-free 迁移还有两处改了别的形参名：
+  1. **`JsonBlock.truncatedLabel` 从「有内置默认」变为必传**。0.1.2 删除了
+     0.1.1 的 `defaultTruncatedLabel`（`… 已截断，共 N 字符`），展开态正文超
+     20000 字符时无守卫直调 `truncatedLabel(s.length)` → TypeError →
+     BlockBoundary 兜底卡。0.1.13 的「JsonBlock 不受影响」结论**有误**（当时
+     只按 labels 契约排查）。受影响调用点：工具失败卡原始数据（argsRaw 大文件
+     写入极易超 2 万字符）、未接入类型回退卡 ×2。修复：`primitive-labels.ts`
+     新增 `JSON_TRUNCATED`（与 0.1.1 内置默认逐字一致）；`labeled-blocks.tsx`
+     新增 `JsonBlockL` 包装（0.1.1 该形参同名且可选，直传两版安全，无需
+     spread）；四处裸 `<JsonBlock>` 全部接入（`ContextBody` 为原生抄写件，
+     本就走 seat `t('json.truncated')`，已合规）。
+  2. **`CodeBlock` 的 `copyLabel`/`copiedLabel` 从内置默认变为必传**。0.1.2 删除
+     0.1.1 内置的「复制/复制成功」（`streaming` 新形参可选，不传即非流式路径，
+     无崩溃）；插件 markdown 渲染器传的是 `context.codeLabels?.copyLabel`（可
+     选链）——主渲染路径恒有 CODE_LABELS 不受影响，但任何未带 codeLabels 的
+     渲染上下文会出空白复制按钮（静默降级）。修复：渲染器内显式回退到与 0.1.1
+     内置一致的「复制/复制成功」。
+  新增 `tests/primitives-copy-contract.test.ts` 回归锁（裸 JsonBlock 静态守卫、
+  codeLabels 回退断言、JSON_TRUNCATED 与原生 zh 模板逐字一致）3 项。
+- **修复 memory-tail-keep（收尾总结防吞）在 0.1.2 上静默失效**。该补丁与 0.1.11
+  修复前的轮统计行共用旧的 `v.chat.nodes` fiber 快照判定——0.1.2 会话快照瘦身后
+  命中不了任何钩子状态（merged 快照在闭包计算、不在任何 hook memoizedState），
+  快照恒为 null，「真总结被收尾确认步骤顶掉」的回归防护自 0.1.9 起实际处于失效
+  状态。修复：复用 `turn-metrics-footer.normalizeSnapshot` 双形态归一（0.1.1
+  session 完整快照 / 0.1.2 useChat 快照本体），~5 行改动，两版兼容。
+- **退役 composer-readability 的死半边**：`--dshcp-canvas-solid` 画布色变量的
+  计算（getComputedStyle 每 5s + 主题 MutationObserver ×2）在插件内外均无消费
+  者——唯一用途「回到最新」药丸实底早在兼容样式合并时并入插件主体。删除该计算
+  与两个主题观察者，统计行标记保留不动。
+  其余核查结论（节点 kind 全集、快照形状、locale 桥、槽位 props、服务注入、
+  compat DOM 锚点、工具证据契约）见本轮审计记录，未发现新的必现缺陷。
+
+## 0.1.13
+
+- **修复折叠区展开即显示「此内容暂时无法在阅读页显示」**（首发于模型重试卡：折叠
+  正常、点开展开即失败）。0.1.2 的 primitives 把这批展示组件的本地化文案从内置
+  默认值改为**必传 `labels` prop**：`JsonTree`（复制菜单/节点 aria）、
+  `TerminalBlock`（运行态/折叠/复制）、`ReadBlock`、`DiffBlock`、`SearchBlock`、
+  `WebBlock`、`MarkdownText`（代码块复制/脚注）——缺失时渲染期直接 TypeError，
+  被座位级 `BlockBoundary` 吞成兜底文案。原生各包都经 `xxxBlockLabels(t)` 提供，
+  而阅读页一直不传（0.1.1 全部有内置默认值，所以从未暴露）。这些组件又都在折叠
+  区内懒挂载，故只在点开瞬间炸。修复：
+  1. 新增 `native/primitive-labels.ts`：与原生 0.1.2 zh 词典逐条一致的 7 组
+     labels 常量（模块级常量保证引用稳定）。
+  2. 新增 `native/labeled-blocks.tsx` 包装层：`ReadBlock/DiffBlock/SearchBlock/
+     WebBlock` 在 0.1.1 没有 labels 形参（TS 拒绝多余 prop），包装内部 spread
+     附加（0.1.1 运行时忽略、0.1.2 必需）；`TerminalBlockL` 支持个别字段覆盖
+     （失败态 `done: '失败'` 语义保留）；`MarkdownTextL` 补代码块复制/脚注 chrome。
+  3. 全部调用点接入：模型重试卡的 `JsonTree`、工具卡的输入 JSON 树（含「全部
+     输入字段」）、终端/读文件/差异/搜索/Web 卡、命令结果 Markdown。
+  排查结论：`JsonBlock`（命令/压缩/工作流/未知节点记录卡）两版都不需要 labels，
+  不受影响——问题只限于上述带 chrome 的展示组件。新增 4 项 labels 契约单测。
+
+## 0.1.12
+
+- **修复上下文注入行在 0.1.2 上显示原始键名（message.contextInjection）**。0.1.2 的
+  fold-product 把上下文注入行从 ui-conversation 迁进 ui-chat，一批词典键
+  （`message.contextInjection` / `message.contextRecall` / `message.context.*` /
+  `message.unknownBlock` / `json.truncated`，共 14 个）随之从 `'conversation'` NS
+  迁到 ui-chat 的 `'chat'` NS；阅读页的 `t` seat 绑定注册时声明的 `'conversation'`
+  NS，0.1.2 上这些键查不到，seat 按缺失约定回显键名。修复：新增 locale 兼容桥
+  （`compat/locale-bridge.ts`），在 `useCompatReaderProps` 统一包装 `t`——
+  0.1.1 seat 命中原样透传零开销；0.1.2 键名回显时回退内置中文词典（文案与原生
+  0.1.2 zh 逐条一致），`{param}` 模板就地插值；词典外的真实未知键仍回显不吞错。
+  新增 5 项单测（回显回退、实 seat 透传、未知键、缺参占位、词典无缺口校验）。
+
+## 0.1.11
+
+- **修复阅读页轮次统计行在 0.1.2 上整体失效，并补上 0.1.2 的 token 用量统计**。
+  阅读视图接管渲染后原生收尾行消失，compat 层的 `turn-metrics-footer` 从阅读器根
+  元素沿 React fiber 上溯读取会话快照再注入统计行——但它的判定
+  （`hook 状态.chat.nodes`）只认 0.1.1 的完整 session 快照；0.1.2 session 快照瘦身
+  后 `chat` 移到独立的 `useChat` 钩子（顶层就是 nodes/timeline），旧判定命中不了
+  任何钩子状态，快照解析恒为 null，统计行从 0.1.2 起整段消失。修复：
+  1. 快照解析双形态归一（`normalizeSnapshot`）：0.1.1 内嵌 chat + 顶层
+     `turnTimings`，0.1.2 顶层 chat + `legacy.turnTimings` 兼容切片，统一收敛成
+     `{ chat, turnTimings }` 读取面；瘦身后既无内嵌 chat 也无顶层 nodes 的
+     session 切片安全跳过。新增 8 项单测覆盖两版形态、无效载荷与 NaN 边界。
+  2. 顺带对齐原生新统计：0.1.2 的 turn-tail 数据新增 `tokenUsage`（聚合各次模型
+     尝试的精确计数），原生从 hover 文案改成「用量 N tok / 用时」两个 pill；阅读页
+     统计行按字段存在性插入「用量 9.4M tok」（紧凑计量与原生 `formatTokens` 同
+     规则：<1k 原值、<1M 一位小数 K、其余一位小数 M），0.1.1 无该字段自动缺席。
+  3. 修复测试暴露的旧边界：轮次时间非法（NaN）时会渲染出「用时 NaN秒」，补
+     `isFinite` 守卫，缺证据的轮次不渲染统计行。
+
+## 0.1.10
+
+- **接入 0.1.2 新增节点与条件触发的老节点，消除对话流中的「此记录类型暂未接入阅读页」卡片**。
+  0.1.2 的 fold-product 重构给对话流新增了两类投影（每个模型请求一条 `system-prompt`、
+  每个轮次一条 `turn-process` 控制节点），阅读页此前对二者都不识别，整页渲染成一排
+  兜底卡；`command-input`（`/goal` 命令输入）与 `workflow-run`（持久工作流运行）是
+  0.1.1 就有的条件触发类型，同样未接入。现在的处理：
+  1. **`turn-process` → 不渲染**：阅读页有自己的「执行过程」Disclosure（用时统计 +
+     分步状态），原生的折叠控制器在阅读页语义上完全冗余，返回 null 不产生卡片。
+  2. **`system-prompt` → 新增「系统提示词」折叠行**（`native/SystemPromptRow`）：与
+     上下文注入行同一套 24px 头部节奏与 141px 代码视口几何，展开显示请求的完整系统
+     提示词（保留真实换行，超 20000 字符截断并标注总量）；空提示词按原生投影同样
+     跳过。布局上，按 0.1.2 的锚点顺序 system-prompt 排在开场 user 之前，TurnGroup
+     新增 preamble 段把它们渲染在过程 Disclosure 之上，开场输入保持原生位置。
+  3. **`command-input` → 用户消息样式块**：meta「命令输入」+ 等宽原文（原生为右对齐
+     等宽气泡，阅读页沿用现有用户块几何）；载荷不可读时回退原始记录卡。
+  4. **`workflow-run` → 汇总记录卡**：标题 + 状态（运行中/已完成/已失败/已取消/已中断）
+     + 子会话与阶段计数，原始快照一键展开；失败态用错误色调。子会话的嵌套回放仍以
+     原生对话为准，阅读页不做深回放。
+  5. **`unknown` → 保留显式卡片**但改文案为「未识别的会话记录：{事件类型}」，不再与
+     上面的已接入类型共用「暂未接入」措辞；其他已知 kind 的载荷不可读时，回退到
+     带「暂未接入」提示的原始记录卡（不会静默吞掉记录）。
+  载荷读取全部走防御性窄化（`src/client/node-payloads.ts`，新增 5 项测试），任何
+  不可读载荷都回退而不是抛错；不依赖节点 kind 的版本归属，0.1.1 / 0.1.2 通用。
+
+## 0.1.9
+
+- **兼容 DSH 0.1.2（保留 0.1.1）：修复核心更新后插件整体失效**。0.1.2 的客户端
+  平台重组把 0.1.1 的 `dsh-client-runtime` 拆掉了：会话快照瘦身（`chat` 时间线与
+  `pending` 待处理交互从 `useSession` 快照中拆出，改为 ui-chat 提供的 `useChat`
+  与 ui-session 提供的 `useSessionPendingInteraction` 两个标准钩子）；原生会话
+  store 的 persist 键从 `dsh.conversation.chat` 收敛为 `dsh.conversation`（触发
+  入口绑定校验 `isChatStore` 失败抛错，整个「阅读」页注册事务回滚）；`workspaces`
+  服务不再携带 `openPath`/`listDirectory`（改挂 `remote.session.openWorkspacePath`
+  与 `remote.directoryPicker.list`）。三项全部按特性检测修复：
+  1. 新增 `compat/session-snapshot.ts`：入口处把 0.1.2 拆分的 `useChat` /
+     `useSessionPendingInteraction` 合成回 0.1.1 形状的 `props.useSession`，
+     阅读页全部下游代码继续读 `snapshot.chat` / `snapshot.pending`；0.1.1 缺
+     这两个钩子时零开销透传（钩子身份稳定，不破坏子组件 memo）。
+  2. `entry.tsx` 的原生 store 识别放宽为 persist 前缀 `dsh.conversation` +
+     `setView` 动作（两版共有的稳定身份），不再因键名收敛抛错。
+  3. `index.tsx` 的 `openFile` / `listDirNames` 按服务形状探测：0.1.1 走
+     `workspaces.openPath` / `workspaces.listDirectory`，0.1.2 走
+     `remote.session.openWorkspacePath` / `remote.directoryPicker.list`；`inject`
+     补声明 `remote`（两版都提供的根级服务）。
+  另外：`store.ts` 恢复从 `@deepseek-ai/dsh-client-runtime/client` 导入
+  `defineStore`——0.1.1 是真实预载模块，0.1.2 由 client-modules 的 compat 种子
+  同名承接（内部转发 `dsh-client-store` 引擎），是唯一在两版都可解析的取径；
+  半成品迁移改用的 `@deepseek-ai/dsh-client-store` 在 0.1.1 上不存在（模块表无
+  此种子词、dshx 打包纯度门也会拒绝），已回退。新增
+  `tests/` 覆盖不变，122 项测试全绿；构建产物外部依赖仅剩 react、
+  `dsh-client-ui-primitives`、`dsh-client-runtime/client` 三个双版本共有种子。
+
 ## 0.1.8
 
 - **修复「一直停在最底部、结束时却出现回到最新按钮且位置有偏移」**：阅读视图的

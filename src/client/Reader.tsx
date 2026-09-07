@@ -2,7 +2,9 @@ import { Fragment, memo, useCallback, useContext, useEffect, useId, useMemo, use
 import type { ReactNode, RefObject } from 'react';
 import type { ChatConversationViewNode } from '@deepseek-ai/dsh-client-runtime/client';
 import type { ChatNode, ChatNodeKind } from '@deepseek-ai/dsh-client-ui-conversation/client';
-import { JsonBlock, JsonTree, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives';
+import { JsonTree } from '@deepseek-ai/dsh-client-ui-primitives';
+import { JsonBlockL, MarkdownTextL } from './native/labeled-blocks.js';
+import { JSON_TREE_LABELS } from './native/primitive-labels.js';
 import { FileChangesPanel } from './FileChanges.js';
 import { BlockBoundary, Blocks, contentBlocks, CopyAnswer } from './Blocks.js';
 import { ReasoningCard } from './ReasoningCard.js';
@@ -13,6 +15,9 @@ import { formatSeconds } from './turn-activity.js';
 import { useTurnActivity } from './use-turn-activity.js';
 import { CollapseBody, Disclosure, MountFade, ProcessFragment, RetiringContent, StatusText, useContentWidth, useMotionAllowed, usePinnedSelection, useReadingScroll } from './motion.js';
 import { StreamMotionContext } from './streaming.js';
+import { useCompatReaderProps } from './compat/session-snapshot.js';
+import { nodeText, workflowRunSummary, workflowStatusLabel } from './node-payloads.js';
+import { SystemPromptRow } from './native/SystemPromptRow.js';
 import { assistantSegments, boundaryOf, groupNodes, hasProcessContent, hasVisibleBody, isEarlierNarration, processChoiceKey, processExpanded, terminalLabel } from './projection.js';
 import { ContextInjectionRow } from './native/ContextInjectionRow.js';
 import { hiddenSeqsOf, rewindSpansOf } from './rewind-hidden.js';
@@ -152,7 +157,7 @@ const ProcessNode = memo(function ProcessNode({ useSession, t, nodeKey, open, mo
       : '模型重试记录';
     const retryMeta = `第 ${current.retry} 次 · ${current.failure.code}${current.failure.status != null ? ` · HTTP ${current.failure.status}` : ''}`;
     content = <NoticeCard title={retryTitle} meta={retryMeta} hint="展开查看重试记录">
-      <JsonTree data={node.data.attempts as unknown as object | unknown[]} label="模型重试记录" expandTopLevel={false} />
+      <JsonTree data={node.data.attempts as unknown as object | unknown[]} label="模型重试记录" expandTopLevel={false} labels={JSON_TREE_LABELS} />
     </NoticeCard>;
   } else if (isNode(node, 'compaction')) {
     content = <CompactionRecord node={node} />;
@@ -185,6 +190,16 @@ const AssistantNode = memo(function AssistantNode({ useSession, nodeKey, boundar
   const parts = useMemo(() => assistantSegments(data.blocks), [data.blocks]);
   const earlier = isEarlierNarration(data, boundary);
   const body = useMemo(() => data.blocks.filter(block => block.kind !== 'reasoning' && block.kind !== 'tool-call'), [data.blocks]);
+  // The copy row belongs to the LAST BODY segment of the step, not to the last
+  // segment overall: a settled step can end with a trailing think (interrupt /
+  // max-tokens / model tail), and tying the row to parts.length - 1 then drops
+  // the copy button — which also strands the compat turn-footer (it anchors to
+  // the answerActions row). lastBodyIndex keeps both anchored.
+  const lastBodyIndex = useMemo(() => {
+    let last = -1;
+    for (let index = 0; index < parts.length; index++) if (parts[index]!.kind !== 'reasoning' && hasVisibleBody(parts[index]!.blocks)) last = index;
+    return last;
+  }, [parts]);
   return <>{parts.map((part, index) => part.kind === 'reasoning'
     ? (() => {
       const charCount = part.blocks.reduce((sum, block) => sum + (block.kind === 'reasoning' ? block.text.length : 0), 0);
@@ -203,7 +218,7 @@ const AssistantNode = memo(function AssistantNode({ useSession, nodeKey, boundar
       <article className={css.answer} data-reader-answer data-reader-anchor data-reader-key={nodeKey} data-reader-source-start={part.start} data-answer-status={data.status} data-answer-phase={earlier ? 'process' : 'body'}>
         <Blocks {...render} blocks={part.blocks} streaming={data.status === 'running'} holdFormatting={pinned} startedAt={data.time} interrupted={data.status === 'interrupted'} liveText />
         {index === parts.length - 1 && data.status === 'interrupted' && <span className={css.stopped}>已停止</span>}
-        {index === parts.length - 1 && !earlier && data.status !== 'running' && boundary.status === 'closed' && <CopyAnswer blocks={body} />}
+        {index === lastBodyIndex && !earlier && data.status !== 'running' && boundary.status === 'closed' && <CopyAnswer blocks={body} />}
       </article>
     </RetiringContent>)}</>;
 });
@@ -234,7 +249,7 @@ const MainNode = memo(function MainNode({ useSession, nodeKey, boundary, pinned,
     // Failures are presented as the expandable command-error card inside the
     // process; suppress the old top-level banner so they are not duplicated.
     if (node.data.outcome?.kind === 'error') return null;
-    return node.data.outcome?.text ? <MarkdownText text={node.data.outcome.text} /> : null;
+    return node.data.outcome?.text ? <MarkdownTextL text={node.data.outcome.text} /> : null;
   }
   if (isNode(node, 'manual-compaction')) {
     // The compact/command lifecycle is one card inside the process area; no
@@ -246,11 +261,64 @@ const MainNode = memo(function MainNode({ useSession, nodeKey, boundary, pinned,
     return null;
   }
   if (node.kind === 'context' || node.kind === 'turn-tail') return null;
-  return <div className={css.unknown} data-reader-anchor>
-    <p>此记录类型暂未接入阅读页：{node.kind}</p>
-    <JsonBlock label="查看原始记录" payload={node.data} />
+  // 0.1.2 projects one turn-process controller node per turn. The reader has
+  // its own process disclosure (with duration and per-step status), so the
+  // native fold control is redundant here and renders nothing.
+  if (node.kind === 'turn-process') return null;
+  // 0.1.2 places the request's complete system prompt in the visible flow
+  // before the answer; render the same collapsed-disclosure row natively
+  // does. An empty text is skipped exactly like the native projection.
+  if (node.kind === 'system-prompt') {
+    const text = nodeText(node.data);
+    if (text === null || text === '') return null;
+    return <SystemPromptRow text={text} />;
+  }
+  // ui-goal projects the durable /goal command line as a user-style record.
+  if (node.kind === 'command-input') {
+    const text = nodeText(node.data);
+    if (text === null) return <UnknownNode node={node} />;
+    return <div className={css.user} data-reader-anchor data-reader-key={nodeKey} data-reader-command-input>
+      <p className={css.meta}>命令输入</p>
+      <Blocks {...render} blocks={[{ kind: 'text', text }]} source="user" />
+    </div>;
+  }
+  // ui-workflow-run projects a durable workflow run with its phase and member
+  // totals; the nested child-session replay stays native, the reader shows a
+  // summary record with the raw snapshot one expand away.
+  if (node.kind === 'workflow-run') {
+    const summary = workflowRunSummary(node.data);
+    const title = summary.name ?? '工作流运行';
+    const meta = `${workflowStatusLabel(summary.status)}`
+      + (summary.memberCount != null ? ` · ${summary.memberCount} 个子会话` : '')
+      + (summary.phaseCount != null ? ` · ${summary.phaseCount} 个阶段` : '');
+    const failed = summary.status === 'failed';
+    return <NoticeCard
+      title={title}
+      meta={meta}
+      tone={failed ? 'error' : 'info'}
+      state={summary.status === 'running' ? 'running' : failed ? 'error' : summary.status === null ? undefined : 'success'}
+      markers={{ 'data-reader-workflow-run': '' }}
+    >
+      <RecordJson label="工作流记录" payload={node.data} />
+    </NoticeCard>;
+  }
+  if (node.kind !== 'unknown') return <UnknownNode node={node} />;
+  // The unclaimed append-surface fallback: genuinely unknown evidence, so it
+  // keeps an explicit card (with a wording that no longer reads as a reader
+  // gap for the kinds above).
+  return <div className={css.unknown} data-reader-anchor data-reader-unknown-node>
+    <p>未识别的会话记录：{typeof node.data === 'object' && node.data !== null && 'type' in node.data && typeof (node.data as { type?: unknown }).type === 'string' ? (node.data as { type: string }).type : node.id}</p>
+    <JsonBlockL label="查看原始记录" payload={node.data} />
   </div>;
 });
+
+/** One known-kind payload this build cannot read: keep the raw record visible. */
+function UnknownNode({ node }: { node: ChatConversationViewNode }) {
+  return <div className={css.unknown} data-reader-anchor>
+    <p>此记录类型暂未接入阅读页：{node.kind}</p>
+    <JsonBlockL label="查看原始记录" payload={node.data} />
+  </div>;
+}
 
 function GroupStatus({ group, useSession, motion }: Pick<ReaderProps, 'useSession'> & { group: ReaderGroup; motion: boolean }) {
   const text = useSession(snapshot => {
@@ -420,9 +488,26 @@ const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedP
   const processButton = useRef<HTMLButtonElement>(null);
   const setExpanded = useCallback((value: boolean) => props.actions.setExpanded(choiceKey, value), [props.actions, choiceKey]);
   const pinProcess = useCallback(() => setExpanded(true), [setExpanded]);
-  const firstKind = props.useSession(snapshot => snapshot.chat.nodes.get(group.keys[0])?.kind);
-  const startsWithUser = firstKind === 'user';
-  const mainKeys = startsWithUser ? group.keys.slice(1) : group.keys;
+  // The group's opening is the user message in 0.1.1, and in 0.1.2 the
+  // request's system-prompt row(s) sit above it (their anchor precedes the
+  // opening input). Both render as preambles above the process disclosure,
+  // keeping the opening input in its native position; any other leading run
+  // keeps the plain main-flow routing.
+  const leading = useMemo(() => {
+    let systemPrompts = 0;
+    let seenUser = false;
+    for (const key of group.keys) {
+      const node = chat.nodes.get(key);
+      if (!node) break;
+      if (!seenUser && node.kind === 'system-prompt') { systemPrompts++; continue; }
+      if (!seenUser && node.kind === 'user') { seenUser = true; continue; }
+      break;
+    }
+    return { systemPrompts, seenUser };
+  }, [chat, group.keys]);
+  const startsWithUser = leading.seenUser;
+  const preambleKeys = startsWithUser ? group.keys.slice(0, leading.systemPrompts) : [];
+  const mainKeys = startsWithUser ? group.keys.slice(leading.systemPrompts + 1) : group.keys;
   const flow = useMemo(() => readerFlow({ ...group, keys: mainKeys }, turn, key => chat.nodes.get(key), { hidden: rewindHidden, spans: rewindSpans }), [chat, group, mainKeys, turn, rewindHidden, rewindSpans]);
   const groupedFlow = useMemo(() => groupOperationalFlow(flow, key => chat.nodes.get(key)), [flow, chat]);
   const [clusterExpanded, setClusterExpanded] = useState<Record<string, boolean>>({});
@@ -438,7 +523,8 @@ const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedP
   const terminal = terminalLabel(boundary.reason);
   const showTerminal = terminal && boundary.reason !== 'error' && boundary.reason !== 'max-tokens';
   return <section className={css.turn} data-reader-turn={group.turn ?? 'unresolved'} data-reader-turn-state={boundary.status} data-reader-turn-result={boundary.reason ?? undefined}>
-    {startsWithUser && <BlockBoundary><MainNode {...shared} boundary={boundary} nodeKey={group.keys[0]} /></BlockBoundary>}
+    {preambleKeys.map(key => <BlockBoundary key={key}><MainNode {...shared} boundary={boundary} nodeKey={key} /></BlockBoundary>)}
+    {startsWithUser && <BlockBoundary><MainNode {...shared} boundary={boundary} nodeKey={group.keys[leading.systemPrompts]} /></BlockBoundary>}
     {hasProcess && <Disclosure open={expanded} onChange={setExpanded} controls={flowId} buttonRef={processButton}
       label={<GroupStatus group={group} useSession={props.useSession} motion={motion} />} status={turn?.steps.length ? `${turn.steps.length} 个步骤` : undefined} />}
     {!hasProcess && boundary.status === 'open' && <div className={css.disclosure} data-reader-status-only>
@@ -496,7 +582,10 @@ const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedP
   </section>;
 });
 
-export function Reader(props: ReaderProps) {
+export function Reader(rawProps: ReaderProps) {
+  // 0.1.2 把 chat / pending 拆成了独立标准钩子；这里合成回 0.1.1 形状并替换
+  // props.useSession，全部下游代码继续读 snapshot.chat / snapshot.pending。
+  const props = useCompatReaderProps(rawProps);
   const root = useRef<HTMLDivElement>(null);
   const activatedAt = useRef(Date.now());
   const order = props.useSession(snapshot => snapshot.chat.order);
@@ -608,7 +697,7 @@ export function Reader(props: ReaderProps) {
       listDirNames={props.listDirNames}
     />
   );
-  return <StreamMotionContext.Provider value={streamMotion}><div ref={root} className={css.root} data-dsh-clearview="0.1.8" data-motion={motion ? 'on' : 'off'}>
+  return <StreamMotionContext.Provider value={streamMotion}><div ref={root} className={css.root} data-dsh-clearview="0.1.14" data-motion={motion ? 'on' : 'off'}>
     <div className={css.column}>
       <div className={css.toolbar} data-ud-check="reader-toolbar">
         <Switch label={`折叠思考${collapseThinking ? '开' : '关'}`} checked={collapseThinking} onChange={() => props.actions.setCollapseThinking(!collapseThinking)}

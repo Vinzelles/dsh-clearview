@@ -1,7 +1,9 @@
 import { memo, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ToolCallBlock, ToolResultNode } from '@deepseek-ai/dsh-client-runtime/client';
-import { DiffBlock, DisclosureRow, JsonTree, ReadBlock, SearchBlock, TerminalBlock, WebBlock,
+import { DisclosureRow, JsonTree,
   IconApiOutline14, IconBrowseOutline16, IconEditOutline16, IconSearchOutline16, IconSkillOutline16, IconSparkle16 } from '@deepseek-ai/dsh-client-ui-primitives';
+import { DiffBlockL, ReadBlockL, SearchBlockL, TerminalBlockL, WebBlockL } from './native/labeled-blocks.js';
+import { JSON_TREE_LABELS } from './native/primitive-labels.js';
 import { Blocks, contentBlocks } from './Blocks.js';
 import { CollapseBody, ProcessFragment } from './motion.js';
 import { StreamMotionContext } from './streaming.js';
@@ -21,7 +23,7 @@ function generatedInput(content: string, target: string | undefined, preparing: 
   const lines = content.split('\n').map((text, index) => ({ number: index + 1, text }));
   const visible = preparing ? lines.slice(-12) : lines.slice(0, 1600);
   return <div data-reader-tool-file><p className={css.toolDetailNote}>{preparing ? '正在生成的输入 · 尚未执行 · 末尾 12 行' : '工具输入中的文件内容'}{!preparing && lines.length > visible.length ? ' · 预览前 1,600 行，完整内容在原始数据中' : ''}</p>
-    <ReadBlock label={target ?? '文件内容'} lang={language(target)} lines={visible} totalLines={lines.length} maxLines={16} />
+    <ReadBlockL label={target ?? '文件内容'} lang={language(target)} lines={visible} totalLines={lines.length} maxLines={16} />
   </div>;
 }
 
@@ -39,8 +41,8 @@ function RawRecord({ raw, result, note = '完整记录 · 只读 · 不执行其
 
 function InputView({ model, preparing }: { model: ReturnType<typeof activitySummary>; preparing: boolean }) {
   if (model.content) return generatedInput(model.content, model.target, preparing);
-  if (model.command) return <div data-reader-tool-terminal><p className={css.toolDetailNote}>{preparing ? '正在生成命令 · 尚未执行' : '提交的命令'}</p><TerminalBlock command={model.command} cwd={model.cwd} /></div>;
-  return <JsonTree data={model.args} label={preparing ? '已收到的输入字段' : '工具输入'} />;
+  if (model.command) return <div data-reader-tool-terminal><p className={css.toolDetailNote}>{preparing ? '正在生成命令 · 尚未执行' : '提交的命令'}</p><TerminalBlockL command={model.command} cwd={model.cwd} /></div>;
+  return <JsonTree data={model.args} label={preparing ? '已收到的输入字段' : '工具输入'} labels={JSON_TREE_LABELS} />;
 }
 
 function ResultView({ entry, model, phase, ...render }: BlockRenderProps & { entry: ToolActivityEntry; model: ReturnType<typeof activitySummary>; phase: ToolPhase }) {
@@ -58,18 +60,18 @@ function ResultView({ entry, model, phase, ...render }: BlockRenderProps & { ent
     // (meta/resultView empty in that case); recover it, and fall back to a
     // failure label rather than a clean-settle "已完成" indicator.
     const exitCode = facts.exitCode ?? (phase === 'failed' ? exitCodeFromOutput(output, true) : undefined);
-    return <div data-reader-tool-terminal><TerminalBlock command={model.command ?? view?.title ?? model.name} cwd={model.cwd}
+    return <div data-reader-tool-terminal><TerminalBlockL command={model.command ?? view?.title ?? model.name} cwd={model.cwd}
       output={output} exitCode={exitCode} signal={facts.signal}
       labels={phase === 'failed' && exitCode === undefined ? { done: '失败' } : undefined} maxLines={18} /></div>;
   }
-  if (view?.card === 'read') return <div data-reader-tool-file><ReadBlock label={view.path} lang={view.lang} lines={view.lines} totalLines={view.totalLines} maxLines={18} /></div>;
-  if (view?.card === 'diff' && view.diffs.length) return <div data-reader-tool-diff><DiffBlock diffs={view.diffs} maxLines={18} /></div>;
+  if (view?.card === 'read') return <div data-reader-tool-file><ReadBlockL label={view.path} lang={view.lang} lines={view.lines} totalLines={view.totalLines} maxLines={18} /></div>;
+  if (view?.card === 'diff' && view.diffs.length) return <div data-reader-tool-diff><DiffBlockL diffs={view.diffs} maxLines={18} /></div>;
   if (view?.card === 'search') return <div data-reader-tool-search>{view.shape === 'paths'
-    ? <SearchBlock kind="paths" paths={view.paths} total={view.total} truncated={view.truncated} maxLines={18} />
-    : <SearchBlock kind="matches" files={view.files} total={view.total} truncated={view.truncated} maxLines={18} />}</div>;
+    ? <SearchBlockL kind="paths" paths={view.paths} total={view.total} truncated={view.truncated} maxLines={18} />
+    : <SearchBlockL kind="matches" files={view.files} total={view.total} truncated={view.truncated} maxLines={18} />}</div>;
   if (view?.card === 'web') return <div data-reader-tool-web>{view.kind === 'search'
-    ? <WebBlock kind="search" sources={view.sources} answer={view.answer} truncated={view.truncated} />
-    : <WebBlock kind="fetch" url={view.url} statusCode={view.statusCode} truncated={view.truncated} />}</div>;
+    ? <WebBlockL kind="search" sources={view.sources} answer={view.answer} truncated={view.truncated} />
+    : <WebBlockL kind="fetch" url={view.url} statusCode={view.statusCode} truncated={view.truncated} />}</div>;
   // A trace/export may omit wire presentation. Keep the generated input clearly
   // labelled; it is not proof of an applied diff or a successful file mutation.
   if (model.category === 'write' && model.content && !block.isError) return <>
@@ -127,7 +129,7 @@ function ToolDetails({ entry, model, phase, ...render }: BlockRenderProps & {
     <div ref={panel} id={`${detailId}-panel`} className={css.toolPanel} role="tabpanel" aria-labelledby={`${detailId}-${tab}`} tabIndex={0}>
       {selected && <p className={css.toolDetailNote}>为保留选区，预览暂停更新；当前状态见卡片标题。</p>}
       {tab === 'result' && <ResultView {...render} {...preview} />}
-      {tab === 'input' && <><InputView model={preview.model} preparing={preview.phase === 'preparing'} /><details className={css.detail}><summary>全部输入字段</summary><JsonTree data={preview.model.args} label="输入字段" /></details></>}
+      {tab === 'input' && <><InputView model={preview.model} preparing={preview.phase === 'preparing'} /><details className={css.detail}><summary>全部输入字段</summary><JsonTree data={preview.model.args} label="输入字段" labels={JSON_TREE_LABELS} /></details></>}
       {tab === 'raw' && <RawRecord raw={preview.model.raw} result={rawResult} />}
     </div>
   </div>;

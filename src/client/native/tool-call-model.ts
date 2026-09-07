@@ -8,8 +8,7 @@
  */
 // The block union's defining home is runtime (fold-product types); this
 // contract only forwards it (type-definition authority stays with the layer
-// that produces the values).
-import { abbreviateHomePath } from '@deepseek-ai/dsh-client-runtime/client'
+import { abbreviateHomePath } from '../path-utils.js'
 import type { ToolCallBlock, ToolResultNode } from '@deepseek-ai/dsh-client-runtime/client'
 
 export type { ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'

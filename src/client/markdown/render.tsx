@@ -341,8 +341,11 @@ function renderCode(node: Md.Code, key: Key, context: MarkdownRenderContext): Re
       // that trim eat a REAL trailing blank line inside the fence instead.
       code={`${node.value}\n`}
       lang={context.streaming ? undefined : lang}
-      copyLabel={context.codeLabels?.copyLabel}
-      copiedLabel={context.codeLabels?.copiedLabel}
+      // 0.1.2 primitives 把 copy/copied 改成必传（0.1.1 内置默认 '复制'/'复制成功'
+      // 已删除），缺省会渲染空白按钮文案。显式回退到同一份 0.1.1 内置默认，
+      // 两版行为一致。
+      copyLabel={context.codeLabels?.copyLabel ?? '复制'}
+      copiedLabel={context.codeLabels?.copiedLabel ?? '复制成功'}
     />
   )
 }

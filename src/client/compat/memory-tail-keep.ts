@@ -12,11 +12,16 @@
  * 执行过程（走其 React 状态并持久化）。
  *
  * 数据通道：从阅读视图根元素上溯 React fiber 读取祖先组件 hook 中的会话快照（纯读取）。
+ * 快照解析复用轮统计行的 normalizeSnapshot 双形态归一：0.1.1 命中 session 完整快照
+ * （chat 内嵌）；0.1.2 session 瘦身后命中 useChat 快照本体（nodes/timeline 顶层）。
+ * 旧的 v.chat.* 判定在 0.1.2 上命中不了任何钩子状态，本模块会静默失效（0.1.14 修复）。
  *
  * 性能纪律：fiber 快照 WeakMap + 5s TTL 缓存；每轮次判定一次后打 dataset 标记跳过；
  * 观察者 rAF 合帧 + 300ms 节流。
  * 幂等/边界：展开后不再触碰；用户手动点过该轮过程按钮后永久让位；不触碰原生视图。
  */
+
+import { normalizeSnapshot, type SnapshotView } from './turn-metrics-footer.js';
 
 const HOUSEKEEPING: Record<string, 1> = {
   memory: 1, memory_suggest: 1, memory_review_status: 1,
@@ -36,15 +41,7 @@ function textLength(blocks: any): number {
   return n;
 }
 
-function isSessionSnapshot(v: any): boolean {
-  return v && typeof v === 'object'
-    && v.chat && typeof v.chat === 'object'
-    && v.chat.nodes && typeof v.chat.nodes.get === 'function'
-    && v.chat.timeline && typeof v.chat.timeline.turns === 'object'
-    && typeof v.chat.timeline.turns.get === 'function';
-}
-
-function resolveSnapshot(root: HTMLElement): any {
+function resolveSnapshot(root: HTMLElement): SnapshotView | null {
   const keys = Object.keys(root);
   let fiberKey: string | null = null;
   for (const k of keys) { if (k.indexOf('__reactFiber$') === 0) { fiberKey = k; break; } }
@@ -56,7 +53,8 @@ function resolveSnapshot(root: HTMLElement): any {
       let hook = f.memoizedState;
       let guard = 0;
       while (hook && guard < 300) {
-        if (isSessionSnapshot(hook.memoizedState)) return hook.memoizedState;
+        const normalized = normalizeSnapshot(hook.memoizedState);
+        if (normalized) return normalized;
         hook = hook.next;
         guard++;
       }
@@ -67,8 +65,8 @@ function resolveSnapshot(root: HTMLElement): any {
   return null;
 }
 
-const snapCache = new WeakMap<HTMLElement, { snap: any; at: number }>();
-function cachedSnapshot(root: HTMLElement): any {
+const snapCache = new WeakMap<HTMLElement, { snap: SnapshotView | null; at: number }>();
+function cachedSnapshot(root: HTMLElement): SnapshotView | null {
   const c = snapCache.get(root);
   const now = Date.now();
   if (c && c.snap && now - c.at < SNAP_TTL) return c.snap;
