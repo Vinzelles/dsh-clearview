@@ -284,7 +284,14 @@ export function useContentWidth(): [(node: HTMLElement | null) => void, number |
     if (!node) return;
     const observer = new ResizeObserver(entries => {
       const entry = entries[entries.length - 1];
-      if (entry) setWidth(entry.contentRect.width);
+      if (!entry) return;
+      // Sub-pixel width reports would re-render (and re-target the width
+      // transition) every frame: the pinned bar width changes the flex
+      // container, the observer fires again, and the loop never settles.
+      // Only a real change (>0.5px) is a new width.
+      setWidth(previous => previous !== null && Math.abs(previous - entry.contentRect.width) < 0.5
+        ? previous
+        : entry.contentRect.width);
     });
     observer.observe(node);
     observerRef.current = observer;

@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { UseConversationSession } from '@deepseek-ai/dsh-client-runtime/client';
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
 import {
-  activityLabel, latestOpenTurn, type ActivityPhase, type TurnSnapshot,
+  activityLabel, latestOpenTurn, phaseKeyOf, type ActivityPhase, type TurnSnapshot,
 } from './turn-activity.js';
 
 export interface ActivityView {
@@ -16,8 +16,9 @@ const IDLE: ActivityView = { label: '', seconds: null, key: null, phase: 'idle' 
 
 export function useTurnActivity(useSession: UseConversationSession): ActivityView {
   const [now, setNow] = useState(() => Date.now());
-  // The selector reads only raw snapshot data (never derives with `now`), so
-  // it re-runs only when the store actually changes.
+  // 选择器只返回原始值：原来每次 store 更新都返回一个新对象（且为每个步骤重建
+  // Map），Object.is 判定必然不相等，于是每个流式 chunk 都让整个阅读树重渲染一次。
+  // 现在只有「阶段键 / 待处理数 / 是否有开放轮次」变化才触发重渲染。
   const raw = useSession(snapshot => {
     let latest: TurnSnapshot | undefined;
     for (const turn of snapshot.chat.timeline.turns.values()) {
@@ -34,8 +35,13 @@ export function useTurnActivity(useSession: UseConversationSession): ActivityVie
         }),
       };
     }
-    return { turn: latest, pending: snapshot.pending.length, hasOpenTurn: latest !== undefined };
-  });
+    return {
+      turn: latest,
+      pending: snapshot.pending.length,
+      hasOpenTurn: latest !== undefined,
+      phaseKey: latest ? phaseKeyOf(latest, latestStep(latest), latestSince(latest)) : 'idle',
+    };
+  }, turnActivityEqual);
   // Seconds tick: 1s interval, gated on an open turn so an idle Reader stops
   // re-rendering every second. The gate uses the stable `hasOpenTurn` boolean,
   // not the `turn` object reference: the snapshot rebuilds `turn` on every
@@ -49,7 +55,11 @@ export function useTurnActivity(useSession: UseConversationSession): ActivityVie
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [raw.hasOpenTurn]);
-  return useMemo<ActivityView>(() => {
+  // The view is selected through the same equality the reader uses: a seconds
+  // tick produces the same key/phase/label and therefore the SAME object
+  // reference, so `now` updates the status-bar text without re-rendering the
+  // whole reading tree every second.
+  return useSession<ActivityView>(() => {
     const result = latestOpenTurn(raw.turn, raw.pending, []);
     if (!result) return IDLE;
     // Timer origin is the step's real event timestamp (`since`), never a
@@ -63,5 +73,34 @@ export function useTurnActivity(useSession: UseConversationSession): ActivityVie
       ? null
       : Math.max(0, Math.floor((now - result.since) / 1000));
     return { label: activityLabel(result.phase), seconds, key: result.key, phase: result.phase };
-  }, [raw, now]);
+  }, sameActivity);
+}
+
+/** 阅读页重渲染判定：秒数每 tick 变化，但它只影响状态条自己的文案，不应带着
+ *  整棵阅读树重渲染（键/阶段变化才重渲染）。 */
+export function sameActivity(a: ActivityView, b: ActivityView): boolean {
+  return a.key === b.key && a.phase === b.phase && a.label === b.label && a.seconds === b.seconds;
+}
+
+/** 只比较真正影响阅读页渲染的字段（`turn` 对象每 chunk 都换引用）。 */
+function turnActivityEqual(
+  a: { turn?: TurnSnapshot; pending: number; hasOpenTurn: boolean; phaseKey: string },
+  b: { turn?: TurnSnapshot; pending: number; hasOpenTurn: boolean; phaseKey: string },
+): boolean {
+  return a.hasOpenTurn === b.hasOpenTurn && a.pending === b.pending && a.phaseKey === b.phaseKey;
+}
+
+function latestStep(turn: TurnSnapshot): number {
+  for (let i = (turn.steps?.length ?? 0) - 1; i >= 0; i--) {
+    if (turn.steps![i]!.data.get('assistant-step')) return turn.steps![i]!.step;
+  }
+  return 0;
+}
+
+function latestSince(turn: TurnSnapshot): number | null {
+  for (let i = (turn.steps?.length ?? 0) - 1; i >= 0; i--) {
+    const data = turn.steps![i]!.data.get('assistant-step') as { time?: number } | undefined;
+    if (data && typeof data.time === 'number') return data.time;
+  }
+  return null;
 }

@@ -17,13 +17,15 @@
  * token 用量是 0.1.2 turn-tail 数据新增的 tokenUsage 载荷（聚合各次模型尝试的
  * 精确计数），0.1.1 没有该字段——按特性检测插入「用量 N tok」，两版通用。
  *
- * 性能纪律：fiber 快照按根 WeakMap + 5s TTL 缓存（每 tick 不再全树遍历）；closed
- * 轮统计文本静态，渲染成功后打 dataset 标记后续跳过（只进行中轮每 tick 刷新）；
- * 扫描 rAF 合帧 + 300ms 节流。
+ * 性能纪律：观察范围收窄到阅读视图根（见 reader-root.ts：原 body 级
+ * childList+subtree 观察在流式渲染时每帧触发，代价随会话长度增长）；fiber 快照按
+ * 根 WeakMap + 5s TTL 缓存（每 tick 不再全树遍历）；closed 轮统计文本静态，渲染
+ * 成功后打 dataset 标记后续跳过（只进行中轮每 tick 刷新）；扫描 rAF 合帧 + 300ms 节流。
  */
 
+import { cachedSnapshot, normalizeSnapshot, observeReaderRoot, watchReaderRoots, type SnapshotView } from './reader-root.js';
+
 const FOOTER_CLASS = 'dshcp-turn-footer';
-const SNAP_TTL = 5000;
 const MIN_INTERVAL = 300;
 
 function pad2(n: number): string { return (n < 10 ? '0' : '') + n; }
@@ -61,35 +63,9 @@ export function fmtCompactTokens(value: number): string {
   return `${scaled(value / 1e6)}M`;
 }
 
-/** 归一化后的快照读取面：两种版本形态都收敛到 chat（nodes/timeline）+ turnTimings。 */
-export interface SnapshotView {
-  chat: {
-    timeline: { turns: Map<number, any> };
-    nodes: { get(key: string): any };
-  };
-  turnTimings?: Map<number, { startTime: number; endTime?: number }> | null;
-}
-
-/**
- * 把一个 hook 状态归一成 SnapshotView，形状不符返回 null：
- * 0.1.1 完整 session 快照（chat 内嵌，turnTimings 顶层）；0.1.2 chat 快照本体
- * （nodes/timeline 顶层，turnTimings 在 legacy 兼容切片里）。session 瘦身后的
- * 0.1.2 session 切片（无 chat 无 nodes）两种形态都不匹配，安全跳过。
- */
-export function normalizeSnapshot(v: unknown): SnapshotView | null {
-  if (!v || typeof v !== 'object') return null;
-  const rec = v as Record<string, unknown>;
-  const chat = (rec.chat ?? rec) as Record<string, unknown> | null | undefined;
-  if (!chat || typeof chat !== 'object') return null;
-  const nodes = chat.nodes as { get?: unknown } | undefined;
-  const timeline = chat.timeline as { turns?: unknown } | undefined;
-  if (!nodes || typeof nodes.get !== 'function') return null;
-  const turns = timeline?.turns as { get?: unknown } | undefined;
-  if (!turns || typeof turns.get !== 'function') return null;
-  const legacy = chat.legacy as { turnTimings?: unknown } | undefined;
-  const turnTimings = (rec.turnTimings ?? legacy?.turnTimings) as SnapshotView['turnTimings'];
-  return { chat: chat as SnapshotView['chat'], turnTimings: turnTimings ?? undefined };
-}
+/** 归一化后的快照读取面（由 reader-root.ts 提供）。 */
+export type { SnapshotView } from './reader-root.js';
+export { normalizeSnapshot } from './reader-root.js';
 
 /**
  * 一个轮次的统计文本：时钟 · 用时 · 用量 · 首 token · tok/s（至少两项才成行）。
@@ -123,40 +99,6 @@ export function footerTextForTurn(snap: SnapshotView, turnNum: number): string |
   return parts.length >= 2 ? parts.join(' · ') : null;
 }
 
-function resolveSnapshot(root: HTMLElement): SnapshotView | null {
-  const keys = Object.keys(root);
-  let fiberKey: string | null = null;
-  for (const k of keys) { if (k.indexOf('__reactFiber$') === 0) { fiberKey = k; break; } }
-  if (!fiberKey) return null;
-  let f: any = (root as any)[fiberKey];
-  let hops = 0;
-  while (f && hops < 300) {
-    if (f.tag === 0 || f.tag === 1 || f.tag === 2) {
-      let hook = f.memoizedState;
-      let guard = 0;
-      while (hook && guard < 300) {
-        const normalized = normalizeSnapshot(hook.memoizedState);
-        if (normalized) return normalized;
-        hook = hook.next;
-        guard++;
-      }
-    }
-    f = f.return;
-    hops++;
-  }
-  return null;
-}
-
-const snapCache = new WeakMap<HTMLElement, { snap: SnapshotView | null; at: number }>();
-function cachedSnapshot(root: HTMLElement): SnapshotView | null {
-  const c = snapCache.get(root);
-  const now = Date.now();
-  if (c && now - c.at < SNAP_TTL) return c.snap;
-  const snap = resolveSnapshot(root);
-  snapCache.set(root, { snap, at: now });
-  return snap;
-}
-
 function upsertFooters(root: HTMLElement, snap: SnapshotView | null): void {
   if (!snap) return;
   const sections = Array.prototype.slice.call(root.querySelectorAll('section[data-reader-turn]')) as HTMLElement[];
@@ -188,50 +130,25 @@ function upsertFooters(root: HTMLElement, snap: SnapshotView | null): void {
 }
 
 export function apply(_ctx: any): () => void {
-  let timer: ReturnType<typeof setInterval> | null = null;
-  let observer: MutationObserver | null = null;
-  let scheduled = false;
   let running = true;
-  let lastRun = 0;
-  let trailing: ReturnType<typeof setTimeout> | 0 = 0;
+  const stopRoot = new Map<HTMLElement, () => void>();
 
-  const work = () => {
+  const work = (root: HTMLElement) => {
     if (!running) return;
-    lastRun = Date.now();
-    const roots = Array.prototype.slice.call(document.querySelectorAll('[data-dsh-clearview]')) as HTMLElement[];
-    for (const root of roots) {
-      try { upsertFooters(root, cachedSnapshot(root)); } catch { /* 单根失败忽略 */ }
-    }
+    try { upsertFooters(root, cachedSnapshot(root)); } catch { /* 单根失败忽略 */ }
   };
-  const schedule = () => {
-    if (!running || scheduled) return;
-    scheduled = true;
-    requestAnimationFrame(() => {
-      scheduled = false;
-      if (!running) return;
-      const wait = MIN_INTERVAL - (Date.now() - lastRun);
-      if (wait > 0) { if (!trailing) trailing = setTimeout(() => { trailing = 0; work(); }, wait); }
-      else work();
-    });
-  };
-  const startObserver = () => {
-    if (observer || !running) return;
-    observer = new MutationObserver(schedule);
-    observer.observe(document.body, { childList: true, subtree: true });
-  };
-  work();
-  timer = setInterval(() => {
-    if (!document.querySelector('[data-dsh-clearview]')) { work(); return; }
-    startObserver();
-    if (timer) { clearInterval(timer); timer = null; }
-  }, 1500);
+
+  const stopWatch = watchReaderRoots(
+    root => { stopRoot.set(root, observeReaderRoot(root, () => work(root), MIN_INTERVAL)); },
+    root => { stopRoot.get(root)?.(); stopRoot.delete(root); },
+  );
 
   const cleanup = () => {
     if (!running) return;
     running = false;
-    if (timer) { clearInterval(timer); timer = null; }
-    if (trailing) clearTimeout(trailing);
-    if (observer) observer.disconnect();
+    stopWatch();
+    for (const stop of stopRoot.values()) stop();
+    stopRoot.clear();
   };
   try { console.info('[dsh-clearview:turn-metrics-footer] applied'); } catch { /* 忽略 */ }
   return cleanup;

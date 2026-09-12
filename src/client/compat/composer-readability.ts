@@ -8,7 +8,9 @@
  * （画布色变量 --dshcp-canvas-solid 的计算已于 0.1.14 退役：唯一消费者
  * 「回到最新」药丸早已并入插件主体自带实底，插件内外均无该变量的读取点。）
  *
- * 性能纪律：[class*="_sep"] 子串选择器全扫经 rAF 合帧 + 500ms 节流，已标记时一次早退。
+ * 性能纪律：原来在 body 上做 childList+subtree 全树观察，流式渲染时每帧触发，
+ * 只为标记一个统计行；改为只观察 composer 座位子树（座位很小），并且只在座位
+ * 尚未出现时才观察 body 的顶层 childList（每次进入会话最多几次回调）。
  */
 
 const STATS_THROTTLE = 500;
@@ -47,17 +49,25 @@ export function apply(_ctx: any): () => void {
   };
 
   work();
-  let domObserver: MutationObserver | null = null;
-  try {
-    domObserver = new MutationObserver(schedule);
-    domObserver.observe(document.body, { childList: true, subtree: true });
-  } catch { /* 观察者不可用时靠轮询兜底 */ }
-  const timer = setInterval(work, 5000);
+  let seatObserver: MutationObserver | null = null;
+  let seat: Element | null = null;
+  let timer: ReturnType<typeof setInterval> | null = null;
+  const watchSeat = () => {
+    seat = document.querySelector('[data-composer-seat]');
+    if (!seat) return false;
+    if (!seatObserver) {
+      seatObserver = new MutationObserver(schedule);
+      seatObserver.observe(seat, { childList: true, subtree: true });
+    }
+    if (timer) { clearInterval(timer); timer = null; }
+    return true;
+  };
+  if (!watchSeat()) timer = setInterval(() => { if (watchSeat()) { schedule(); } }, 5000);
 
   const cleanup = () => {
-    clearInterval(timer);
+    if (timer) { clearInterval(timer); timer = null; }
     if (trailing) clearTimeout(trailing);
-    if (domObserver) domObserver.disconnect();
+    if (seatObserver) seatObserver.disconnect();
   };
   try { console.info('[dsh-clearview:composer-readability] applied'); } catch { /* 忽略 */ }
   return cleanup;

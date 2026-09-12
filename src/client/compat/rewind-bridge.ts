@@ -21,9 +21,12 @@
  * 幂等：每座位仅处理一次（dataset.dshcpRewindSeat）；座位被 React 重建后观察者
  * 再次处理。不触碰原生「对话/轨迹」视图。
  *
- * 性能纪律：不对每个 addedNode 跑复合选择器子树扫描；任何 childList 变化只置脏
- * + rAF 合帧 + 300ms 节流，扫描限定在阅读视图根内。
+ * 性能纪律：不对每个 addedNode 跑复合选择器子树扫描；观察范围收窄到阅读视图根
+ * （见 reader-root.ts：原 body 级 childList+subtree 观察在流式渲染时每帧触发），
+ * 任何 childList 变化只置脏 + rAF 合帧 + 300ms 节流。
  */
+
+import { observeReaderRoot, watchReaderRoots } from './reader-root.js';
 
 const SEAT_SELECTOR = 'div[data-reader-anchor][data-reader-key]:not(article)';
 const MIN_INTERVAL = 300;
@@ -111,44 +114,31 @@ function ensureSeat(seat: HTMLElement): void {
 
 export function apply(_ctx: any): () => void {
   if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') return () => { /* no-op */ };
-  let scheduled = false;
-  let lastRun = 0;
-  let trailing: ReturnType<typeof setTimeout> | 0 = 0;
+  let running = true;
+  const stopRoot = new Map<HTMLElement, () => void>();
 
-  const scan = () => {
-    lastRun = Date.now();
-    document.querySelectorAll<HTMLElement>('[data-dsh-clearview]').forEach(rootEl => {
-      try { rootEl.querySelectorAll<HTMLElement>(SEAT_SELECTOR).forEach(ensureSeat); } catch { /* 隔离单根异常 */ }
-    });
-  };
-  const schedule = () => {
-    if (scheduled) return;
-    scheduled = true;
-    requestAnimationFrame(() => {
-      scheduled = false;
-      const wait = MIN_INTERVAL - (Date.now() - lastRun);
-      if (wait > 0) { if (!trailing) trailing = setTimeout(() => { trailing = 0; scan(); }, wait); }
-      else scan();
-    });
+  const scan = (root: HTMLElement) => {
+    if (!running) return;
+    try { root.querySelectorAll<HTMLElement>(SEAT_SELECTOR).forEach(ensureSeat); } catch { /* 隔离单根异常 */ }
   };
 
-  let observer: MutationObserver | null = null;
-  try {
-    observer = new MutationObserver(records => {
-      for (let i = 0; i < records.length; i++) {
-        if (records[i].type === 'childList') { schedule(); return; }
-      }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-  } catch { /* 观察者不可用则退化为定时扫描 */ }
-
-  scan();
-  setTimeout(schedule, 3000);
-  setTimeout(schedule, 10000);
+  const stopWatch = watchReaderRoots(
+    root => {
+      stopRoot.set(root, observeReaderRoot(root, () => scan(root), MIN_INTERVAL));
+      // 座位可能先于观察器挂载（React 提交后兼容层才拿到根）：延迟补扫两次，
+      // 覆盖「进入阅读页时已有历史座位」的情形，之后完全由观察器驱动。
+      setTimeout(() => scan(root), 3000);
+      setTimeout(() => scan(root), 10000);
+    },
+    root => { stopRoot.get(root)?.(); stopRoot.delete(root); },
+  );
 
   const cleanup = () => {
-    if (observer) observer.disconnect();
-    if (trailing) clearTimeout(trailing);
+    if (!running) return;
+    running = false;
+    stopWatch();
+    for (const stop of stopRoot.values()) stop();
+    stopRoot.clear();
   };
   try { console.info('[dsh-clearview:rewind-bridge] applied'); } catch { /* 忽略 */ }
   return cleanup;

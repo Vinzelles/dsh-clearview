@@ -3,7 +3,7 @@ import type { ReactNode, RefObject } from 'react';
 import type { ChatConversationViewNode } from '@deepseek-ai/dsh-client-runtime/client';
 import type { ChatNode, ChatNodeKind } from '@deepseek-ai/dsh-client-ui-conversation/client';
 import { JsonTree } from '@deepseek-ai/dsh-client-ui-primitives';
-import { JsonBlockL, MarkdownTextL } from './native/labeled-blocks.js';
+import { MarkdownTextL } from './native/labeled-blocks.js';
 import { JSON_TREE_LABELS } from './native/primitive-labels.js';
 import { FileChangesPanel } from './FileChanges.js';
 import { BlockBoundary, Blocks, contentBlocks, CopyAnswer } from './Blocks.js';
@@ -16,6 +16,7 @@ import { useTurnActivity } from './use-turn-activity.js';
 import { CollapseBody, Disclosure, MountFade, ProcessFragment, RetiringContent, StatusText, useContentWidth, useMotionAllowed, usePinnedSelection, useReadingScroll } from './motion.js';
 import { StreamMotionContext } from './streaming.js';
 import { useCompatReaderProps } from './compat/session-snapshot.js';
+import { READER_COMPAT_MOUNT_EVENT, READER_COMPAT_UNMOUNT_EVENT } from './compat/reader-root.js';
 import { nodeText, workflowRunSummary, workflowStatusLabel } from './node-payloads.js';
 import { SystemPromptRow } from './native/SystemPromptRow.js';
 import { assistantSegments, boundaryOf, groupNodes, hasProcessContent, hasVisibleBody, isEarlierNarration, processChoiceKey, processExpanded, terminalLabel } from './projection.js';
@@ -276,7 +277,7 @@ const MainNode = memo(function MainNode({ useSession, nodeKey, boundary, pinned,
   // ui-goal projects the durable /goal command line as a user-style record.
   if (node.kind === 'command-input') {
     const text = nodeText(node.data);
-    if (text === null) return <UnknownNode node={node} />;
+    if (text === null) return <GenericCallCard node={node} />;
     return <div className={css.user} data-reader-anchor data-reader-key={nodeKey} data-reader-command-input>
       <p className={css.meta}>命令输入</p>
       <Blocks {...render} blocks={[{ kind: 'text', text }]} source="user" />
@@ -302,22 +303,30 @@ const MainNode = memo(function MainNode({ useSession, nodeKey, boundary, pinned,
       <RecordJson label="工作流记录" payload={node.data} />
     </NoticeCard>;
   }
-  if (node.kind !== 'unknown') return <UnknownNode node={node} />;
-  // The unclaimed append-surface fallback: genuinely unknown evidence, so it
-  // keeps an explicit card (with a wording that no longer reads as a reader
-  // gap for the kinds above).
-  return <div className={css.unknown} data-reader-anchor data-reader-unknown-node>
-    <p>未识别的会话记录：{typeof node.data === 'object' && node.data !== null && 'type' in node.data && typeof (node.data as { type?: unknown }).type === 'string' ? (node.data as { type: string }).type : node.id}</p>
-    <JsonBlockL label="查看原始记录" payload={node.data} />
-  </div>;
+  // Anything this build has no dedicated presentation for — known kinds from
+  // newer hosts, plugin-projected records (agent-teams and friends), and the
+  // unclaimed append-surface fallback — reads as one generic tool-call card.
+  return <GenericCallCard node={node} />;
 });
 
-/** One known-kind payload this build cannot read: keep the raw record visible. */
-function UnknownNode({ node }: { node: ChatConversationViewNode }) {
-  return <div className={css.unknown} data-reader-anchor>
-    <p>此记录类型暂未接入阅读页：{node.kind}</p>
-    <JsonBlockL label="查看原始记录" payload={node.data} />
-  </div>;
+/** A record this build cannot present natively: shown as a plain 工具调用 in
+ *  the default notice-card style, with the raw payload one expand away. The
+ *  kind (or the payload's own type / the node id for genuinely unknown
+ *  evidence) stays visible as the meta, so the record remains identifiable
+ *  without the reader advertising its own gap. */
+function GenericCallCard({ node }: { node: ChatConversationViewNode }) {
+  const meta = node.kind !== 'unknown' ? node.kind
+    : typeof node.data === 'object' && node.data !== null && 'type' in node.data && typeof (node.data as { type?: unknown }).type === 'string'
+      ? (node.data as { type: string }).type
+      : node.id;
+  return <NoticeCard
+    title="工具调用"
+    meta={meta}
+    tone="info"
+    markers={{ 'data-reader-anchor': '', 'data-reader-generic-call': '' }}
+  >
+    <RecordJson label="原始记录" payload={node.data} />
+  </NoticeCard>;
 }
 
 function GroupStatus({ group, useSession, motion }: Pick<ReaderProps, 'useSession'> & { group: ReaderGroup; motion: boolean }) {
@@ -591,9 +600,16 @@ export function Reader(rawProps: ReaderProps) {
   const order = props.useSession(snapshot => snapshot.chat.order);
   const nodes = props.useSession(snapshot => snapshot.chat.nodes);
   const timeline = props.useSession(snapshot => snapshot.chat.timeline);
+  /** Last computed rewind token, keyed on the inputs it was derived from. */
+  const rewindMemo = useRef<{ order: unknown; nodes: unknown; token: string }>({ order: null, nodes: null, token: '' });
   const rewindToken = props.useSession(snapshot => {
-    let token = '';
     const chat = snapshot.chat;
+    // 这个选择器在每次 store 更新（流式期间每 chunk）都会重跑；会话对象与节点表
+    // 引用不变时结果必然相同，直接用上一次的 token，避免每 chunk 全量扫命令节点。
+    if (chat.order === rewindMemo.current.order && chat.nodes === rewindMemo.current.nodes) {
+      return rewindMemo.current.token;
+    }
+    let token = '';
     for (const key of chat.order) {
       const node = chat.nodes.get(key);
       if (!node || node.kind !== 'command') continue;
@@ -601,6 +617,7 @@ export function Reader(rawProps: ReaderProps) {
       if (command.name !== 'rewind') continue;
       token += `${command.seq}:${command.args ?? ''}:${command.outcome?.kind ?? ''}:${command.outcome?.sourceEventSeq ?? ''};`;
     }
+    rewindMemo.current = { order: chat.order, nodes: chat.nodes, token };
     return token;
   });
   const pending = props.useSession(snapshot => snapshot.pending);
@@ -627,6 +644,15 @@ export function Reader(rawProps: ReaderProps) {
   }), [order, nodes, rewindHidden]);
   const groups = useMemo(() => groupNodes(visibleOrder, key => nodes.get(key)), [visibleOrder, nodes, timeline]);
   const scroll = useReadingScroll(root, motion);
+  // 兼容层根发现：阅读根是运行中在深层会话容器里挂载/卸载的，body 级观察器看不到
+  // 它；由本组件在根挂载/卸载时广播事件，rewind 桥 / 轮统计行 / 收尾防吞只监听
+  // 事件（见 compat/reader-root.ts watchReaderRoots），不在 body 上做全树观察。
+  useEffect(() => {
+    const node = root.current;
+    if (!node) return;
+    document.dispatchEvent(new CustomEvent<HTMLElement>(READER_COMPAT_MOUNT_EVENT, { detail: node }));
+    return () => { document.dispatchEvent(new CustomEvent<HTMLElement>(READER_COMPAT_UNMOUNT_EVENT, { detail: node })); };
+  }, []);
   // The activity bar animates its width between label changes: `transition:
   // width` needs an explicit pixel value, so the content row's natural width
   // is tracked and pinned back onto the bar.
@@ -697,7 +723,7 @@ export function Reader(rawProps: ReaderProps) {
       listDirNames={props.listDirNames}
     />
   );
-  return <StreamMotionContext.Provider value={streamMotion}><div ref={root} className={css.root} data-dsh-clearview="0.1.14" data-motion={motion ? 'on' : 'off'}>
+  return <StreamMotionContext.Provider value={streamMotion}><div ref={root} className={css.root} data-dsh-clearview="0.1.15" data-motion={motion ? 'on' : 'off'}>
     <div className={css.column}>
       <div className={css.toolbar} data-ud-check="reader-toolbar">
         <Switch label={`折叠思考${collapseThinking ? '开' : '关'}`} checked={collapseThinking} onChange={() => props.actions.setCollapseThinking(!collapseThinking)}

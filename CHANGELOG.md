@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.1.15
+
+- **未接入记录统一降级为「工具调用」默认卡片**。此前阅读页遇到本构建未接入的记录
+  类型（如 AgentTeams 投射的 `agent-teams` 节点、更新内核新增的 kind、append-surface
+  未认领的兜底记录）会显示「此记录类型暂未接入阅读页 / 未识别的会话记录」的
+  `css.unknown` 灰盒，读起来像阅读页自身的缺口。现在这些记录一律渲染为默认提示卡
+  （`NoticeCard` info 样式，与命令记录/工作流记录同款）：标题「工具调用」，meta 保留
+  记录类型（unknown kind 时取 payload 的 `type` 或节点 id，记录仍可辨识），展开即见
+  原始记录 JSON（`RecordJson`，与其余卡片同一「卡片唯一可展开」节奏）。新增 DOM 标记
+  `data-reader-generic-call`；`command-input` 无文本的回退路径共用同一组件。
+- **修复 0.1.2 内核上插件「启动即失败」（启动页 Failed to load plugins）**。0.1.14 的
+  结论「0.1.2 由 client-modules 的 compat 种子同名承接 `dsh-client-runtime/client`」
+  **不成立**：0.1.2-rc.1 的启动壳只预置 8 个平台种子（react、react/jsx-runtime、
+  react-dom、react-dom/client、`@deepseek-ai/cordis`、`@deepseek-ai/dsh-client-store`、
+  `@deepseek-ai/dsh-client-ui-slots`、`@deepseek-ai/dsh-client-ui-primitives`），
+  既没有 runtime 包、也没有它的 compat 别名。当时「看起来能用」只是因为该机内核文件被
+  手工打过一次 compat 补丁——内核重装/升级（profile 的 node_modules 是指向内核的
+  junction）即失效，插件立刻退回
+  `client-modules: require("@deepseek-ai/dsh-client-runtime/client") missed the module table`。
+  该错误是**bundle 级硬失败**而非局部降级：值导入被客户端构建提升成工厂顶部一次写死的
+  `require`，宿主模块表答不上来时整条 loader entry 的导入抛错，插件全部功能不加载。
+  修复：`store.ts` 不再静态导入 `defineStore`，改在懒 CJS 工厂作用域内用模块表解析器
+  逐条 `try/catch` 查表——`@deepseek-ai/dsh-client-store`（0.1.2+ 平台种子）优先，
+  `@deepseek-ai/dsh-client-runtime/client`（0.1.1 真实预载模块）兜底，两条都缺失才抛出
+  写明尝试记录的明确错误；类型侧仍走 `import type`（编译期擦除，不产生 require）。
+  构建产物因此只剩 react、react/jsx-runtime、`@deepseek-ai/dsh-client-ui-primitives`
+  三个双版本共有外部依赖（0.1.1 与 0.1.2/0.1.3 的种子表交集的子集）。
+  验证方式不再依赖「有人说能用」：把本机内核**恢复为未打补丁的 0.1.2-rc.1 原版**后，
+  用 headless Chrome 真实启动 Web UI——`dsh-clearview` 五个 compat 补丁
+  （composer-readability / memory-tail-keep / perf-guard / rewind-bridge /
+  turn-metrics-footer）全部 applied，无任何 loader 报错；恢复打补丁内核后同样零回归
+  （两条路径都实测过）。`npm test` 150 项全绿。
+  新增 `tests/client-store-resolution.test.ts` 回归锁 3 项：① src/client 禁止对已删包做
+  值导入（TS 编译器 API 判定，`import type` 与内联 `{ type X }` 放行）；② 引擎解析表必须
+  两个拼写齐全且新平台拼写在前（防止宿主另装同名 compat 种子时抢在真实引擎之前）；
+  ③ 构建产物不得再出现写死的 legacy require。三项均做过反向验证（重新引入值导入后
+  测试确实报 `store.ts: { defineStore }` 失败）。
+  另注：同环境里 `@dsh-external/dsh-prompt-enhancer`，以及 dsh-tavily / dsh-notification
+  等插件仍对已删除的 runtime 包做值导入，属同一类缺陷，需各自仓库按同样方式修；
+  本仓库的改动只覆盖 dsh-clearview 自身，不再需要任何内核侧补丁。
+- **0.1.5-rc.2 内核实测通过**。0.1.5-rc.2 的平台种子表扩到 9 项（新增
+  `@deepseek-ai/dsh-client-ui-dockkit`），本插件依赖的三项外部（react、
+  react/jsx-runtime、`@deepseek-ai/dsh-client-ui-primitives`）与 store 引擎的
+  首选拼写 `@deepseek-ai/dsh-client-store` 仍在表内；用 headless Chrome 实启
+  Web UI 复核：插件正常加载，五个 compat 补丁（composer-readability /
+  memory-tail-keep / perf-guard / rewind-bridge / turn-metrics-footer）全部
+  applied，compat 样式注入成功，无任何 loader 报错。槽位
+  `conversation.view` / `conversation.session` / `conversation.input.dock` 与
+  `entriesOfSlot` 在该版内核中同样齐备。
+
 ## 0.1.14
 
 - **全面兼容性核查补漏：`JsonBlock` 与 `CodeBlock` 的同族「必传文案」缺口**。对插件

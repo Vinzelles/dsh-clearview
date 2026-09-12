@@ -272,7 +272,7 @@
   background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 50%, transparent);
   backdrop-filter: blur(6px);
   border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 80%, rgba(255, 255, 255, 0.08));
-  margin: 6px 0;
+  margin: 0;
   transition: background-color 160ms ease, border-color 160ms ease;
 }
 .clusterBlock:hover {
@@ -430,6 +430,16 @@
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   scroll-margin-block: 16px calc(var(--dsh-composer-height, 152px) + 16px);
   transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  /* Paint containment only. The card already clips its content (overflow:
+     hidden + border-radius), so this cannot change what is painted; it stops
+     the card's own per-frame changes — the reasoning follow write and the
+     streaming text behind it — from invalidating paint above the card.
+     Deliberately NOT will-change: transform. Promoting every reasoning card
+     to its own compositor layer looked promising in one noisy run (34.3% ->
+     21.4% of a core) but an interleaved 3x A/B on the same 26-card reader
+     measured 26.7% vs 26.4% of a core — within noise — while 26 permanent
+     layers cost raster memory. No hint ships without a repeatable win. */
+  contain: paint;
 }
 .reasonCard:hover {
   background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 80%, transparent);
@@ -570,7 +580,7 @@
 .noticeCard[data-state=success] .noticeCardTitle {
   color: var(--dsw-alias-state-success-primary);
 }
-.meta { font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-tertiary); }
+.meta { font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-tertiary); margin-top: 0; }
 .stopped { align-self: flex-start; border-radius: 6px; padding: 0 6px; background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 18px; margin-top: 12px; }
 .notice, .error, .attention { border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 22px; overflow-wrap: anywhere; }
 .notice { background: var(--dsw-alias-bg-module-platform); color: var(--dsw-alias-label-secondary); }

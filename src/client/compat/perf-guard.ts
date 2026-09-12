@@ -94,8 +94,12 @@ function syncRoot(root: HTMLElement): void {
 
 export function apply(_ctx: any): () => void {
   const work = () => {
+    // 阅读视图不可见（切到原生「对话/轨迹」、会话未挂载）时不做任何度量与重排。
+    if (document.hidden) return;
     const roots = document.querySelectorAll<HTMLElement>('[data-dsh-clearview]');
     for (let i = 0; i < roots.length; i++) {
+      // armRoot 必须每 tick 跑：轮次高度可以只由展开/折叠变化（字符量不变），
+      // 跳过它会留下过期的 contain-intrinsic-size，向上滚动时占位跳变。
       try { syncRoot(roots[i]); armRoot(roots[i]); } catch { /* 单根失败忽略 */ }
     }
   };

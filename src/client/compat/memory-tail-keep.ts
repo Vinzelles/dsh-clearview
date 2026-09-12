@@ -16,19 +16,19 @@
  * （chat 内嵌）；0.1.2 session 瘦身后命中 useChat 快照本体（nodes/timeline 顶层）。
  * 旧的 v.chat.* 判定在 0.1.2 上命中不了任何钩子状态，本模块会静默失效（0.1.14 修复）。
  *
- * 性能纪律：fiber 快照 WeakMap + 5s TTL 缓存；每轮次判定一次后打 dataset 标记跳过；
- * 观察者 rAF 合帧 + 300ms 节流。
+ * 性能纪律：观察范围收窄到阅读视图根（见 reader-root.ts）；fiber 快照 WeakMap +
+ * 5s TTL 缓存；每轮次判定一次后打 dataset 标记跳过；观察者 rAF 合帧 + 300ms 节流。
  * 幂等/边界：展开后不再触碰；用户手动点过该轮过程按钮后永久让位；不触碰原生视图。
  */
 
-import { normalizeSnapshot, type SnapshotView } from './turn-metrics-footer.js';
+import type { SnapshotView } from './reader-root.js';
+import { cachedSnapshot, observeReaderRoot, watchReaderRoots } from './reader-root.js';
 
 const HOUSEKEEPING: Record<string, 1> = {
   memory: 1, memory_suggest: 1, memory_review_status: 1,
   dtodo: 1, skill_manage: 1,
 };
 const MIN_SUMMARY_CHARS = 40;
-const SNAP_TTL = 5000;
 const MIN_INTERVAL = 300;
 
 function textLength(blocks: any): number {
@@ -39,40 +39,6 @@ function textLength(blocks: any): number {
     if (b && b.kind === 'text' && typeof b.text === 'string') n += b.text.length;
   }
   return n;
-}
-
-function resolveSnapshot(root: HTMLElement): SnapshotView | null {
-  const keys = Object.keys(root);
-  let fiberKey: string | null = null;
-  for (const k of keys) { if (k.indexOf('__reactFiber$') === 0) { fiberKey = k; break; } }
-  if (!fiberKey) return null;
-  let f: any = (root as any)[fiberKey];
-  let hops = 0;
-  while (f && hops < 300) {
-    if (f.tag === 0 || f.tag === 1 || f.tag === 2) {
-      let hook = f.memoizedState;
-      let guard = 0;
-      while (hook && guard < 300) {
-        const normalized = normalizeSnapshot(hook.memoizedState);
-        if (normalized) return normalized;
-        hook = hook.next;
-        guard++;
-      }
-    }
-    f = f.return;
-    hops++;
-  }
-  return null;
-}
-
-const snapCache = new WeakMap<HTMLElement, { snap: SnapshotView | null; at: number }>();
-function cachedSnapshot(root: HTMLElement): SnapshotView | null {
-  const c = snapCache.get(root);
-  const now = Date.now();
-  if (c && c.snap && now - c.at < SNAP_TTL) return c.snap;
-  const snap = resolveSnapshot(root);
-  snapCache.set(root, { snap, at: now });
-  return snap;
 }
 
 function isMemoryTailTurn(turn: any, closing: any): boolean {
@@ -102,13 +68,9 @@ function sectionKey(section: HTMLElement, closing: any): string {
 }
 
 export function apply(_ctx: any): () => void {
-  let timer: ReturnType<typeof setInterval> | null = null;
-  let observer: MutationObserver | null = null;
-  let scheduled = false;
   let running = true;
-  let lastRun = 0;
-  let trailing: ReturnType<typeof setTimeout> | 0 = 0;
   let syntheticClick = false;
+  const stopRoot = new Map<HTMLElement, () => void>();
   const currentUserDecided: Record<string, boolean> = {}; // 用户点过过程按钮 → 永久让位
 
   function ensureUserClickListener(section: HTMLElement, key: string): void {
@@ -154,43 +116,22 @@ export function apply(_ctx: any): () => void {
     candidate.dataset.dshcpTailChecked = '1';
   }
 
-  const work = () => {
+  const work = (root: HTMLElement) => {
     if (!running) return;
-    lastRun = Date.now();
-    const roots = Array.prototype.slice.call(document.querySelectorAll('[data-dsh-clearview]')) as HTMLElement[];
-    for (const root of roots) {
-      try { const snap = cachedSnapshot(root); if (snap) handle(root, snap); } catch { /* 单根失败忽略 */ }
-    }
+    try { const snap = cachedSnapshot(root); if (snap) handle(root, snap); } catch { /* 单根失败忽略 */ }
   };
-  const schedule = () => {
-    if (!running || scheduled) return;
-    scheduled = true;
-    requestAnimationFrame(() => {
-      scheduled = false;
-      if (!running) return;
-      const wait = MIN_INTERVAL - (Date.now() - lastRun);
-      if (wait > 0) { if (!trailing) trailing = setTimeout(() => { trailing = 0; work(); }, wait); }
-      else work();
-    });
-  };
-  const startObserver = () => {
-    if (observer || !running) return;
-    observer = new MutationObserver(schedule);
-    observer.observe(document.body, { childList: true, subtree: true });
-  };
-  work();
-  timer = setInterval(() => {
-    if (!document.querySelector('[data-dsh-clearview]')) { work(); return; }
-    startObserver();
-    if (timer) { clearInterval(timer); timer = null; }
-  }, 1500);
+
+  const stopWatch = watchReaderRoots(
+    root => { stopRoot.set(root, observeReaderRoot(root, () => work(root), MIN_INTERVAL)); },
+    root => { stopRoot.get(root)?.(); stopRoot.delete(root); },
+  );
 
   const cleanup = () => {
     if (!running) return;
     running = false;
-    if (timer) { clearInterval(timer); timer = null; }
-    if (trailing) clearTimeout(trailing);
-    if (observer) observer.disconnect();
+    stopWatch();
+    for (const stop of stopRoot.values()) stop();
+    stopRoot.clear();
   };
   try { console.info('[dsh-clearview:memory-tail-keep] applied'); } catch { /* 忽略 */ }
   return cleanup;
