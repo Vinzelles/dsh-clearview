@@ -19,9 +19,9 @@
   overflow-anchor: auto;
   container-type: inline-size;
 }
-.column { max-width: var(--dsh-chat-content-width, 748px); width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; min-width: 0; min-height: var(--reader-flow-min-height, auto); }
+.column { max-width: var(--dsh-chat-content-width, 748px); width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; min-width: 0; }
 .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 20px; }
-.textButton, .historyButton, .iconButton, .jump, .disclosureButton, .imageOpen, .dialogClose { font: inherit; cursor: pointer; }
+.textButton, .historyButton, .iconButton, .disclosureButton, .imageOpen, .dialogClose { font: inherit; cursor: pointer; }
 .textButton { border: 0; background: transparent; color: var(--dsw-alias-label-secondary); padding: 2px 6px; border-radius: 6px; white-space: nowrap; transition: background-color 160ms ease, color 160ms ease; }
 .textButton:hover, .iconButton:hover, .disclosureButton:hover { background: var(--dsw-alias-interactive-bg-hover); }
 /* Toolbar switches */
@@ -563,7 +563,7 @@
 @media (pointer: coarse) { .reasonAction { min-height: 44px; } }
 @media (forced-colors: active) { .reasonViewport { -webkit-mask-image: none !important; mask-image: none !important; } }
 @supports not (backdrop-filter: blur(1px)) {
-  .reasonCard, .clusterBlock, .noticeCard, .errorCard, .activityBar, .jump {
+  .reasonCard, .clusterBlock, .noticeCard, .errorCard {
     background: var(--dsw-alias-bg-module-platform);
   }
 }
@@ -762,237 +762,15 @@
 .dialogClose { position: absolute; right: 8px; top: 4px; border: 0; background: transparent; color: inherit; width: 32px; height: 32px; border-radius: 8px; font-size: 24px; transition: background-color 160ms ease, transform 160ms cubic-bezier(.22,1,.36,1); }
 .dialogClose:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .dialogClose:active { transform: scale(0.9); }
-/* Running activity bar: floats directly above the sticky composer, using the
-   same bottom offset the compat layer established for .jumpDock (the native
-   12px would hide behind the floating input card). Content-width and centered
-   — a lightweight status strip, not a full-width card. margin-top:auto plus
-   the measured --reader-flow-min-height pin it to the screen bottom even when
-   the transcript is shorter than the scrollport; sticky keeps it there while
-   scrolled up.
-
-   The whole bar IS the jump-to-latest button: the arrow is a decorative icon
-   (no own border/box), and label changes animate because useContentWidth pins
-   the content row's natural width onto this bar as an explicit pixel width —
-   `transition: width` cannot animate `auto`. That measurement is a content-box
-   width, and the UA stylesheet gives <button> box-sizing: border-box, so
-   content-box is pinned back explicitly or every width lands 22px short
-   (padding 20px + border 2px) and the label overflows the bar. */
-.activityBar {
-  position: sticky;
-  bottom: calc(var(--dsh-composer-height, 152px) + 12px);
-  /* Above the primitives' sticky code-block banner (z-index 6) so scrolling
-     banners never float over the floating status bar. */
-  z-index: 7;
-  align-self: center;
-  margin-top: auto;
-  box-sizing: content-box;
-  display: inline-flex;
-  align-items: center;
-  /* Left inset is optically compensated: the sparkle's left tip is a thin
-     point (reads further away than it is) while the right side is visually
-     dense (companion stars), so geometric symmetry looks lopsided. */
-  padding: 4px 10px 4px 6px;
-  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 80%, rgba(255, 255, 255, 0.08));
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 78%, transparent);
-  backdrop-filter: blur(6px);
-  color: var(--dsw-alias-label-secondary);
-  font: inherit;
-  font-size: 12px;
-  line-height: 18px;
-  cursor: default;
-  /* The measured row renders instantly while the pinned width is still
-     animating toward it; clipping inside the rounded border reads as the bar
-     unfolding instead of label overhang floating past the edge. */
-  overflow: hidden;
-  transition: width 200ms cubic-bezier(.22,1,.36,1), opacity 200ms cubic-bezier(.22,1,.36,1), transform 200ms cubic-bezier(.22,1,.36,1);
-}
-/* The measured row must keep its natural width while the bar's explicit width
-   is still catching up: flex:none stops the observer from chasing its own
-   compression — the bar clips the transient overhang instead. */
-.activityBarContent { display: inline-flex; align-items: center; flex: none; }
-/* Four-point AI sparkle: a large star with two companions, twinkling on
-   non-integer staggered periods (5s/3.4s/2.6s) so the combined pattern never
-   visibly repeats or reads as a spinner — no rotation anywhere. The star
-   breathes scale+opacity; waiting freezes it (a paused-for-user bar must not
-   look busy); motion-off/reduced-motion settles it at full brightness. */
-.activitySpinner { display: inline-flex; margin-right: 7px; color: var(--dsw-alias-state-business-primary); }
-.activitySpinner path { fill: currentColor; transform-origin: center; transform-box: fill-box; }
-.activityStarMain { animation: activity-twinkle 5s cubic-bezier(.45, 0, .55, 1) infinite; }
-.activityStarMid { animation: activity-twinkle 3.4s cubic-bezier(.45, 0, .55, 1) -1.2s infinite; color: var(--dsw-alias-label-secondary); }
-.activityStarTiny { animation: activity-twinkle 2.6s cubic-bezier(.45, 0, .55, 1) -2s infinite; color: var(--dsw-alias-label-secondary); }
-@keyframes activity-twinkle {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.25; transform: scale(0.72); }
-}
-.activityBar[data-phase=waiting] .activitySpinner path { animation-play-state: paused; }
-.activityText { font-weight: 500; color: var(--dsw-alias-label-primary); white-space: nowrap; }
-.activityTimer { margin-left: 8px; font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-secondary); white-space: nowrap; }
-/* Decorative arrow: borderless icon. Already-at-latest folds it away.
-   The slot's width/margin change MUST be instant, never transitioned: the
-   slot is part of the measured row, so a transitioned width would move the
-   row every frame and re-target the bar's own width transition every frame —
-   the bar would chase the arrow forever instead of animating once. Only the
-   icon cross-fades; it anchors to the slot's left edge so it holds position
-   while the bar's single width transition catches up. */
-.activityJump {
-  position: relative;
-  flex: none;
-  width: 14px;
-  height: 14px;
-  margin-left: 8px;
-}
-.activityBar:not([data-detached]) .activityJump { width: 0; margin-left: 0; }
-.activityJump svg { position: absolute; left: 0; top: 0; transition: opacity 160ms ease; }
-.activityBar:not([data-detached]) .activityJump svg { opacity: 0; }
-/* Content left the bottom: fade out but stay clickable. */
-.activityBar[data-detached] { opacity: 0.25; transform: translateY(2px); cursor: pointer; }
-.jumpDock { position: sticky; bottom: 12px; align-self: center; height: 0; z-index: 7; }
-/* Same visual language as .activityBar (frosted square, not the old circle):
-   6px corners, the same mixed border, the same translucent blurred fill.
-   z-index 7 outranks the primitives' sticky code-block banner (z-index 6 in
-   @deepseek-ai/dsh-client-ui-primitives CodeBlock.module.css — not editable
-   from here), which otherwise floats over the dock while scrolling past. */
-.jump {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 80%, rgba(255, 255, 255, 0.08));
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 78%, transparent);
-  backdrop-filter: blur(6px);
-  color: var(--dsw-alias-label-secondary);
-  transform: translateY(-100%);
-  transition: color 160ms ease, transform 200ms cubic-bezier(.22,1,.36,1), opacity 200ms cubic-bezier(.22,1,.36,1);
-}
-.jump:hover {
-  color: var(--dsw-alias-label-primary);
-}
-.jump:active { transform: translateY(-100%) scale(0.92); }
-.jump svg {
-  flex: none;
-}
-
-/* 本会话文件改动：会话空闲后挂在阅读流 mainFlow 末尾。
-   v3.1：空态整体不渲染；折叠态纯文字行（无边框/背景，与「执行过程」等
-   文字行同语言），展开后浮起为卡片（边框 + 卡片底色）。 */
-.fileChanges {
-  min-width: 0;
-}
-.fileChanges[data-open=true] {
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 10px;
-  padding: 10px 14px 12px;
-  background: var(--dsw-alias-bg-module-platform);
-}
-.fileHeader {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  border: 0;
-  background: transparent;
-  padding: 3px 6px;
-  margin: 0 -6px;
-  border-radius: 7px;
-  color: var(--dsw-alias-label-secondary);
-  text-align: left;
-  cursor: pointer;
-  transition: background-color 160ms ease, color 160ms ease;
-}
-.fileHeader:hover { background: var(--dsw-alias-interactive-bg-hover); }
-.fileTitle { flex: none; color: var(--dsw-alias-label-secondary); font-size: 13px; font-weight: 500; line-height: 22px; }
-.fileMeta { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 20px; }
-.fileBadges { flex: none; display: inline-flex; align-items: center; gap: 6px; max-width: 60%; overflow: hidden; }
-.fileBadge {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 5px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
-  background: var(--dsw-alias-bg-module);
-  border: 1px solid var(--dsw-alias-border-l2);
-}
-.fileBadge::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--dsw-alias-label-tertiary); }
-.fileBadge[data-tone=added]::before { background: var(--dsw-alias-state-success-primary); }
-.fileBadge[data-tone=modified]::before { background: var(--dsw-alias-state-business-primary); }
-.fileBadge[data-tone=deleted]::before { background: var(--dsw-alias-state-error-primary); }
-.fileBadge[data-tone=none]::before { display: none; }
-.fileBody { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin: 8px 0 2px; }
-.fileRow { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
-.fileRowHead { flex: none; display: inline-flex; align-items: center; gap: 6px; min-width: 64px; }
-.fileRowDot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--dsw-alias-label-tertiary); }
-.fileRow[data-tone=added] .fileRowDot { background: var(--dsw-alias-state-success-primary); }
-.fileRow[data-tone=modified] .fileRowDot { background: var(--dsw-alias-state-business-primary); }
-.fileRow[data-tone=deleted] .fileRowDot { background: var(--dsw-alias-state-error-primary); }
-.fileRowLabel { color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 22px; font-weight: 500; }
-.fileRowCount { color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 22px; font-variant-numeric: tabular-nums; }
-.fileChips {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-.fileChip {
-  display: inline-flex;
-  align-items: center;
-  max-width: 300px;
-  padding: 2px 10px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 999px;
-  background: var(--dsw-alias-bg-module);
-  color: var(--dsw-alias-label-secondary);
-  font: 12px/20px ui-monospace, SFMono-Regular, Menlo, monospace;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: default;
-}
-button.fileChip { cursor: pointer; transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease; }
-button.fileChip:hover { background: var(--dsw-alias-interactive-bg-hover); border-color: var(--dsw-alias-border-l3, var(--dsw-alias-border-l2)); color: var(--dsw-alias-label-primary); }
-.fileChipMore {
-  flex: none;
-  padding: 2px 10px;
-  border: 1px dashed var(--dsw-alias-border-l2);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 12px;
-  line-height: 20px;
-  cursor: pointer;
-  transition: background-color 160ms ease, color 160ms ease;
-}
-.fileChipMore:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); }
-
 /* Mount enter for live-only floating surfaces: transform/opacity only.
    Historical mounts render settled (no replay); exits unmount instantly.
    First paint is settled: the entering class only appears when MountFade
    detects a fresh live mount, so a historical bar/pill never flashes.
    isIn owns the settled state's transition list — keep width in it or label
    changes lose their animation once the bar settles. */
-.activityBar.isEntering, .attention.isEntering, .fileChanges.isEntering { opacity: 0; transform: translateY(6px); transition: none; }
-.activityBar.isIn, .attention.isIn { opacity: 1; transform: none; transition: width 200ms cubic-bezier(.22,1,.36,1), opacity 220ms cubic-bezier(.22,1,.36,1), transform 220ms cubic-bezier(.22,1,.36,1); }
-.fileChanges.isIn { opacity: 1; transform: none; transition: opacity 220ms cubic-bezier(.22,1,.36,1), transform 220ms cubic-bezier(.22,1,.36,1); }
-.activityBar[data-detached].isIn { opacity: 0.25; transform: translateY(2px); }
-.jumpDock.isEntering { opacity: 0; transition: none; }
-/* Detached hover/click feedback. Placed after the mount-enter block on
-   purpose: same specificity as [data-detached].isIn, and only the later rule
-   wins. Hover restores full visibility and lights the arrow so the whole-bar
-   click reads as "back to latest"; press nudges it back toward its slot. */
-.activityBar[data-detached]:hover { opacity: 1; transform: none; }
-.activityBar[data-detached]:hover .activityJump { color: var(--dsw-alias-label-primary); }
-.activityBar[data-detached]:active { transform: translateY(2px) scale(0.98); }
-.jumpDock.isIn { opacity: 1; transition: opacity 220ms cubic-bezier(.22,1,.36,1); }
-[data-motion=off] .chevron, [data-motion=off] .imageOpen img, [data-motion=off] .activityBar, [data-motion=off] .jump, [data-motion=off] .textButton, [data-motion=off] .switchButton, [data-motion=off] .iconButton, [data-motion=off] .disclosureButton, [data-motion=off] .clusterHeader, [data-motion=off] .reasonCollapsed, [data-motion=off] .reasonAction, [data-motion=off] .activityJump, [data-motion=off] .activityJump svg, [data-motion=off] .dialogClose, [data-motion=off] .historyButton, [data-motion=off] .toolTabs > button, [data-motion=off] .nativeToolRow, [data-motion=off] .detail > summary, [data-motion=off] .errorCard, [data-motion=off] .noticeCard, [data-motion=off] .errorCard > button, [data-motion=off] .noticeCard > button { transition: none; }
+.attention.isEntering { opacity: 0; transform: translateY(6px); transition: none; }
+.attention.isIn { opacity: 1; transform: none; transition: opacity 220ms cubic-bezier(.22,1,.36,1), transform 220ms cubic-bezier(.22,1,.36,1); }
+[data-motion=off] .chevron, [data-motion=off] .imageOpen img, [data-motion=off] .textButton, [data-motion=off] .switchButton, [data-motion=off] .iconButton, [data-motion=off] .disclosureButton, [data-motion=off] .clusterHeader, [data-motion=off] .reasonCollapsed, [data-motion=off] .reasonAction, [data-motion=off] .dialogClose, [data-motion=off] .historyButton, [data-motion=off] .toolTabs > button, [data-motion=off] .nativeToolRow, [data-motion=off] .detail > summary, [data-motion=off] .errorCard, [data-motion=off] .noticeCard, [data-motion=off] .errorCard > button, [data-motion=off] .noticeCard > button { transition: none; }
 [data-motion=off] .isEntering, [data-motion=off] .isIn { transition: none; }
 [data-motion=off] .toolActivity[data-tool-phase=preparing] .nativeToolSummary,
 [data-motion=off] .toolActivity[data-tool-phase=preparing] .toolState,
@@ -1000,10 +778,9 @@ button.fileChip:hover { background: var(--dsw-alias-interactive-bg-hover); borde
 [data-motion=off] .toolActivity[data-tool-phase=running] .toolState,
 [data-motion=off] .reasonCollapsed[data-active=true] .reasonCollapsedText,
 [data-motion=off] .reasonCollapsed[data-active=true] .reasonCollapsedHint,
-[data-motion=off] .activitySpinner path,
 [data-motion=off] .noticeCard[data-state=running] .noticeCardTitle { animation: none !important; }
 @media (prefers-reduced-motion: reduce) {
-  .chevron, .imageOpen img, .activityBar, .jump, .textButton, .switchButton, .iconButton, .disclosureButton, .clusterHeader, .reasonCollapsed, .reasonAction, .activityJump, .activityJump svg, .dialogClose, .historyButton, .toolTabs > button, .nativeToolRow, .detail > summary, .errorCard, .noticeCard, .errorCard > button, .noticeCard > button, .fileChanges, .fileHeader, .fileChip, .fileChipMore, .isEntering, .isIn { transition: none; }
+  .chevron, .imageOpen img, .textButton, .switchButton, .iconButton, .disclosureButton, .clusterHeader, .reasonCollapsed, .reasonAction, .dialogClose, .historyButton, .toolTabs > button, .nativeToolRow, .detail > summary, .errorCard, .noticeCard, .errorCard > button, .noticeCard > button, .fileChanges, .fileHeader, .fileChip, .fileChipMore, .isEntering, .isIn { transition: none; }
   .toolState::before,
   .toolActivity[data-tool-phase=preparing] .nativeToolSummary,
   .toolActivity[data-tool-phase=preparing] .toolState,
@@ -1011,8 +788,7 @@ button.fileChip:hover { background: var(--dsw-alias-interactive-bg-hover); borde
   .toolActivity[data-tool-phase=running] .toolState,
   .reasonCollapsed[data-active=true] .reasonCollapsedText,
   .reasonCollapsed[data-active=true] .reasonCollapsedHint,
-  .activitySpinner path,
   .noticeCard[data-state=running] .noticeCardTitle { animation: none !important; }
 }
-@media (pointer: coarse) { .disclosureButton { min-height: 44px; } button.fileChip, .fileChipMore { min-height: 32px; } }
+@media (pointer: coarse) { .disclosureButton { min-height: 44px; } }
 @media (max-width: 600px) { .column { gap: 18px; } .toolbar { font-size: 11px; } .user { max-width: 90%; } }

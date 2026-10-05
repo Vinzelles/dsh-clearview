@@ -6,6 +6,7 @@ import { TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives';
 import { MOTION } from './motion-tokens.js';
 import { StreamMotionContext } from './streaming.js';
 import { READING_SURFACE_GAP, readingFollowAction, readingScrollAction } from './reading-follow.js';
+import { pickAnchor, recallPosition, rememberPosition } from './reading-position.js';
 
 const EASING = MOTION.ease;
 
@@ -302,7 +303,7 @@ export function useContentWidth(): [(node: HTMLElement | null) => void, number |
   return [track, width];
 }
 
-export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean): { detached: boolean; jump: () => void } {
+export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, sessionId?: string): { detached: boolean; jump: () => void } {
   const port = useRef<HTMLElement | null>(null);
   const following = useRef(true);
   const [detached, setDetached] = useState(false);
@@ -429,7 +430,13 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean):
     };
     const firstFrame = requestAnimationFrame(() => {
       measure();
-      if (following.current && !selected()) writeTop(maxTop);
+      const saved = sessionId ? recallPosition(sessionId) : null;
+      const anchor = saved ? content.querySelector<HTMLElement>(`[data-reader-key="${CSS.escape(saved.anchorKey)}"]`) : null;
+      if (saved && anchor) {
+        writeTop(currentTop + anchor.getBoundingClientRect().top - scroll.getBoundingClientRect().top - saved.offset);
+        following.current = false;
+        setDetached(true);
+      } else if (following.current && !selected()) writeTop(maxTop);
     });
     const observer = new ResizeObserver(() => {
       measure();
@@ -467,6 +474,17 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean):
     scroll.addEventListener('pointerup', onPointerEnd);
     scroll.addEventListener('pointercancel', onPointerEnd);
     return () => {
+      if (sessionId) {
+        if (following.current) rememberPosition(sessionId, null);
+        else {
+          const viewportTop = scroll.getBoundingClientRect().top;
+          const anchors = Array.from(content.querySelectorAll<HTMLElement>('[data-reader-key]'), element => {
+            const rect = element.getBoundingClientRect();
+            return { key: element.dataset.readerKey!, top: rect.top, bottom: rect.bottom };
+          });
+          rememberPosition(sessionId, pickAnchor(anchors, viewportTop));
+        }
+      }
       cancelAnimationFrame(firstFrame); cancelAnimationFrame(followFrame); observer.disconnect();
       scroll.removeEventListener('scroll', onScroll); scroll.removeEventListener('wheel', onWheel);
       scroll.removeEventListener('keydown', onKey);
@@ -475,7 +493,7 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean):
       scroll.removeEventListener('pointerdown', onPointerDown); scroll.removeEventListener('pointermove', onPointerMove);
       scroll.removeEventListener('pointerup', onPointerEnd); scroll.removeEventListener('pointercancel', onPointerEnd);
     };
-  }, [root, motion]);
+  }, [root, motion, sessionId]);
   return { detached, jump: () => {
     // "Back to latest" is an explicit resume: clear the reading guards that
     // live inside the reader, or the next content growth silently re-stalls

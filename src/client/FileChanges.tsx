@@ -18,25 +18,20 @@
  * 修改且已不存在 → 改判删除；删除且仍存在 → 剔除。任一目录查询失败则放弃
  * 校准，维持解析结果（宁缺勿错）。
  *
- * 展示设计（v3，与卡片家族一致）：
- * - 空态（无文件改动，含校准后全部剔除）整个面板不渲染；
- * - 默认折叠为单行纯文字（无卡片边框/背景，与「执行过程」等文字行同语言）：
- *   chevron + 标题 + 「N 个文件 · 仅已加载记录」+ 右侧彩色计数标签，
- *   整行可点击展开/收起，chevron 旋转与其他折叠一致；
- * - 展开后浮起为卡片（边框 + 卡片底色）：新增/修改/删除三条道，每条道一行
- *   小标题 + 文件 chip 标签流（每文件一枚，可点击打开；非列表）。
- *   chip 自动换行，超过 CHIP_LIMIT 收起为「展开 N 个」。
+ * 展示设计（v4）：收起时是一行（标题 + 文件数 + 新增/修改/删除标签）；展开后是与过程
+ * 面板同款的面板，按操作分组列出路径（目录弱化、文件名主色），点击在右侧栏预览。
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useChatSelector, useSessionSelector } from './compat/session-snapshot.js';
 import { EMPTY_FILE_CHANGES, collectFileChanges, reconcileFileChanges } from './file-changes.js';
 import type { FileChangeEntry, FileChangeKind, FileChangeSummary } from './file-changes.js';
-import { MountFade } from './motion.js';
+import { CollapseBody, MountFade } from './motion.js';
+import { Chevron } from './ProcessRow.js';
 import type { ReaderProps } from './types.js';
-import css from './Reader.module.css';
+import css from './FileChanges.module.css';
 
-/** 展开后每条道默认显示的 chip 数上限（超出折叠为「展开 N 个」）。 */
-const CHIP_LIMIT = 12;
+/** 展开后每组默认显示的文件数上限（超出折叠为「展开其余 N 个」）。 */
+const FILE_LIMIT = 12;
 
 export interface FileChangesPanelProps extends Pick<ReaderProps, 'useSession' | 'useSessions' | 'sessionId' | 'useProjection' | 'jobsSource' | 'watchJobs'> {
   order: readonly string[];
@@ -105,56 +100,45 @@ export function FileChangesPanel({
   // 空态（无文件改动，含校准后全部剔除）不渲染任何东西。
   const visible = !hidden && adjusted.total > 0;
   return <MountFade mounted={visible} motion={motion}>{({ entering }) => !visible ? null : (
-    <section className={`${css.fileChanges} ${entering ? css.isEntering : css.isIn}`} data-reader-file-changes data-open={open} aria-label="本会话文件改动">
-      <button type="button" className={css.fileHeader} data-open={open} aria-expanded={open} onClick={() => setOpen(o => !o)}>
-        <svg className={css.chevron} data-open={open} viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg>
-        <span className={css.fileTitle}>本会话文件改动</span>
-        <span className={css.fileMeta}>{adjusted.total} 个文件{hasMore ? ' · 仅已加载记录' : ''}</span>
-        <span className={css.fileBadges} aria-hidden="true">
-          {adjusted.added.length > 0 && <span className={css.fileBadge} data-tone="added">新增 {adjusted.added.length}</span>}
-          {adjusted.modified.length > 0 && <span className={css.fileBadge} data-tone="modified">修改 {adjusted.modified.length}</span>}
-          {adjusted.deleted.length > 0 && <span className={css.fileBadge} data-tone="deleted">删除 {adjusted.deleted.length}</span>}
+    <section className={`${css.changes} ${entering ? css.entering : ''}`} data-reader-file-changes data-open={open} aria-label="本会话文件改动">
+      <button type="button" className={css.header} aria-expanded={open} onClick={() => setOpen(value => !value)}>
+        <Chevron open={open} />
+        <span className={css.title}>本会话文件改动</span>
+        <span className={css.meta}>{adjusted.total} 个文件{hasMore ? ' · 仅已加载记录' : ''}</span>
+        <span className={css.tags} aria-hidden="true">
+          {adjusted.added.length > 0 && <span className={css.tag} data-tone="added">新增 {adjusted.added.length}</span>}
+          {adjusted.modified.length > 0 && <span className={css.tag} data-tone="modified">修改 {adjusted.modified.length}</span>}
+          {adjusted.deleted.length > 0 && <span className={css.tag} data-tone="deleted">删除 {adjusted.deleted.length}</span>}
         </span>
       </button>
-      {open && (
-        <div className={css.fileBody}>
-          <FileChangeRow label="新增" tone="added" items={adjusted.added} openFile={openFile} />
-          <FileChangeRow label="修改" tone="modified" items={adjusted.modified} openFile={openFile} />
-          <FileChangeRow label="删除" tone="deleted" items={adjusted.deleted} openFile={openFile} />
+      <CollapseBody open={open} motion={motion}>
+        <div className={css.body}>
+          <FileGroup label="新增" tone="added" items={adjusted.added} openFile={openFile} />
+          <FileGroup label="修改" tone="modified" items={adjusted.modified} openFile={openFile} />
+          <FileGroup label="删除" tone="deleted" items={adjusted.deleted} openFile={openFile} />
         </div>
-      )}
+      </CollapseBody>
     </section>
   )}</MountFade>;
 }
 
-/**
- * 一条道的 chip 流：行首小标题（彩点 + 标签 + 计数），右侧/下方为文件
- * chip 标签（每文件一枚，可点击打开；非列表）。超过 CHIP_LIMIT 折叠。
- */
-function FileChangeRow({ label, tone, items, openFile }: {
-  label: string; tone: FileChangeKind; items: readonly FileChangeEntry[]; openFile?: (path: string) => void;
+/** One operation group: label + count, then one path row per file (directory muted, name primary). */
+function FileGroup({ label, tone, items, openFile }: {
+  label: string; tone: FileChangeKind; items: readonly FileChangeEntry[]; openFile?: FileChangesPanelProps['openFile'];
 }) {
   const [showAll, setShowAll] = useState(false);
   if (items.length === 0) return null;
-  const visible = showAll ? items : items.slice(0, CHIP_LIMIT);
-  const hiddenCount = items.length - visible.length;
-  return (
-    <div className={css.fileRow} data-tone={tone}>
-      <div className={css.fileRowHead}>
-        <span className={css.fileRowDot} aria-hidden="true" />
-        <span className={css.fileRowLabel}>{label}</span>
-        <span className={css.fileRowCount}>{items.length}</span>
-      </div>
-      <div className={css.fileChips}>
-        {visible.map(item => (
-          openFile
-            ? <button key={item.key} type="button" className={css.fileChip} title={item.display} onClick={() => { void openFile(item.display); }}>{item.display}</button>
-            : <span key={item.key} className={css.fileChip} title={item.display}>{item.display}</span>
-        ))}
-        {hiddenCount > 0 && (
-          <button type="button" className={css.fileChipMore} onClick={() => setShowAll(true)}>展开 {hiddenCount} 个</button>
-        )}
-      </div>
-    </div>
-  );
+  const visible = showAll ? items : items.slice(0, FILE_LIMIT);
+  return <div className={css.group} data-tone={tone}>
+    <div className={css.groupLabel}><span className={css.dot} aria-hidden="true" />{label} · {items.length}</div>
+    {visible.map(item => {
+      const cut = item.display.lastIndexOf('/');
+      const directory = cut < 0 ? '' : item.display.slice(0, cut + 1);
+      const name = cut < 0 ? item.display : item.display.slice(cut + 1);
+      return <button key={item.key} type="button" className={css.file} title={item.display} disabled={!openFile} onClick={() => { void openFile?.(item.display); }}>
+        {directory && <span className={css.directory}>{directory}</span>}<span className={css.name}>{name}</span>
+      </button>;
+    })}
+    {items.length > visible.length && <button type="button" className={css.more} onClick={() => setShowAll(true)}>展开其余 {items.length - visible.length} 个</button>}
+  </div>;
 }

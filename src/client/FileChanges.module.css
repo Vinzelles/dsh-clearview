@@ -1,0 +1,42 @@
+.changes { min-width: 0; border-radius: var(--dsw-radius-lg); corner-shape: round; transition: background-color var(--cv-swap) var(--cv-ease), box-shadow var(--cv-swap) var(--cv-ease), opacity var(--cv-swap) var(--cv-ease), transform var(--cv-swap) var(--cv-ease); }
+.changes[data-open=true] { background: var(--cv-panel-bg); box-shadow: var(--cv-panel-ring), var(--dsw-shadow-lv1); }
+.entering { opacity: 0; transform: translateY(4px); transition: none; }
+.header {
+  display: flex; align-items: center; gap: 8px;
+  width: calc(100% + 12px); min-height: var(--cv-row-height); margin: 0 -6px; padding: 0 6px;
+  border: 0; border-radius: var(--dsw-radius-sm); corner-shape: round; background: transparent;
+  color: var(--dsw-alias-label-tertiary); font: inherit; text-align: left; cursor: pointer;
+  transition: background-color var(--cv-fast) ease, color var(--cv-fast) ease;
+}
+.header:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); }
+.changes[data-open=true] .header { width: 100%; margin: 0; padding: 9px 14px; border-radius: 0; }
+.title { flex: none; color: var(--dsw-alias-label-secondary); font-size: var(--cv-font-secondary); font-weight: 500; }
+.meta { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--dsw-alias-label-caption); font-size: 12px; }
+.tags { display: inline-flex; flex: none; gap: 6px; }
+.tag { padding: 1px 8px; border-radius: 999px; corner-shape: round; font-size: 11px; line-height: 17px; font-weight: 500; }
+.tag[data-tone=added] { color: var(--dsw-alias-state-success-primary); background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent); }
+.tag[data-tone=modified] { color: var(--dsw-alias-state-business-primary); background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent); }
+.tag[data-tone=deleted] { color: var(--dsw-alias-state-error-primary); background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent); }
+.body { display: flex; flex-direction: column; gap: 10px; padding: 8px 14px 12px; border-top: .5px solid var(--dsw-alias-border-l2); }
+.group { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.groupLabel { display: flex; align-items: center; gap: 6px; color: var(--dsw-alias-label-caption); font-size: 11px; line-height: 20px; }
+.dot { width: 6px; height: 6px; border-radius: 50%; corner-shape: round; background: var(--dsw-alias-label-caption); }
+.group[data-tone=added] .dot { background: var(--dsw-alias-state-success-primary); }
+.group[data-tone=modified] .dot { background: var(--dsw-alias-state-business-primary); }
+.group[data-tone=deleted] .dot { background: var(--dsw-alias-state-error-primary); }
+.file {
+  display: flex; align-items: center; min-width: 0; min-height: var(--cv-row-height);
+  margin: 0 -6px; padding: 0 6px;
+  border: 0; border-radius: var(--dsw-radius-sm); corner-shape: round; background: transparent;
+  font: inherit; font-size: var(--cv-font-secondary); text-align: left; cursor: pointer;
+  transition: background-color var(--cv-fast) ease;
+}
+.file:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
+.file:disabled { cursor: default; }
+.directory { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--dsw-alias-label-caption); }
+.name { flex: none; color: var(--dsw-alias-label-primary); }
+.more { align-self: flex-start; padding: 2px 6px; margin-left: -6px; border: 0; border-radius: var(--dsw-radius-sm); corner-shape: round; background: transparent; color: var(--dsw-alias-label-tertiary); font: inherit; font-size: 12px; cursor: pointer; }
+.more:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); }
+[data-motion=off] .changes, [data-motion=off] .header, [data-motion=off] .file { transition: none; }
+@media (prefers-reduced-motion: reduce) { .changes, .header, .file { transition: none; } }
+@media (pointer: coarse) { .file, .more { min-height: 32px; } }

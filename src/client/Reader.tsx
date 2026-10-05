@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FileChangesPanel } from './FileChanges.js';
+import { FloatingStatus } from './FloatingStatus.js';
 import { TurnSection } from './TurnSection.js';
-import { formatSeconds } from './turn-activity.js';
 import { useTurnActivity } from './use-turn-activity.js';
-import { MountFade, useContentWidth, useMotionAllowed, usePinnedSelection, useReadingScroll } from './motion.js';
+import { MountFade, useMotionAllowed, usePinnedSelection, useReadingScroll } from './motion.js';
 import { StreamMotionContext } from './streaming.js';
 import { ReaderActionsContext, type ReaderActions } from './reader-context.js';
 import { useCompatReaderProps, useChatSelector, usePendingSelector, useSessionSelector, readerSnapshot } from './compat/session-snapshot.js';
@@ -39,7 +39,7 @@ export function Reader(rawProps: ReaderProps) {
   // 阅读流空闲判定（文件改动展示区的可见条件之一）：无开放轮次活动、无待处理交互、窗口已加载。
   const conversationIdle = !activity.key && pending.length === 0 && !loading;
   const streamMotion = useMemo(() => ({ enabled: motion, activatedAt: activatedAt.current }), [motion]);
-  const scroll = useReadingScroll(root, motion);
+  const scroll = useReadingScroll(root, motion, props.sessionId);
   const { openFile, fork, fileMentions, inspectCall, openView } = props;
   // One value for every row: motion, host file/fork/inspect/view actions.
   const actions = useMemo<ReaderActions>(() => ({
@@ -50,6 +50,13 @@ export function Reader(rawProps: ReaderProps) {
     inspectCall,
     showInChat: focus => openView('chat', focus),
   }), [motion, openFile, fork, fileMentions, inspectCall, openView]);
+  const { viewRequest, completeViewRequest } = props;
+  useEffect(() => {
+    if (!viewRequest || viewRequest.view !== 'reader') return;
+    const focus = CSS.escape(viewRequest.focus);
+    root.current?.querySelector<HTMLElement>(`[data-reader-key="${focus}"], [data-reader-tool-call="${focus}"]`)?.scrollIntoView({ block: 'center' });
+    completeViewRequest();
+  }, [viewRequest, completeViewRequest]);
   // 兼容层根发现：阅读根是运行中在深层会话容器里挂载/卸载的，body 级观察器看不到
   // 它；由本组件在根挂载/卸载时广播事件，rewind 桥 / 轮统计行 / 收尾防吞只监听
   // 事件（见 compat/reader-root.ts watchReaderRoots），不在 body 上做全树观察。
@@ -60,35 +67,6 @@ export function Reader(rawProps: ReaderProps) {
     document.dispatchEvent(new CustomEvent<HTMLElement>(READER_COMPAT_MOUNT_EVENT, { detail: node }));
     return () => { document.dispatchEvent(new CustomEvent<HTMLElement>(READER_COMPAT_UNMOUNT_EVENT, { detail: node })); unregister(); };
   }, [props.useSession]);
-  // The activity bar animates its width between label changes: `transition:
-  // width` needs an explicit pixel value, so the content row's natural width
-  // is tracked and pinned back onto the bar.
-  const [trackActivityWidth, activityWidth] = useContentWidth();
-  // The activity bar floats above the sticky composer. Sticky alone cannot
-  // lift it when the transcript is shorter than the scrollport (no overflow,
-  // nothing to stick against): the column must fill the scrollport so
-  // margin-top:auto can push the bar to the screen bottom. Measure host
-  // height minus the composer (a live CSS variable the host maintains on
-  // the scroller) minus our own vertical padding.
-  useEffect(() => {
-    const content = root.current;
-    if (!content) return;
-    const host = content.closest<HTMLElement>('[data-conversation-scroll]');
-    if (!host) return;
-    const fit = () => {
-      const composer = parseFloat(getComputedStyle(host).getPropertyValue('--dsh-composer-height')) || 152;
-      const own = getComputedStyle(content);
-      const padding = (parseFloat(own.paddingTop) || 0) + (parseFloat(own.paddingBottom) || 0);
-      content.style.setProperty('--reader-flow-min-height', `${Math.max(0, host.clientHeight - composer - padding)}px`);
-    };
-    fit();
-    const observer = new ResizeObserver(fit);
-    observer.observe(host);
-    // The host writes --dsh-composer-height onto the scroller's style attr.
-    const attributes = new MutationObserver(fit);
-    attributes.observe(host, { attributes: true, attributeFilter: ['style'] });
-    return () => { observer.disconnect(); attributes.disconnect(); };
-  }, []);
   const seenUserKeys = useRef(new Set<string>());
   const previousLatestUserKey = useRef<string | null>(null);
   useEffect(() => {
@@ -148,27 +126,7 @@ export function Reader(rawProps: ReaderProps) {
             <strong>{pending.some(item => item.kind === 'question') ? '需要你回答一个问题' : '需要你的确认'}</strong>
             <span>请在下方原生操作区处理。此提示不会收进执行过程。</span>
           </div>}</MountFade>}
-        <MountFade mounted={!!activity.key} motion={motion}>{({ entering }) => activity.key ? (
-          <button type="button" className={`${css.activityBar} ${entering ? css.isEntering : css.isIn}`}
-            style={activityWidth === null ? undefined : { width: `${activityWidth}px` }}
-            data-detached={scroll.detached ? 'true' : undefined}
-            data-phase={activity.phase} data-ud-check="reader-activity-bar"
-            title={scroll.detached ? '回到最新' : undefined} onClick={scroll.jump}>
-            <span className={css.activityBarContent} ref={trackActivityWidth}>
-              <span className={css.activityText} role="status" data-reader-activity-label>{activity.label}</span>
-              {activity.seconds !== null && (
-                <span className={css.activityTimer} data-reader-activity-timer aria-hidden="true">{formatSeconds(activity.seconds)}</span>
-              )}
-            </span>
-          </button>
-        ) : null}</MountFade>
-        <MountFade mounted={scroll.detached && !activity.key} motion={motion}>{({ entering }) => scroll.detached && !activity.key ? (
-          <div className={`${css.jumpDock} ${entering ? css.isEntering : css.isIn}`}><button type="button" className={css.jump} onClick={scroll.jump} aria-label="回到最新" title="回到最新">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M8 3v10m-4-4 4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button></div>
-        ) : null}</MountFade>
+        <FloatingStatus activity={activity} detached={scroll.detached} onJump={scroll.jump} motion={motion} />
       </div>
     </div>
   </ReaderActionsContext.Provider></StreamMotionContext.Provider>;
