@@ -57,3 +57,17 @@ test('the collapsed file-changes header cannot widen the reader (no negative sid
   assert.doesNotMatch(header, /margin:[^;]*-\d/, 'negative margin leaks into the scrollable area at narrow widths');
   assert.doesNotMatch(header, /width:\s*calc\(100%\s*\+/, 'width overshoot leaks into the scrollable area at narrow widths');
 });
+
+test('every rounded rule sets corner-shape: round beside its token radius', () => {
+  const missing: string[] = [];
+  for (const file of readdirSync(CLIENT).filter(name => name.endsWith('.module.css'))) {
+    const text = readFileSync(new URL(file, CLIENT), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const rule of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const body = rule[2]!;
+      if (/border-radius:\s*(?:var\(--dsw-radius-(?:sm|md|lg|xl)\)|999px|50%)/.test(body) && !/corner-shape:\s*round/.test(body)) {
+        missing.push(`${file} ${rule[1]!.trim().replace(/\s+/g, ' ')}`);
+      }
+    }
+  }
+  assert.deepEqual(missing, [], 'rounded rules without corner-shape: round');
+});
