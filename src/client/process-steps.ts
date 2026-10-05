@@ -10,7 +10,8 @@ export type PanelItem =
   | { kind: 'record' | 'input'; key: string; nodeKey: string; step: number | null };
 
 export interface AnswerSegment { key: string; nodeKey: string; start: number }
-export interface TurnLayout { panel: PanelItem[]; answer: AnswerSegment[]; notices: string[]; media: ToolActivityEntry[] }
+/** `outputs` are successful /command results: their text belongs beside the answer, the row stays in the panel. */
+export interface TurnLayout { panel: PanelItem[]; answer: AnswerSegment[]; notices: string[]; media: ToolActivityEntry[]; outputs: string[] }
 
 type Getter = (key: string) => ChatConversationViewNode | undefined;
 
@@ -28,6 +29,12 @@ function carriesMedia(block: ToolActivityEntry['block']): boolean {
   return block.content.some(item => item.type !== 'text') || block.subCalls.some(child => carriesMedia(child));
 }
 
+/** Text of a successful command outcome; failures stay in the panel only. */
+export function commandOutputText(node: ChatConversationViewNode): string | null {
+  const outcome = (node.data as { outcome?: { kind?: string; text?: unknown } | null } | null)?.outcome;
+  return outcome?.kind === 'success' && typeof outcome.text === 'string' && outcome.text.trim() !== '' ? outcome.text : null;
+}
+
 /**
  * Route one turn's flow into the process panel, the answer zone, turn-level
  * notices and tool media. A completed turn answers with its closing step (and
@@ -38,6 +45,7 @@ export function layoutTurn(flow: readonly ReaderFlowEntry[], get: Getter, bounda
   const panel: PanelItem[] = [];
   const notices: string[] = [];
   const media: ToolActivityEntry[] = [];
+  const outputs: string[] = [];
   const bodies: { item: PanelItem & { kind: 'narration' }; position: number; media: boolean }[] = [];
   for (const entry of flow) {
     if (entry.kind === 'tool') {
@@ -65,6 +73,7 @@ export function layoutTurn(flow: readonly ReaderFlowEntry[], get: Getter, bounda
       }
       continue;
     }
+    if (node.kind === 'command' && commandOutputText(node) !== null) outputs.push(entry.nodeKey);
     panel.push({ kind: INPUT_KINDS.has(node.kind) ? 'input' : 'record', key: entry.key, nodeKey: entry.nodeKey, step });
   }
   const completed = boundary.status === 'closed' && boundary.reason === 'completed' && boundary.closingStep !== null;
@@ -80,6 +89,7 @@ export function layoutTurn(flow: readonly ReaderFlowEntry[], get: Getter, bounda
     answer: bodies.filter(body => answerKeys.has(body.item.key)).map(({ item }) => ({ key: item.key, nodeKey: item.nodeKey, start: item.start })),
     notices,
     media,
+    outputs,
   };
 }
 

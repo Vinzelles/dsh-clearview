@@ -197,3 +197,13 @@ test('eight single-tool steps merge into one range group with one fold row and t
   assert.deepEqual(entries.map(entry => entry.kind), ['fold', 'item', 'item', 'item']);
   assert.equal((entries[0] as { items: PanelItem[] }).items.length, 5);
 });
+
+test('a successful command with text is listed as an output; failures and empty results are not', () => {
+  const turn = turnLocation({ status: 'closed', reason: 'completed', steps: [1], closingStep: 1 });
+  const ok = chatNode('command', { outcome: { kind: 'success', text: '结果' } }, turn, 1);
+  const empty = chatNode('command', { outcome: { kind: 'success', text: ' ' } }, turn, 1);
+  const failed = chatNode('command', { outcome: { kind: 'error', text: '坏了' } }, turn, 1);
+  const layout = layoutTurn([ok, empty, failed].map(nodeEntry), getter(ok, empty, failed), boundaryOf(turn));
+  assert.deepEqual(layout.outputs, [ok.key]);
+  assert.equal(layout.panel.length, 3);
+});

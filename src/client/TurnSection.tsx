@@ -9,7 +9,7 @@ import { SystemPromptRow } from './native/SystemPromptRow.js';
 import { nodeText } from './node-payloads.js';
 import { Opening } from './Opening.js';
 import { ProcessPanel } from './ProcessPanel.js';
-import { elapsedLabel, layoutTurn, panelCounts, panelStatus, runningLabel, statusLabel, type PanelItem } from './process-steps.js';
+import { commandOutputText, elapsedLabel, layoutTurn, panelCounts, panelStatus, runningLabel, statusLabel, type PanelItem } from './process-steps.js';
 import { assistantSegments, boundaryOf, processChoiceKey, processExpanded, terminalLabel, type ReaderGroup, type TurnBoundary } from './projection.js';
 import { ReasoningRow, reasoningPreview } from './ReasoningRow.js';
 import { useReaderActions } from './reader-context.js';
@@ -75,6 +75,16 @@ const AnswerSegment = memo(function AnswerSegment({ useSession, nodeKey, start, 
   </article>;
 });
 
+/** A successful /command result reads as Markdown beside the answer; its lifecycle row stays in the panel. */
+const CommandOutput = memo(function CommandOutput({ useSession, nodeKey, ...render }: BlockRenderProps & Pick<ReaderProps, 'useSession'> & { nodeKey: string }) {
+  const node = useChatSelector(useSession, chat => chat.nodes.get(nodeKey));
+  const text = node && node.visibility !== 'hidden' ? commandOutputText(node) : null;
+  if (text === null) return null;
+  return <div className={css.output} data-reader-command-output data-reader-key={nodeKey}>
+    <Blocks {...render} blocks={[{ kind: 'text', text }]} />
+  </div>;
+});
+
 const PromptPreamble = memo(function PromptPreamble({ useSession, nodeKey }: Pick<ReaderProps, 'useSession'> & { nodeKey: string }) {
   const node = useChatSelector(useSession, chat => chat.nodes.get(nodeKey));
   const text = node && node.visibility !== 'hidden' ? nodeText(node.data) : null;
@@ -106,26 +116,32 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, select
   const pendingCount = usePendingSelector(props.useSession, pending => pending.length);
   const choiceKey = processChoiceKey(group.key, boundary);
   const expansionChoice = props.useStore(state => state.expanded[choiceKey]);
-  const earlierOpen = props.useStore(state => state.expanded[`${choiceKey}:earlier`] ?? false);
+  // An opened earlier range stays open for the whole turn, so its key must not follow the turn's status.
+  const earlierKey = `${group.key}:earlier`;
+  const earlierOpen = props.useStore(state => state.expanded[earlierKey] ?? false);
   const compact = props.useStore(state => state.collapseThinking ?? false);
   const setOpen = useCallback((value: boolean) => props.actions.setExpanded(choiceKey, value), [props.actions, choiceKey]);
-  const openEarlier = useCallback(() => props.actions.setExpanded(`${choiceKey}:earlier`, true), [props.actions, choiceKey]);
+  const openEarlier = useCallback(() => props.actions.setExpanded(earlierKey, true), [props.actions, earlierKey]);
   const pinPanel = useCallback(() => setOpen(true), [setOpen]);
   const get = useCallback((key: string) => chat.nodes.get(key), [chat]);
+  // The opening is the first user / trigger / command input before any assistant or tool row; system prompts
+  // above it are preambles, and every other node (context, records) keeps its normal routing.
   const leading = useMemo(() => {
-    let systemPrompts = 0;
     let opening: string | null = null;
+    const preamble: string[] = [];
     for (const key of group.keys) {
       const node = chat.nodes.get(key);
-      if (!node) break;
-      if (opening === null && node.kind === 'system-prompt') { systemPrompts++; continue; }
-      if (opening === null && OPENING_KINDS.has(node.kind)) { opening = key; continue; }
-      break;
+      if (!node) continue;
+      if (node.kind === 'assistant-step' || node.kind === 'tool-call') break;
+      if (OPENING_KINDS.has(node.kind)) { opening = key; break; }
+      if (node.kind === 'system-prompt') preamble.push(key);
     }
-    return { systemPrompts, opening };
+    if (opening === null) return { opening, preamble: [] as string[], main: group.keys };
+    const taken = new Set([opening, ...preamble]);
+    return { opening, preamble, main: group.keys.filter(key => !taken.has(key)) };
   }, [chat, group.keys]);
-  const preambleKeys = useMemo(() => leading.opening ? group.keys.slice(0, leading.systemPrompts) : [], [leading, group.keys]);
-  const mainKeys = useMemo(() => leading.opening ? group.keys.slice(leading.systemPrompts + 1) : group.keys, [leading, group.keys]);
+  const preambleKeys = leading.preamble;
+  const mainKeys = leading.main;
   const flow = useMemo(() => readerFlow({ ...group, keys: mainKeys }, turn, get, { hidden: rewindHidden, spans: rewindSpans }), [group, mainKeys, turn, get, rewindHidden, rewindSpans]);
   const layout = useMemo(() => layoutTurn(flow, get, boundary), [flow, get, boundary]);
   const status = panelStatus(boundary, pendingCount);
@@ -168,6 +184,7 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, select
       <StatusText text={label} motion={motion} shimmer={status === 'running'} />
     </div>}
     {layout.media.length > 0 && <BlockBoundary><ToolImages {...shared} entries={layout.media} /></BlockBoundary>}
+    {layout.outputs.map(key => <BlockBoundary key={key}><CommandOutput {...shared} useSession={props.useSession} nodeKey={key} /></BlockBoundary>)}
     {layout.answer.map((segment, index) => <BlockBoundary key={segment.key}>
       <AnswerSegment {...shared} useSession={props.useSession} nodeKey={segment.nodeKey} start={segment.start}
         pinned={pinnedKeys.includes(segment.nodeKey)} fileMentions={index === layout.answer.length - 1 ? mentions : undefined} />

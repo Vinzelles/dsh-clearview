@@ -8,11 +8,11 @@ import { TurnSection } from '../src/client/TurnSection.tsx';
 import { assistantNode, chatNode, chatOf, reasoning, settledTool, text, toolCall, turnLocation } from './support/chat-fixture.ts';
 import { sessionHook } from './support/session.ts';
 
-function renderTurn(nodes: ReturnType<typeof chatNode>[], turn: ReturnType<typeof turnLocation> | undefined, options: { selected?: string[]; expanded?: Record<string, boolean>; groupTurn?: number | null; actions?: Partial<ReaderActions> } = {}) {
+function renderTurn(nodes: ReturnType<typeof chatNode>[], turn: ReturnType<typeof turnLocation> | undefined, options: { selected?: string[]; expanded?: Record<string, boolean>; groupTurn?: number | null; actions?: Partial<ReaderActions>; pending?: unknown } = {}) {
   const chat = chatOf(nodes, turn ? [turn] : []);
   const group = { key: 'turn:1', turn: options.groupTurn === undefined ? 1 : options.groupTurn, keys: nodes.map(node => node.key) };
   const props = {
-    useSession: sessionHook(chat),
+    useSession: sessionHook(chat, {}, options.pending),
     useStore: (selector: (state: unknown) => unknown) => selector({ expanded: options.expanded ?? {}, motion: true, collapseThinking: true }),
     actions: { setExpanded: () => {}, setMotion: () => {}, setCollapseThinking: () => {} },
     renderSlotChain: (_n: string, _o: unknown, value: { fallback: unknown }) => value.fallback,
@@ -124,4 +124,74 @@ test('closing-reply file mentions are resolved once per turn and closing seq', (
   renderTurn(nodes, turn, { actions: { fileMentions: (...args) => { calls.push(args); return undefined; } } });
   assert.equal(calls.length, 1);
   assert.equal(calls[0]![1], 900);
+});
+
+const EXPANDED = /data-reader-disclosure="true" data-expanded="true"/;
+const COLLAPSED = /data-reader-disclosure="true" data-expanded="false"/;
+
+test('an errored turn keeps its panel expanded', () => {
+  const turn = turnLocation({ status: 'closed', reason: 'error', steps: [1] });
+  const user = chatNode('user', { content: [{ type: 'text', text: '跑一下' }] }, turn);
+  const step = assistantNode(turn, 1, [reasoning('先试试'), toolCall('c1', 'bash', { command: 'ls' })]);
+  const tool = chatNode('tool-call', { root: settledTool('c1', 'bash', { command: 'ls' }) }, turn, 1);
+  const html = renderTurn([user, step, tool], turn);
+  assert.match(html, /data-reader-panel="true" data-status="error"/);
+  assert.match(html, EXPANDED);
+  assert.doesNotMatch(html, COLLAPSED);
+});
+
+test('a turn waiting on the user keeps its panel expanded', () => {
+  const turn = turnLocation({ status: 'open', start: 0, steps: [1] });
+  const user = chatNode('user', { content: [{ type: 'text', text: '改文件' }] }, turn);
+  const step = assistantNode(turn, 1, [reasoning('需要确认'), toolCall('c1', 'write', { path: 'a.ts' })], 'running');
+  const html = renderTurn([user, step], turn, { pending: { kind: 'question' } });
+  assert.match(html, /data-reader-panel="true" data-status="waiting"/);
+  assert.match(html, /等待你的操作/);
+  assert.match(html, EXPANDED);
+  assert.doesNotMatch(html, COLLAPSED);
+});
+
+test('a successful command output reads beside the answer while the panel stays collapsed', () => {
+  const turn = turnLocation({ status: 'closed', reason: 'completed', start: 0, end: 5_000, steps: [1], closingStep: 1 });
+  const user = chatNode('user', { content: [{ type: 'text', text: '/status' }] }, turn);
+  const command = chatNode('command', { name: 'status', outcome: { kind: 'success', text: '## 命令输出结果' } }, turn, 1);
+  const answer = assistantNode(turn, 1, [text('已处理')]);
+  const html = renderTurn([user, command, answer], turn);
+  assert.match(html, COLLAPSED);
+  assert.doesNotMatch(html, /data-reader-process=/);
+  assert.match(html, /data-reader-command-output="true"[^>]*>[\s\S]*命令输出结果/);
+});
+
+test('a failed command keeps its text out of the answer zone', () => {
+  const turn = turnLocation({ status: 'closed', reason: 'completed', start: 0, end: 5_000, steps: [1], closingStep: 1 });
+  const user = chatNode('user', { content: [{ type: 'text', text: '/status' }] }, turn);
+  const command = chatNode('command', { name: 'status', outcome: { kind: 'error', text: '执行失败详情' } }, turn, 1);
+  const answer = assistantNode(turn, 1, [text('已处理')]);
+  const html = renderTurn([user, command, answer], turn);
+  assert.doesNotMatch(html, /data-reader-command-output/);
+});
+
+test('the opening is the first user input even when a context record precedes it', () => {
+  const { turn, nodes } = completedTurn();
+  const context = chatNode('context', { content: [] }, turn);
+  const user = nodes[0]!;
+  const html = renderTurn([context, ...nodes], turn);
+  const seat = html.indexOf(`data-reader-anchor="true" data-reader-key="${user.key}"`);
+  assert.ok(seat >= 0, 'user bubble is rendered');
+  assert.ok(seat < html.indexOf('data-reader-panel'), 'user bubble sits above the panel');
+  assert.doesNotMatch(html, /data-reader-input=/);
+});
+
+test('an opened earlier range stays open for the whole turn, whatever its status', () => {
+  const turn = turnLocation({ status: 'closed', reason: 'aborted', steps: [1, 2] });
+  const user = chatNode('user', { content: [{ type: 'text', text: '连续做' }] }, turn);
+  const first = assistantNode(turn, 1, [reasoning('第一步想法'), toolCall('c1', 'bash', { command: 'ls' })]);
+  const firstTool = chatNode('tool-call', { root: settledTool('c1', 'bash', { command: 'ls' }) }, turn, 1);
+  const second = assistantNode(turn, 2, [reasoning('第二步想法'), toolCall('c2', 'bash', { command: 'pwd' })], 'interrupted');
+  const secondTool = chatNode('tool-call', { root: settledTool('c2', 'bash', { command: 'pwd' }) }, turn, 2);
+  const nodes = [user, first, firstTool, second, secondTool];
+  assert.match(renderTurn(nodes, turn), /data-reader-earlier/);
+  const opened = renderTurn(nodes, turn, { expanded: { 'turn:1:earlier': true } });
+  assert.doesNotMatch(opened, /data-reader-earlier/);
+  assert.match(opened, /data-reader-step="步骤 1"/);
 });
