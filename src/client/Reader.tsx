@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FileChangesPanel } from './FileChanges.js';
 import { FloatingStatus } from './FloatingStatus.js';
+import { viewRequestAction } from './view-request.js';
 import { TurnSection } from './TurnSection.js';
 import { useTurnActivity } from './use-turn-activity.js';
 import { MountFade, useMotionAllowed, usePinnedSelection, useReadingScroll } from './motion.js';
@@ -54,9 +55,13 @@ export function Reader(rawProps: ReaderProps) {
   useEffect(() => {
     if (!viewRequest || viewRequest.view !== 'reader') return;
     const focus = CSS.escape(viewRequest.focus);
-    root.current?.querySelector<HTMLElement>(`[data-reader-key="${focus}"], [data-reader-tool-call="${focus}"]`)?.scrollIntoView({ block: 'center' });
+    const target = root.current?.querySelector<HTMLElement>(`[data-reader-key="${focus}"], [data-reader-tool-call="${focus}"]`) ?? null;
+    // A request that arrives before its turn renders stays pending; the groups / loading deps re-run this.
+    const action = viewRequestAction(target !== null, loading);
+    if (action === 'wait') return;
+    if (action === 'scroll') target?.scrollIntoView({ block: 'center' });
     completeViewRequest();
-  }, [viewRequest, completeViewRequest]);
+  }, [viewRequest, completeViewRequest, loading, groups]);
   // 兼容层根发现：阅读根是运行中在深层会话容器里挂载/卸载的，body 级观察器看不到
   // 它；由本组件在根挂载/卸载时广播事件，rewind 桥 / 轮统计行 / 收尾防吞只监听
   // 事件（见 compat/reader-root.ts watchReaderRoots），不在 body 上做全树观察。
