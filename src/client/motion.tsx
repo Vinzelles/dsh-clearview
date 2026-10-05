@@ -2,10 +2,12 @@ import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState }
 import type { ReactNode, RefObject } from 'react';
 import clsx from 'clsx';
 import css from './Reader.module.css';
+import { TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives';
+import { MOTION } from './motion-tokens.js';
 import { StreamMotionContext } from './streaming.js';
 import { READING_SURFACE_GAP, readingFollowAction, readingScrollAction } from './reading-follow.js';
 
-const EASING = 'cubic-bezier(.22,1,.36,1)';
+const EASING = MOTION.ease;
 
 export function useMotionAllowed(enabled: boolean): boolean {
   const [reduced, setReduced] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -37,7 +39,7 @@ export function usePinnedSelection(root: RefObject<HTMLElement>, selector = '[da
   return keys;
 }
 
-export function StatusText({ text, motion, shimmer = false }: { text: string; motion: boolean; shimmer?: boolean }) {
+export function StatusText({ text, motion, shimmer = false, className }: { text: string; motion: boolean; shimmer?: boolean; className?: string }) {
   const ref = useRef<HTMLSpanElement>(null);
   const [visible, setVisible] = useState(() => !document.hidden);
   const [forcedColors, setForcedColors] = useState(() => window.matchMedia('(forced-colors: active)').matches);
@@ -71,19 +73,19 @@ export function StatusText({ text, motion, shimmer = false }: { text: string; mo
     let timer = 0;
     const tick = requestAnimationFrame(() => {
       setFrame(current => current.id === id ? { ...current, phase: 'running' } : current);
-      timer = window.setTimeout(settle, 200); // 150ms swap + 50ms incoming gap.
+      timer = window.setTimeout(settle, MOTION.swap + MOTION.swapGap);
     });
     return () => { cancelAnimationFrame(tick); window.clearTimeout(timer); };
   }, [frame.id, allowed]);
   const active = shimmer && allowed;
   const swapping = allowed && frame.outgoing !== null;
-  return <span className={css.statusText} data-reader-status data-reader-busy={shimmer} data-ud-check="reader-status">
+  return <span className={className ? `${css.statusText} ${className}` : css.statusText} data-reader-status data-reader-busy={shimmer} data-ud-check="reader-status">
     <span className={css.think} aria-hidden="true" data-active={active} data-reader-status-phase={swapping ? frame.phase : 'idle'} data-ud-motion="reader-thinking-state">
       <span className={css.thinkSizer}>{text}</span>
       {swapping && <span key={frame.outgoing!.id} className={`${css.thinkText} ${frame.phase === 'running' ? css.isExit : ''}`}
         data-reader-status-copy="outgoing" data-text={frame.outgoing!.text}>{frame.outgoing!.text}</span>}
       <span key={frame.id} ref={ref} className={`${css.thinkText} ${swapping && frame.phase === 'start' ? css.isEnterStart : ''}`}
-        data-reader-status-copy="current" data-reader-shimmer={active || undefined} data-text={text}>{text}</span>
+        data-reader-status-copy="current" data-text={text}>{active ? <TextShimmer active>{text}</TextShimmer> : text}</span>
     </span>
     <span className={css.srOnly} role="status" aria-live="polite" aria-atomic="true">{text}</span>
   </span>;
@@ -127,7 +129,7 @@ export function ProcessFragment({ open, motion, onRead, returnFocusTo, nodeKey, 
       setPresent(open);
       return;
     }
-    const animation = element.animate([{ height: `${from}px`, opacity: from < 1 ? 0 : 1 }, { height: `${target}px`, opacity: open ? 1 : 0 }], { duration: 260, easing: EASING, fill: 'both' });
+    const animation = element.animate([{ height: `${from}px`, opacity: from < 1 ? 0 : 1 }, { height: `${target}px`, opacity: open ? 1 : 0 }], { duration: MOTION.size, easing: EASING, fill: 'both' });
     running.current = animation;
     animation.onfinish = () => {
       if (running.current !== animation) return;
@@ -170,7 +172,7 @@ export function CollapseBody({ open, motion, children, className }: {
     }
     const animation = element.animate(
       [{ height: `${from}px`, opacity: from < 1 ? 0 : 1 }, { height: `${target}px`, opacity: open ? 1 : 0 }],
-      { duration: 260, easing: EASING, fill: 'both' },
+      { duration: MOTION.size, easing: EASING, fill: 'both' },
     );
     running.current = animation;
     animation.onfinish = () => {
@@ -228,7 +230,7 @@ export function MountFade({ mounted, motion, children }: {
   }, [mounted, motionOn]);
   useEffect(() => {
     if (!entering) return;
-    const timer = window.setTimeout(() => setEntering(false), 240);
+    const timer = window.setTimeout(() => setEntering(false), MOTION.swap + 40);
     return () => window.clearTimeout(timer);
   }, [entering]);
   if (!present) return null;
@@ -256,7 +258,7 @@ export function RetiringContent({ visible, children }: { visible: boolean; child
     const from = element.getBoundingClientRect().height;
     animation.current?.cancel(); animation.current = null;
     if (!enabled || from < 1) { setPresent(false); return; }
-    const next = element.animate([{ height: `${from}px`, opacity: 1 }, { height: '0px', opacity: 0 }], { duration: 220, easing: EASING, fill: 'both' });
+    const next = element.animate([{ height: `${from}px`, opacity: 1 }, { height: '0px', opacity: 0 }], { duration: MOTION.size, easing: EASING, fill: 'both' });
     animation.current = next;
     next.onfinish = () => { if (animation.current === next) { animation.current = null; next.cancel(); setPresent(false); } };
   }, [visible, enabled, focusHeld]);

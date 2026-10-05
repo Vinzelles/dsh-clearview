@@ -1,8 +1,19 @@
 .root {
+  --cv-ease: cubic-bezier(.2,.8,.2,1);
+  --cv-fast: 100ms;
+  --cv-swap: 200ms;
+  --cv-size: 260ms;
+  --cv-row-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  --cv-font-body: var(--dsh-content-font-size, 14px);
+  --cv-line-body: calc(24px + var(--dsh-content-font-delta, 0px));
+  --cv-font-secondary: var(--dsh-content-font-size-secondary, 13px);
+  --cv-panel-bg: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 72%, transparent);
+  --cv-panel-ring: 0 0 0 .5px var(--dsw-alias-border-l3);
+  --cv-inset-bg: var(--dsw-alias-markdown-code-block);
   color: var(--dsw-alias-label-primary);
   font-family: inherit;
-  font-size: 16px;
-  line-height: 28px;
+  font-size: var(--cv-font-body);
+  line-height: var(--cv-line-body);
   min-width: 0;
   flex: 0 0 auto;
   overflow-anchor: auto;
@@ -88,19 +99,19 @@
   border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 55%, transparent);
 }
 .disclosure[data-reader-status-only] { display: flex; align-items: center; min-height: 32px; }
-.statusText { display: inline-flex; min-width: 0; max-width: 100%; font-size: 14px; line-height: 24px; font-weight: 400; color: var(--dsw-alias-label-secondary); }
+.statusText { display: inline-flex; min-width: 0; max-width: 100%; font: inherit; color: inherit; }
 .srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 /* Transitions.dev — Thinking states, supplied by the user. Native DSH colors;
    the hidden sizer shares this font and the short phases share a left edge. */
 .think {
-  --think-swap: 150ms;
+  --think-swap: 200ms;
   --think-gap: 50ms;
-  --think-distance: 8px;
-  --think-blur: 2px;
+  --think-distance: 4px;
+  --think-blur: 1px;
   --think-shimmer: 2000ms;
   --think-base: var(--dsw-alias-label-secondary);
   --think-highlight: var(--dsw-alias-label-primary);
-  --think-ease: cubic-bezier(.22,1,.36,1);
+  --think-ease: cubic-bezier(.2,.8,.2,1);
   position: relative; display: inline-block; max-width: 100%; text-align: left;
 }
 .thinkSizer { display: block; visibility: hidden; white-space: nowrap; }
@@ -112,26 +123,13 @@
 }
 .think[data-reader-status-phase=running] .thinkText[data-reader-status-copy=current] { transition-delay: var(--think-gap); }
 .think:not([data-reader-status-phase=idle]) .thinkText { will-change: transform, filter, opacity; }
-@supports (background-clip: text) or (-webkit-background-clip: text) {
-  .think[data-active=true] .thinkText::before {
-    content: attr(data-text); position: absolute; inset: 0; pointer-events: none;
-    background-image: linear-gradient(90deg, transparent 0%, transparent 40%, var(--think-highlight) 50%, transparent 60%, transparent 100%);
-    background-size: 400% 100%; background-repeat: no-repeat;
-    -webkit-background-clip: text; background-clip: text;
-    color: transparent; -webkit-text-fill-color: transparent;
-    animation: thinkShimmer var(--think-shimmer) linear infinite;
-  }
-}
-@keyframes thinkShimmer { 0% { background-position: 100% 0; } 100% { background-position: 0% 0; } }
 .thinkText.isExit { transform: translateY(calc(var(--think-distance) * -1)); filter: blur(var(--think-blur)); opacity: 0; }
 .thinkText.isEnterStart { transition: none; transform: translateY(var(--think-distance)); filter: blur(var(--think-blur)); opacity: 0; }
 [data-motion=off] .thinkText { transition: none !important; transform: none !important; filter: none !important; opacity: 1 !important; }
 [data-motion=off] .thinkText[data-reader-status-copy=outgoing] { display: none !important; }
-[data-motion=off] .thinkText::before { display: none !important; }
 @media (prefers-reduced-motion: reduce), (forced-colors: active) {
   .thinkText { transition: none !important; transform: none !important; filter: none !important; opacity: 1 !important; }
   .thinkText[data-reader-status-copy=outgoing] { display: none !important; }
-  .thinkText::before { display: none !important; }
 }
 .chevron { flex: none; stroke: currentColor; fill: none; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; transition: transform 260ms cubic-bezier(.22,1,.36,1), opacity 160ms ease; }
 .chevron[data-open=true] { transform: rotate(90deg); }
