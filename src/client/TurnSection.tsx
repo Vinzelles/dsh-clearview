@@ -16,6 +16,7 @@ import { useReaderActions } from './reader-context.js';
 import { createGroupSelector } from './reader-selection.js';
 import { InputBubble, RecordRow, TurnNotice } from './RecordRows.js';
 import type { RewindSpan } from './rewind-hidden.js';
+import { RevealLedgerContext, type RevealLedger } from './streaming.js';
 import { activityPhase, readerFlow } from './tool-activity.js';
 import { ToolImages, ToolRow } from './ToolRow.js';
 import { TurnFooter } from './TurnFooter.js';
@@ -36,6 +37,9 @@ function useSegment(useSession: ReaderProps['useSession'], nodeKey: string, star
   const index = parts.findIndex(part => part.start === start);
   return { data, part: index >= 0 ? parts[index] : undefined, last: index === parts.length - 1 };
 }
+
+/** The answer zone and the panel's narration show the same body segment under one reveal identity. */
+const revealKeyOf = (nodeKey: string, start: number) => `${nodeKey}:${start}`;
 
 const ReasoningSegment = memo(function ReasoningSegment({ useSession, nodeKey, start, pinned, boundary, panelOpen, compact, onRead, ...render }: SegmentProps & {
   boundary: TurnBoundary; panelOpen: boolean; compact: boolean; onRead: () => void;
@@ -63,7 +67,7 @@ const NarrationSegment = memo(function NarrationSegment({ useSession, nodeKey, s
   const { data, part } = useSegment(useSession, nodeKey, start);
   if (!data || !part) return null;
   return <div className={css.narration} data-reader-narration data-reader-key={nodeKey}>
-    <Blocks {...render} blocks={part.blocks} streaming={data.status === 'running'} holdFormatting={pinned} startedAt={data.time} interrupted={data.status === 'interrupted'} liveText />
+    <Blocks {...render} blocks={part.blocks} streaming={data.status === 'running'} holdFormatting={pinned} startedAt={data.time} interrupted={data.status === 'interrupted'} liveText revealKey={revealKeyOf(nodeKey, start)} />
   </div>;
 });
 
@@ -71,7 +75,7 @@ const AnswerSegment = memo(function AnswerSegment({ useSession, nodeKey, start, 
   const { data, part, last } = useSegment(useSession, nodeKey, start);
   if (!data || !part) return null;
   return <article className={css.answer} data-reader-answer data-reader-anchor data-reader-key={nodeKey} data-reader-source-start={start} data-answer-status={data.status}>
-    <Blocks {...render} blocks={part.blocks} streaming={data.status === 'running'} holdFormatting={pinned} startedAt={data.time} interrupted={data.status === 'interrupted'} liveText fileMentions={fileMentions} />
+    <Blocks {...render} blocks={part.blocks} streaming={data.status === 'running'} holdFormatting={pinned} startedAt={data.time} interrupted={data.status === 'interrupted'} liveText revealKey={revealKeyOf(nodeKey, start)} fileMentions={fileMentions} />
     {last && data.status === 'interrupted' && <span className={css.stopped}>已停止</span>}
   </article>;
 });
@@ -125,6 +129,7 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, select
   const openEarlier = useCallback(() => props.actions.setExpanded(earlierKey, true), [props.actions, earlierKey]);
   const pinPanel = useCallback(() => setOpen(true), [setOpen]);
   const get = useCallback((key: string) => chat.nodes.get(key), [chat]);
+  const revealLedger = useMemo<RevealLedger>(() => new Map(), []);
   // The opening is the first user / trigger / command input before any assistant or tool row; system prompts
   // above it are preambles, and every other node (context, records) keeps its normal routing.
   const leading = useMemo(() => {
@@ -176,12 +181,12 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, select
   const answerText = useMemo(() => answerBlocks.flatMap(block => block.kind === 'text' ? [block.text] : []).join('\n\n'), [answerBlocks]);
   const terminal = terminalLabel(boundary.reason);
   const showTerminal = terminal && boundary.reason !== 'error' && boundary.reason !== 'max-tokens';
-  return <section className={css.turn} data-reader-turn={group.turn ?? 'unresolved'} data-reader-turn-state={boundary.status} data-reader-turn-result={boundary.reason ?? undefined}>
+  return <RevealLedgerContext.Provider value={revealLedger}><section className={css.turn} data-reader-turn={group.turn ?? 'unresolved'} data-reader-turn-state={boundary.status} data-reader-turn-result={boundary.reason ?? undefined}>
     {preambleKeys.map(key => <BlockBoundary key={key}><PromptPreamble useSession={props.useSession} nodeKey={key} /></BlockBoundary>)}
     {leading.opening && <BlockBoundary><Opening {...shared} useSession={props.useSession} nodeKey={leading.opening} /></BlockBoundary>}
-    {layout.panel.length > 0 && <ProcessPanel panelKey={group.key} status={status} statusLabel={label} elapsed={elapsed} counts={counts}
+    {layout.panel.length > 0 && <BlockBoundary><ProcessPanel panelKey={group.key} status={status} statusLabel={label} elapsed={elapsed} counts={counts}
       items={layout.panel} open={open} onOpenChange={setOpen} earlierOpen={earlierOpen} onEarlierOpen={openEarlier}
-      motion={motion} isActive={isActive} renderItem={renderItem} />}
+      motion={motion} isActive={isActive} renderItem={renderItem} /></BlockBoundary>}
     {layout.panel.length === 0 && boundary.status === 'open' && <div className={css.statusOnly} data-reader-status-only>
       <StatusText text={label} motion={motion} shimmer={status === 'running'} />
     </div>}
@@ -193,7 +198,7 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, select
     </BlockBoundary>)}
     {layout.notices.map(key => <BlockBoundary key={key}><TurnNotice useSession={props.useSession} nodeKey={key} /></BlockBoundary>)}
     {showTerminal && <p className={css.terminal} data-reader-terminal>{terminal}</p>}
-    {closed && <TurnFooter turn={turn} answerText={answerText} />}
+    {closed && <BlockBoundary><TurnFooter turn={turn} answerText={answerText} /></BlockBoundary>}
     {flowTail}
-  </section>;
+  </section></RevealLedgerContext.Provider>;
 });

@@ -1,6 +1,7 @@
 import './support/dom.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ReaderActionsContext, type ReaderActions } from '../src/client/reader-context.ts';
@@ -194,4 +195,13 @@ test('an opened earlier range stays open for the whole turn, whatever its status
   const opened = renderTurn(nodes, turn, { expanded: { 'turn:1:earlier': true } });
   assert.doesNotMatch(opened, /data-reader-earlier/);
   assert.match(opened, /data-reader-step="步骤 1"/);
+});
+
+test('the process panel and the footer each sit inside their own BlockBoundary, never around the section', () => {
+  // Server rendering has no error boundaries, so the isolation is pinned on the source shape.
+  const source = readFileSync(new URL('../src/client/TurnSection.tsx', import.meta.url), 'utf8');
+  assert.match(source, /<BlockBoundary><ProcessPanel [\s\S]*?<\/BlockBoundary>/);
+  assert.match(source, /<BlockBoundary><TurnFooter [^>]*\/><\/BlockBoundary>/);
+  assert.doesNotMatch(source, /<BlockBoundary>\s*<section/);
+  assert.match(source, /<section className=\{css\.turn\} data-reader-turn=/);
 });

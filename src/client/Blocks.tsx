@@ -93,11 +93,11 @@ export const ImageBlock = memo(function ImageBlock({ attachment, loadImage }: {
   </figure>;
 });
 
-type TextPresentation = { startedAt?: number; interrupted?: boolean; liveText?: boolean };
+type TextPresentation = { startedAt?: number; interrupted?: boolean; liveText?: boolean; revealKey?: string };
 
-function ReadingMarkdown({ text, streaming, holdFormatting, startedAt, interrupted = false, liveText = false, kind = 'body', fileMentions }: { text: string; streaming: boolean; holdFormatting: boolean; kind?: 'body' | 'reasoning'; fileMentions?: MarkdownFileMentions } & TextPresentation) {
+function ReadingMarkdown({ text, streaming, holdFormatting, startedAt, interrupted = false, liveText = false, revealKey, kind = 'body', fileMentions }: { text: string; streaming: boolean; holdFormatting: boolean; kind?: 'body' | 'reasoning'; fileMentions?: MarkdownFileMentions } & TextPresentation) {
   const root = useRef<HTMLDivElement>(null);
-  const presentation = useStreamingText(text, streaming, { startedAt, interrupted: interrupted || !liveText, selected: holdFormatting });
+  const presentation = useStreamingText(text, streaming, { startedAt, interrupted: interrupted || !liveText, selected: holdFormatting, revealKey });
   // Native Markdown changes block keys for its full final parse. Keep the last
   // committed mode while this answer is selected, then finish formatting on
   // deselection. Business status and the source text still update normally.
@@ -131,12 +131,12 @@ function fallback(block: AssistantBlock, streaming: boolean, source: ReaderBlock
   }
 }
 
-export const Blocks = memo(function Blocks({ blocks, streaming = false, source = 'assistant', holdFormatting = false, startedAt, interrupted, liveText, renderSlotChain, loadImage, fileMentions }: BlockRenderProps & TextPresentation & {
+export const Blocks = memo(function Blocks({ blocks, streaming = false, source = 'assistant', holdFormatting = false, startedAt, interrupted, liveText, revealKey, renderSlotChain, loadImage, fileMentions }: BlockRenderProps & TextPresentation & {
   blocks: readonly AssistantBlock[]; streaming?: boolean; source?: ReaderBlockOwner['source']; holdFormatting?: boolean; fileMentions?: MarkdownFileMentions;
 }) {
   return <div className={css.blocks} data-streaming={streaming || undefined}>
     {blocks.map((block, index) => <BlockBoundary key={blockKey(block, index)}>
-      <Fragment>{renderSlotChain('dsh-clearview.block', { block, streaming, source }, { fallback: fallback(block, streaming, source, loadImage, holdFormatting, { startedAt, interrupted, liveText }, fileMentions) })}</Fragment>
+      <Fragment>{renderSlotChain('dsh-clearview.block', { block, streaming, source }, { fallback: fallback(block, streaming, source, loadImage, holdFormatting, { startedAt, interrupted, liveText, revealKey: revealKey === undefined ? undefined : `${revealKey}:${index}` }, fileMentions) })}</Fragment>
     </BlockBoundary>)}
   </div>;
 });
