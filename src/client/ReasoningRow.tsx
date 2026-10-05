@@ -25,6 +25,11 @@ export function reasoningPreview(text: string, limit = 80): string {
   return value.length > limit ? `${value.slice(0, limit - 1)}…` : value;
 }
 
+/** Real scroll extent of the viewport (its own padding included): where following ends, and whether it overflows. */
+export function scrollMetrics(port: { scrollHeight: number; clientHeight: number }): { tail: number; overflow: boolean } {
+  return { tail: Math.max(0, port.scrollHeight - port.clientHeight), overflow: port.scrollHeight > port.clientHeight + 1 };
+}
+
 export interface ReasoningRowProps {
   children: ReactNode;
   step: number;
@@ -65,6 +70,10 @@ export function ReasoningRow({ children, step, live, follow, motion, selected, o
   const followSeeded = useRef(false);
   const open = manual === null ? live : manual === 'open';
   const previewMode = !open && !compact && !live;
+  /** Read by the follow cleanup, which runs after the render that decides whether this row settles into its preview. */
+  const previewNext = useRef(previewMode);
+  previewNext.current = previewMode;
+  const inflated = open && expanded;
   const allowed = open && following && follow && motion && !selected;
 
   useEffect(() => {
@@ -108,12 +117,20 @@ export function ReasoningRow({ children, step, live, follow, motion, selected, o
   }, [expanded, open]);
 
   useLayoutEffect(() => {
+    if (!open && expanded) setExpanded(false);
+  }, [open, expanded]);
+
+  useLayoutEffect(() => {
+    if (previewMode && viewport.current) viewport.current.scrollTop = 0;
+  }, [previewMode]);
+
+  useLayoutEffect(() => {
     const port = viewport.current;
     const text = content.current;
     if (!port || !text) return;
     if (allowed) finishRef.current?.cancel();
     let clientHeight = port.clientHeight;
-    let tail = Math.max(0, text.offsetHeight - clientHeight);
+    let tail = scrollMetrics(port).tail;
     let frame = 0;
     let alive = true;
     let tracking = false;
@@ -133,9 +150,9 @@ export function ReasoningRow({ children, step, live, follow, motion, selected, o
     };
     const refresh = (recordHeight = true) => {
       clientHeight = port.clientHeight;
-      const height = text.offsetHeight;
-      tail = Math.max(0, height - clientHeight);
-      setOverflow(height > clientHeight + 1);
+      const metrics = scrollMetrics(port);
+      tail = metrics.tail;
+      setOverflow(metrics.overflow);
       edgesFor(tracking ? state.pos : port.scrollTop, tail);
       if (recordHeight && !resize.current) lastHeight.current = clientHeight;
     };
@@ -192,6 +209,8 @@ export function ReasoningRow({ children, step, live, follow, motion, selected, o
       stopFollow.current = () => {};
       if (!tracking) return;
       tracking = false;
+      // Settling into the clamped preview: it must start at the beginning, so no glide toward the stale end.
+      if (previewNext.current) return;
       const end = tail;
       if (clientHeight > 1 && end - state.pos > 1 && port.isConnected) {
         let glideFrame = 0;
@@ -267,7 +286,7 @@ export function ReasoningRow({ children, step, live, follow, motion, selected, o
       <span className={css.end}>{liveSeconds !== null ? `已 ${liveSeconds} 秒` : `${charCount} 字`}</span>
     </button>
     {(open || previewMode) && <div className={css.inset} data-reader-reasoning-card data-live={live || undefined} data-preview={previewMode || undefined}
-      data-expanded={expanded || undefined} data-following={allowed} data-overflow={overflow}>
+      data-expanded={inflated || undefined} data-following={allowed} data-overflow={overflow}>
       <div ref={viewport} id={viewportId} className={css.viewport} data-edges={edges} data-reader-reasoning-scroll role="region"
         aria-label={`步骤 ${step} 的思考${overflow ? '，可滚动阅读' : ''}`} tabIndex={open && overflow ? 0 : undefined}
         onPointerDown={open ? pause : undefined} onFocus={open ? pause : undefined}

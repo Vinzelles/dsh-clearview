@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { render } from './support/render.ts';
-import { ReasoningRow, formatThinkingSeconds, reasoningPreview } from '../src/client/ReasoningRow.tsx';
+import { ReasoningRow, formatThinkingSeconds, reasoningPreview, scrollMetrics } from '../src/client/ReasoningRow.tsx';
 
 const base = { step: 3, follow: true, motion: true, selected: false, onRead: () => {}, durationMs: 6000, startedAt: null, charCount: 120, preview: '先看工作区。', children: createElement('span', null, '原文') };
 
@@ -39,4 +39,17 @@ test('settled thinking outside compact mode shows a clamped preview inset', () =
   const html = render(ReasoningRow, { ...base, live: false, compact: false });
   assert.match(html, /data-preview="true"/);
   assert.doesNotMatch(html, /data-live/);
+});
+
+test('follow metrics use the real scroll extent, padding included', () => {
+  // 8px top + 8px bottom padding live inside the scroll extent: 100px of text in a 128px port is 116px, no overflow.
+  assert.deepEqual(scrollMetrics({ scrollHeight: 116, clientHeight: 128 }), { tail: 0, overflow: false });
+  assert.deepEqual(scrollMetrics({ scrollHeight: 129, clientHeight: 128 }), { tail: 1, overflow: false });
+  assert.deepEqual(scrollMetrics({ scrollHeight: 300, clientHeight: 128 }), { tail: 172, overflow: true });
+});
+
+test('a settled preview is never marked expanded and starts unexpanded', () => {
+  const html = render(ReasoningRow, { ...base, live: false, compact: false });
+  assert.doesNotMatch(html, /data-expanded/);
+  assert.doesNotMatch(html, /data-reader-reasoning-card[^>]*data-live/);
 });
