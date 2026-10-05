@@ -9,7 +9,7 @@ import { Blocks } from './Blocks.js';
 import { useChatSelector } from './compat/session-snapshot.js';
 import { CollapseBody } from './motion.js';
 import { nodeText } from './node-payloads.js';
-import { Chevron } from './ProcessRow.js';
+import { Chevron, Inset } from './ProcessRow.js';
 import { useReaderActions } from './reader-context.js';
 import { fmtClock } from './turn-meta.js';
 import { TRIGGER_EXPLANATION, triggerDetails, type TriggerIcon } from './turn-trigger.js';
@@ -57,13 +57,14 @@ export const Opening = memo(function Opening({ useSession, nodeKey, ...render }:
     const body = plainText(data.content);
     return <div className={css.trigger} data-reader-trigger={details.icon} data-reader-key={nodeKey}>
       <button type="button" className={css.triggerButton} aria-expanded={open} onClick={() => setOpen(value => !value)}>
-        <span className={css.triggerIcon} aria-hidden="true"><Icon size={16} /></span>
+        <span className={css.triggerIcon} aria-hidden="true"><Icon size={14} /></span>
         <span className={css.triggerTitle}>{details.title}</span>
         {time && <span className={css.triggerTime}>{time}</span>}
+        <span className={css.triggerAction}>{open ? '收起原文' : '展开原文'}</span>
         <Chevron open={open} />
       </button>
       <CollapseBody open={open} motion={motion}>
-        <div className={css.triggerBody}><p className={css.triggerNote}>{TRIGGER_EXPLANATION}</p>{body || '（原文为空）'}</div>
+        <Inset className={css.triggerBody}><p className={css.triggerNote}>{TRIGGER_EXPLANATION}</p>{body || '（原文为空）'}</Inset>
       </CollapseBody>
     </div>;
   }

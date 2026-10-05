@@ -71,3 +71,14 @@ test('every rounded rule sets corner-shape: round beside its token radius', () =
   }
   assert.deepEqual(missing, [], 'rounded rules without corner-shape: round');
 });
+
+test('the turn-trigger opening is a 24px row, not a padded card', () => {
+  const opening = sheet('Opening');
+  const button = /\.triggerButton \{([^}]*)\}/.exec(opening)?.[1] ?? '';
+  assert.match(button, /height: var\(--cv-row-height\)/);
+  assert.match(button, /font-weight: 500/);
+  assert.match(button, /color: var\(--dsw-alias-label-secondary\)/);
+  assert.doesNotMatch(button, /padding:\s*10px/);
+  assert.doesNotMatch(/\.trigger \{([^}]*)\}/.exec(opening)?.[1] ?? '', /background|box-shadow|border-radius/);
+});
+
