@@ -8,9 +8,8 @@ import type { BlockRenderProps, ReaderBlockOwner } from './types.js';
 import { useStreamingText } from './streaming.js';
 import { blockKey, isAttachmentRef } from './user-content.js';
 import { MotionMarkdown, MotionPlainText } from './word-motion.js';
+import type { MarkdownFileMentions } from './markdown/render.js';
 import css from './Reader.module.css';
-
-const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 
 /** 用户消息的文本叶子。刻意不走宿主 primitives 的 MessageText：用户消息是阅读页里
  *  最容易「整条消失」的座位，而宿主展示组件的可用性与入参契约随内核版本漂移
@@ -66,18 +65,14 @@ export const ImageBlock = memo(function ImageBlock({ attachment, loadImage }: {
   useEffect(() => {
     if (!usable || reference === null) { setError(true); return; }
     let active = true;
-    let owned: string | null = null;
     const timeout = setTimeout(() => { if (active) { setError(true); active = false; } }, 20000);
     setError(false); setDecoded(false); setUrl(null);
-    void loadImage(reference).then(result => {
+    void loadImage(reference).then(next => {
       if (!active) return;
       clearTimeout(timeout);
-      if (!IMAGE_TYPES.has(result.mediaType)) throw new Error('Unsupported image media type');
-      const bytes = Uint8Array.from(result.data);
-      owned = URL.createObjectURL(new Blob([bytes.buffer], { type: result.mediaType }));
-      setUrl(owned);
+      setUrl(next);
     }).catch(() => { clearTimeout(timeout); if (active) setError(true); });
-    return () => { active = false; clearTimeout(timeout); if (owned) URL.revokeObjectURL(owned); };
+    return () => { active = false; clearTimeout(timeout); };
   }, [usable, reference, attempt, loadImage]);
   const width = positive(reference?.width) ?? 4;
   const height = positive(reference?.height) ?? 3;
@@ -101,7 +96,7 @@ export const ImageBlock = memo(function ImageBlock({ attachment, loadImage }: {
 
 type TextPresentation = { startedAt?: number; interrupted?: boolean; liveText?: boolean };
 
-function ReadingMarkdown({ text, streaming, holdFormatting, startedAt, interrupted = false, liveText = false, kind = 'body' }: { text: string; streaming: boolean; holdFormatting: boolean; kind?: 'body' | 'reasoning' } & TextPresentation) {
+function ReadingMarkdown({ text, streaming, holdFormatting, startedAt, interrupted = false, liveText = false, kind = 'body', fileMentions }: { text: string; streaming: boolean; holdFormatting: boolean; kind?: 'body' | 'reasoning'; fileMentions?: MarkdownFileMentions } & TextPresentation) {
   const root = useRef<HTMLDivElement>(null);
   const presentation = useStreamingText(text, streaming, { startedAt, interrupted: interrupted || !liveText, selected: holdFormatting });
   // Native Markdown changes block keys for its full final parse. Keep the last
@@ -112,7 +107,7 @@ function ReadingMarkdown({ text, streaming, holdFormatting, startedAt, interrupt
   useLayoutEffect(() => { committedMode.current = effectiveMode; }, [effectiveMode]);
   return <div ref={root} className={css.readingText} data-reader-text data-reader-text-kind={kind} data-received-length={text.length} data-shown-length={presentation.text.length}
     data-presentation-pending={presentation.pending || undefined} data-motion-style="opacity-blur" data-ud-motion="reader-text-arrival" data-ud-motion-type="reveal" data-ud-motion-no-flash="true">
-    <MotionMarkdown text={presentation.text} streaming={effectiveMode} enabled={liveText && presentation.reveal && effectiveMode} revision={presentation.revision} />
+    <MotionMarkdown text={presentation.text} streaming={effectiveMode} enabled={liveText && presentation.reveal && effectiveMode} revision={presentation.revision} fileMentions={fileMentions} />
   </div>;
 }
 
@@ -124,9 +119,9 @@ function ReadingReasoning({ text, streaming, holdFormatting, startedAt, interrup
   </div>;
 }
 
-function fallback(block: AssistantBlock, streaming: boolean, source: ReaderBlockOwner['source'], loadImage: BlockRenderProps['loadImage'], holdFormatting: boolean, presentation: TextPresentation): ReactNode {
+function fallback(block: AssistantBlock, streaming: boolean, source: ReaderBlockOwner['source'], loadImage: BlockRenderProps['loadImage'], holdFormatting: boolean, presentation: TextPresentation, fileMentions: MarkdownFileMentions | undefined): ReactNode {
   switch (block.kind) {
-    case 'text': return source === 'user' ? <UserText text={block.text} /> : <ReadingMarkdown text={block.text} streaming={streaming} holdFormatting={holdFormatting} {...presentation} />;
+    case 'text': return source === 'user' ? <UserText text={block.text} /> : <ReadingMarkdown text={block.text} streaming={streaming} holdFormatting={holdFormatting} fileMentions={fileMentions} {...presentation} />;
     case 'image': return <ImageBlock attachment={block.attachment} loadImage={loadImage} />;
     case 'reasoning': return <ReadingReasoning text={block.text} streaming={streaming} holdFormatting={holdFormatting} {...presentation} />;
     case 'tool-call': return <JsonBlockL label={`工具参数 · ${block.name}`} payload={block.argsRaw} />;
@@ -137,12 +132,12 @@ function fallback(block: AssistantBlock, streaming: boolean, source: ReaderBlock
   }
 }
 
-export const Blocks = memo(function Blocks({ blocks, streaming = false, source = 'assistant', holdFormatting = false, startedAt, interrupted, liveText, renderSlotChain, loadImage }: BlockRenderProps & TextPresentation & {
-  blocks: readonly AssistantBlock[]; streaming?: boolean; source?: ReaderBlockOwner['source']; holdFormatting?: boolean;
+export const Blocks = memo(function Blocks({ blocks, streaming = false, source = 'assistant', holdFormatting = false, startedAt, interrupted, liveText, renderSlotChain, loadImage, fileMentions }: BlockRenderProps & TextPresentation & {
+  blocks: readonly AssistantBlock[]; streaming?: boolean; source?: ReaderBlockOwner['source']; holdFormatting?: boolean; fileMentions?: MarkdownFileMentions;
 }) {
   return <div className={css.blocks} data-streaming={streaming || undefined}>
     {blocks.map((block, index) => <BlockBoundary key={blockKey(block, index)}>
-      <Fragment>{renderSlotChain('dsh-clearview.block', { block, streaming, source }, { fallback: fallback(block, streaming, source, loadImage, holdFormatting, { startedAt, interrupted, liveText }) })}</Fragment>
+      <Fragment>{renderSlotChain('dsh-clearview.block', { block, streaming, source }, { fallback: fallback(block, streaming, source, loadImage, holdFormatting, { startedAt, interrupted, liveText }, fileMentions) })}</Fragment>
     </BlockBoundary>)}
   </div>;
 });

@@ -6,6 +6,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client';
 import type {} from '@deepseek-ai/dsh-client-locale/client';
 import type {} from '@deepseek-ai/dsh-api-job-controller/client';
 import { Reader } from './Reader.js';
+import { createReaderHost, type HostServices, type ReaderHost } from './host.js';
 import { createReaderStore } from './store.js';
 import { installReaderEntry } from './entry.js';
 import { startCompat } from './compat/index.js';
@@ -21,7 +22,15 @@ export function apply(ctx: Context): void {
   startCompat(ctx);
   const store = createReaderStore();
   const faces = new Map<SessionId, ReaderInjected>();
-  ctx.effect(() => () => { faces.clear(); });
+  const hosts = new Map<SessionId, ReaderHost>();
+  const optional = (name: string) => (ctx as unknown as { get(name: string): unknown }).get(name);
+  const hostServices = (): HostServices => ({
+    sidebarRight: optional('sidebarRight') as HostServices['sidebarRight'],
+    uiConversation: optional('uiConversation') as HostServices['uiConversation'],
+    uiWorkspace: optional('uiWorkspace') as HostServices['uiWorkspace'],
+    chatFileMentions: optional('chatFileMentions') as HostServices['chatFileMentions'],
+  });
+  ctx.effect(() => () => { for (const host of hosts.values()) host.dispose(); hosts.clear(); faces.clear(); });
   ctx.slots.inject('conversation.view', function* () {
     yield ctx.slots.register({
     name: 'conversation.view',
@@ -39,30 +48,41 @@ export function apply(ctx: Context): void {
         if (!current) throw new Error('阅读页对应的会话已关闭。');
         return current;
       };
+      // 0.1.1：workspaces 服务有 openPath。0.1.2 的 workspaces 服务不再携带
+      // 打开能力，改走 session 远端 openWorkspacePath（与原生对话视图同一打开器）。
+      // 右侧栏预览不可用时由 host 退回这里。
+      const openWithSystem = (path: string): Promise<void> => {
+        const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd;
+        const workspaces = ctx.workspaces as { openPath?: (path: string) => Promise<void> } | undefined;
+        if (typeof workspaces?.openPath === 'function') return workspaces.openPath(resolveWorkspacePath(cwd, path));
+        const remote = (ctx as unknown as { remote?: { session?: { openWorkspacePath?: (input: { path: string }) => Promise<{ ok: boolean; error?: { message: string } }> } } }).remote;
+        const open = remote?.session?.openWorkspacePath;
+        if (typeof open !== 'function') throw new Error('宿主未提供文件打开能力。');
+        return (async () => {
+          const result = await open.call(remote!.session, { path: resolveWorkspacePath(cwd, path) });
+          if (!result.ok) throw new Error(result.error?.message ?? '路径打开失败。');
+        })();
+      };
+      const host = createReaderHost(sessionId, hostServices, {
+        cwd: () => ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd,
+        openWithSystem,
+        readAttachment: async attachment => {
+          const receipt = await session().readAttachment(attachment.attachmentId);
+          if (!receipt.ok) throw new Error(receipt.error.message);
+          return { data: Uint8Array.from(receipt.value.data), mediaType: receipt.value.attachment.mediaType };
+        },
+        fork: atSeq => ctx.sessions.fork({ sessionId, atSeq, increaseTitle: true }),
+      });
+      hosts.set(sessionId, host);
       const face: ReaderInjected = {
         jobsSource: ctx.jobs.state,
         watchJobs: () => ctx.jobs.watchRows(sessionId),
         contextT: ctx.locale.bind('chat'),
         loadOlder: async () => { await session().loadOlder(); },
-        loadImage: async attachment => {
-          const receipt = await session().readAttachment(attachment.attachmentId);
-          if (!receipt.ok) throw new Error(receipt.error.message);
-          return { data: Uint8Array.from(receipt.value.data), mediaType: receipt.value.attachment.mediaType };
-        },
-        openFile: path => {
-          // 0.1.1：workspaces 服务有 openPath。0.1.2 的 workspaces 服务不再携带
-          // 打开能力，改走 session 远端 openWorkspacePath（与原生对话视图同一打开器）。
-          const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd;
-          const workspaces = ctx.workspaces as { openPath?: (path: string) => Promise<void> } | undefined;
-          if (typeof workspaces?.openPath === 'function') return workspaces.openPath(resolveWorkspacePath(cwd, path));
-          const remote = (ctx as unknown as { remote?: { session?: { openWorkspacePath?: (input: { path: string }) => Promise<{ ok: boolean; error?: { message: string } }> } } }).remote;
-          const open = remote?.session?.openWorkspacePath;
-          if (typeof open !== 'function') throw new Error('宿主未提供文件打开能力。');
-          return (async () => {
-            const result = await open.call(remote!.session, { path: resolveWorkspacePath(cwd, path) });
-            if (!result.ok) throw new Error(result.error?.message ?? '路径打开失败。');
-          })();
-        },
+        loadImage: attachment => host.imageUrl(attachment),
+        openFile: path => host.openFile(path),
+        fork: atSeq => host.fork(atSeq),
+        fileMentions: (turn, seq) => host.fileMentions(turn, seq),
         listDirNames: async path => {
           // 目录条目名集合（存在性校准用）。0.1.1：workspaces.listDirectory；
           // 0.1.2：directoryPicker 远端（同一浏览能力，不同挂载面）。
