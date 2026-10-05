@@ -1,600 +1,23 @@
-import { Fragment, memo, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { ReactNode, RefObject } from 'react';
-import type { ChatConversationViewNode } from '@deepseek-ai/dsh-client-ui-chat/client';
-import type { ChatNode, ChatNodeKind } from '@deepseek-ai/dsh-client-ui-chat/client';
-import { JsonTree } from '@deepseek-ai/dsh-client-ui-primitives';
-import { MarkdownTextL } from './native/labeled-blocks.js';
-import { JSON_TREE_LABELS } from './native/primitive-labels.js';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FileChangesPanel } from './FileChanges.js';
-import { BlockBoundary, Blocks, CopyAnswer } from './Blocks.js';
-import { contentBlocks } from './user-content.js';
-import { ReasoningCard } from './ReasoningCard.js';
-import { ToolActivity, ToolMedia } from './ToolActivity.js';
-import { formatOperationClusterSummary, groupOperationalFlow, isMergedExecutionFailure, preparingLabel, readerFlow } from './tool-activity.js';
-import type { OperationalFlowItem, ReaderFlowEntry } from './tool-activity.js';
+import { TurnSection } from './TurnSection.js';
 import { formatSeconds } from './turn-activity.js';
 import { useTurnActivity } from './use-turn-activity.js';
-import { CollapseBody, Disclosure, MountFade, ProcessFragment, RetiringContent, StatusText, useContentWidth, useMotionAllowed, usePinnedSelection, useReadingScroll } from './motion.js';
+import { MountFade, useContentWidth, useMotionAllowed, usePinnedSelection, useReadingScroll } from './motion.js';
 import { StreamMotionContext } from './streaming.js';
-import { READER_VERSION } from './version.js';
+import { ReaderActionsContext, type ReaderActions } from './reader-context.js';
 import { useCompatReaderProps, useChatSelector, usePendingSelector, useSessionSelector, readerSnapshot } from './compat/session-snapshot.js';
 import { READER_COMPAT_MOUNT_EVENT, READER_COMPAT_UNMOUNT_EVENT, registerReaderSnapshot } from './compat/reader-root.js';
-import { nodeText, workflowRunSummary, workflowStatusLabel } from './node-payloads.js';
-import { SystemPromptRow } from './native/SystemPromptRow.js';
-import { assistantSegments, boundaryOf, hasProcessContent, hasVisibleBody, isEarlierNarration, processChoiceKey, processExpanded, terminalLabel } from './projection.js';
-import { ContextInjectionRow } from './native/ContextInjectionRow.js';
-import { createReaderStructureSelector, createGroupSelector } from './reader-selection.js';
-import type { RewindSpan } from './rewind-hidden.js';
-import type { ReaderGroup, TurnBoundary } from './projection.js';
-import type { BlockRenderProps, ReaderProps } from './types.js';
+import { createReaderStructureSelector } from './reader-selection.js';
+import { READER_VERSION } from './version.js';
+import type { ReaderProps } from './types.js';
 import css from './Reader.module.css';
 
-function isNode<K extends ChatNodeKind>(node: ChatConversationViewNode, kind: K): node is ChatNode<K> {
-  return node.kind === kind;
+function Switch({ label, checked, onChange, title }: { label: string; checked: boolean; onChange: () => void; title?: string }) {
+  return <button type="button" className={css.switchButton} role="switch" aria-checked={checked} onClick={onChange} title={title}>
+    <span className={css.switchLabel} data-checked={checked}>{label}</span>
+  </button>;
 }
-
-function commandOutcomeText(node: ChatConversationViewNode): string | undefined {
-  if (isNode(node, 'command')) return node.data.outcome?.text;
-  if (isNode(node, 'manual-compaction')) return node.data.command.outcome?.text;
-  return undefined;
-}
-
-type CommandRecordNode = ChatNode<'command'> | ChatNode<'manual-compaction'>;
-
-function commandRecordState(node: CommandRecordNode): 'running' | 'success' | 'error' {
-  const outcome = node.kind === 'command' ? node.data.outcome : node.data.command.outcome;
-  return outcome == null ? 'running' : outcome.kind === 'success' ? 'success' : 'error';
-}
-
-/** The record payload as a plain read-only block: the card itself is the only
- *  expandable, so the body shows the content directly (no inner toggle). */
-function RecordJson({ label, payload }: { label: string; payload: unknown }) {
-  const text = useMemo(() => {
-    try {
-      return JSON.stringify(payload, null, 2) ?? String(payload);
-    } catch {
-      return String(payload);
-    }
-  }, [payload]);
-  return <div className={css.toolRawSection}>
-    <h4 className={css.toolRawLabel}>{label}</h4>
-    <pre className={css.toolRaw}>{text}</pre>
-  </div>;
-}
-
-function CommandRecord({ node }: { node: CommandRecordNode }) {
-  const outcomeText = commandOutcomeText(node);
-  if (isNode(node, 'manual-compaction')) {
-    const failed = node.data.command.outcome?.kind === 'error';
-    const compacted = !failed && node.data.compaction != null;
-    return (
-      <NoticeCard
-        title={failed ? '上下文压缩失败' : compacted ? '上下文已整理' : '正在整理上下文…'}
-        meta={failed ? outcomeText : compacted ? '原始记录仍保留。' : undefined}
-        tone={failed ? 'error' : 'info'}
-        state={failed ? 'error' : compacted ? 'success' : 'running'}
-        markers={{ 'data-reader-command-record': '', 'data-reader-compaction-record': '' }}
-      >
-        <RecordJson label="命令记录" payload={node.data} />
-      </NoticeCard>
-    );
-  }
-  const state = commandRecordState(node);
-  return (
-    <NoticeCard
-      title={state === 'running' ? '命令执行中…' : state === 'success' ? '命令执行完成' : '命令执行失败'}
-      meta={outcomeText}
-      tone={state === 'error' ? 'error' : 'info'}
-      state={state}
-      markers={{ 'data-reader-command-record': '' }}
-    >
-      <RecordJson label="命令记录" payload={node.data} />
-    </NoticeCard>
-  );
-}
-
-function CompactionRecord({ node }: { node: ChatNode<'compaction'> }) {
-  return (
-    <NoticeCard
-      title="上下文已整理"
-      meta="原始记录仍保留。"
-      tone="info"
-      state="success"
-      markers={{ 'data-reader-compaction-record': '' }}
-    >
-      <RecordJson label="压缩记录" payload={node.data} />
-    </NoticeCard>
-  );
-}
-
-function NoticeCard({ title, meta, hint = '展开查看详情', tone = 'error', state, markers, children }: {
-  title: ReactNode; meta?: ReactNode; hint?: string; tone?: 'error' | 'info';
-  state?: 'running' | 'success' | 'error'; markers?: Record<string, string | undefined>; children?: ReactNode;
-}) {
-  const card = tone === 'error' ? css.errorCard : css.noticeCard;
-  const titleClass = tone === 'error' ? css.errorCardTitle : css.noticeCardTitle;
-  const bodyClass = tone === 'error' ? css.errorCardBody : css.noticeCardBody;
-  const { enabled } = useContext(StreamMotionContext);
-  const [open, setOpen] = useState(false);
-  return (
-    <div className={card} data-tone={tone} data-state={state} data-open={open} data-reader-expandable-notice role={tone === 'error' ? 'alert' : 'status'} {...markers}>
-      <button type="button" data-open={open} aria-expanded={open} onClick={() => setOpen(value => !value)}>
-        <svg className={css.chevron} data-open={open} viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg>
-        <span className={titleClass}>{title}</span>
-        {meta && <span className={css.errorCardMeta}>{meta}</span>}
-        <span className={css.errorCardHint}>{hint}</span>
-      </button>
-      <CollapseBody open={open} motion={enabled}>
-        <div className={bodyClass}>{children}</div>
-      </CollapseBody>
-    </div>
-  );
-}
-
-function Switch({ label, checked, onChange, title }: {
-  label: string; checked: boolean; onChange: () => void; title?: string;
-}) {
-  return (
-    <button type="button" className={css.switchButton} role="switch" aria-checked={checked} onClick={onChange} title={title}>
-      <span className={css.switchLabel} data-checked={checked}>{label}</span>
-    </button>
-  );
-}
-
-type SeatProps = BlockRenderProps & Pick<ReaderProps, 'useSession'> & {
-  nodeKey: string; boundary: TurnBoundary; pinned?: boolean; processOpen?: boolean;
-};
-
-const ProcessNode = memo(function ProcessNode({ useSession, t, nodeKey, open, motion, onRead, returnFocusTo }: Pick<ReaderProps, 'useSession'> & { t: ReaderProps['contextT'];
-  nodeKey: string; open: boolean; motion: boolean; onRead: () => void; returnFocusTo: RefObject<HTMLButtonElement>;
-}) {
-  const node = useChatSelector(useSession, chat => chat.nodes.get(nodeKey));
-  if (!node || node.visibility === 'hidden') return null;
-  let content: ReactNode = null;
-  if (isNode(node, 'context')) content = <ContextInjectionRow {...node.data} t={t} />;
-  else if (isNode(node, 'model-retry')) {
-    const current = node.data.current;
-    const retryTitle = current.retryState === 'scheduled'
-      ? '模型请求未成功，正在等待重试'
-      : current.retryState === 'started' ? '模型请求正在重试'
-      : '模型重试记录';
-    const retryMeta = `第 ${current.retry} 次 · ${current.failure.code}${current.failure.status != null ? ` · HTTP ${current.failure.status}` : ''}`;
-    content = <NoticeCard title={retryTitle} meta={retryMeta} hint="展开查看重试记录">
-      <JsonTree data={node.data.attempts as unknown as object | unknown[]} label="模型重试记录" expandTopLevel={false} labels={JSON_TREE_LABELS} />
-    </NoticeCard>;
-  } else if (isNode(node, 'compaction')) {
-    content = <CompactionRecord node={node} />;
-  } else if (isNode(node, 'command') || isNode(node, 'manual-compaction')) {
-    content = <CommandRecord node={node} />;
-  }
-  return content && <ProcessFragment open={open} motion={motion} onRead={onRead} returnFocusTo={returnFocusTo} nodeKey={nodeKey} framed>{content}</ProcessFragment>;
-});
-
-const AssistantNode = memo(function AssistantNode({ useSession, nodeKey, boundary, processOpen = false, pinned = false, motion, collapseThinking = false, onRead, returnFocusTo, ...render }: SeatProps & {
-  motion: boolean; collapseThinking?: boolean; onRead: () => void; returnFocusTo: RefObject<HTMLButtonElement>;
-}) {
-  const node = useChatSelector(useSession, chat => chat.nodes.get(nodeKey));
-  if (!node || node.visibility === 'hidden' || !isNode(node, 'assistant-step')) return null;
-  const data = node.data;
-  const thinkingMs = useMemo(() => {
-    const timing = data.finalNode?.timing;
-    if (!timing) return null;
-    if (timing.stepStartTime != null && timing.firstTokenTime != null) return Math.max(0, timing.firstTokenTime - timing.stepStartTime);
-    if (timing.stepStartTime != null && timing.completedTime != null) return Math.max(0, timing.completedTime - timing.stepStartTime);
-    return null;
-  }, [data]);
-  // Memoize the segment split on the node's own blocks identity. During
-  // streaming the turn boundary changes every chunk, re-rendering every
-  // AssistantNode in the open turn; without this memo each re-render hands
-  // Blocks a fresh array, defeats its memo, and re-segments the FULL text of
-  // every settled step (the reasoning path has no inner cache) — an
-  // O(turn-size) storm per chunk. Settled nodes keep a stable data.blocks, so
-  // their children now bail out entirely.
-  const parts = useMemo(() => assistantSegments(data.blocks), [data.blocks]);
-  const earlier = isEarlierNarration(data, boundary);
-  const body = useMemo(() => data.blocks.filter(block => block.kind !== 'reasoning' && block.kind !== 'tool-call'), [data.blocks]);
-  // The copy row belongs to the LAST BODY segment of the step, not to the last
-  // segment overall: a settled step can end with a trailing think (interrupt /
-  // max-tokens / model tail), and tying the row to parts.length - 1 then drops
-  // the copy button — which also strands the compat turn-footer (it anchors to
-  // the answerActions row). lastBodyIndex keeps both anchored.
-  const lastBodyIndex = useMemo(() => {
-    let last = -1;
-    for (let index = 0; index < parts.length; index++) if (parts[index]!.kind !== 'reasoning' && hasVisibleBody(parts[index]!.blocks)) last = index;
-    return last;
-  }, [parts]);
-  return <>{parts.map((part, index) => part.kind === 'reasoning'
-    ? (() => {
-      const charCount = part.blocks.reduce((sum, block) => sum + (block.kind === 'reasoning' ? block.text.length : 0), 0);
-      const liveReasoning = data.status === 'running' && index === parts.length - 1 && data.blocks.at(-1)?.kind === 'reasoning';
-      return (
-        <ProcessFragment key={part.start} open={processOpen} motion={motion} onRead={onRead} returnFocusTo={returnFocusTo} nodeKey={nodeKey} framed>
-          <ReasoningCard step={data.step} active={processOpen && boundary.status === 'open' && data.step === boundary.latestStep} running={liveReasoning} motion={motion} selected={pinned} onRead={onRead}
-            collapsible={collapseThinking} durationMs={thinkingMs} startedAt={data.time} charCount={charCount}>
-            <Blocks {...render} blocks={part.blocks} streaming={liveReasoning}
-              holdFormatting={pinned} startedAt={data.time} interrupted={data.status === 'interrupted'} liveText />
-          </ReasoningCard>
-        </ProcessFragment>
-      );
-    })()
-    : hasVisibleBody(part.blocks) && <RetiringContent key={part.start} visible={pinned || processOpen || !earlier}>
-      <article className={css.answer} data-reader-answer data-reader-anchor data-reader-key={nodeKey} data-reader-source-start={part.start} data-answer-status={data.status} data-answer-phase={earlier ? 'process' : 'body'}>
-        <Blocks {...render} blocks={part.blocks} streaming={data.status === 'running'} holdFormatting={pinned} startedAt={data.time} interrupted={data.status === 'interrupted'} liveText />
-        {index === parts.length - 1 && data.status === 'interrupted' && <span className={css.stopped}>已停止</span>}
-        {index === lastBodyIndex && !earlier && data.status !== 'running' && boundary.status === 'closed' && <CopyAnswer blocks={body} />}
-      </article>
-    </RetiringContent>)}</>;
-});
-
-const MainNode = memo(function MainNode({ useSession, nodeKey, boundary, pinned, processOpen = false, ...render }: SeatProps) {
-  const node = useChatSelector(useSession, chat => chat.nodes.get(nodeKey));
-  if (!node || node.visibility === 'hidden') return null;
-  if (isNode(node, 'user') || isNode(node, 'steering')) return <div className={css.user} data-reader-anchor data-reader-key={nodeKey}>
-    {node.kind === 'steering' && <p className={css.meta}>补充消息</p>}
-    <Blocks {...render} blocks={contentBlocks(node.data.content)} source="user" />
-  </div>;
-  if (isNode(node, 'assistant-step')) return null;
-  if (isNode(node, 'tool-call')) return <ToolMedia {...render} block={node.data.root} />;
-  if (isNode(node, 'turn-error')) return <NoticeCard title="本轮出现错误" meta={node.data.code}>
-    <p>{node.data.message}</p>
-    {node.data.code && <code>{node.data.code}</code>}
-  </NoticeCard>;
-  if (isNode(node, 'turn-max-tokens')) return <NoticeCard title="已到达输出长度限制，回答可能尚未完整" tone="info" hint="查看说明">
-    <p>输出达到本轮长度限制，内容可能尚未完整；已生成的内容仍保留。</p>
-  </NoticeCard>;
-  if (isNode(node, 'model-retry')) {
-    // Model-retry records are process detail, not final answer content: they
-    // belong inside the foldable process area and must not remain visible
-    // after the turn completes and the process collapses.
-    return null;
-  }
-  if (isNode(node, 'command')) {
-    // Failures are presented as the expandable command-error card inside the
-    // process; suppress the old top-level banner so they are not duplicated.
-    if (node.data.outcome?.kind === 'error') return null;
-    return node.data.outcome?.text ? <MarkdownTextL text={node.data.outcome.text} /> : null;
-  }
-  if (isNode(node, 'manual-compaction')) {
-    // The compact/command lifecycle is one card inside the process area; no
-    // separate top-level hint is needed.
-    return null;
-  }
-  if (node.kind === 'compaction') {
-    // The compaction marker lives inside the process card too.
-    return null;
-  }
-  if (node.kind === 'context' || node.kind === 'turn-tail') return null;
-  // 0.1.2 projects one turn-process controller node per turn. The reader has
-  // its own process disclosure (with duration and per-step status), so the
-  // native fold control is redundant here and renders nothing.
-  if (node.kind === 'turn-process') return null;
-  // 0.1.2 places the request's complete system prompt in the visible flow
-  // before the answer; render the same collapsed-disclosure row natively
-  // does. An empty text is skipped exactly like the native projection.
-  if (node.kind === 'system-prompt') {
-    const text = nodeText(node.data);
-    if (text === null || text === '') return null;
-    return <SystemPromptRow text={text} />;
-  }
-  // ui-goal projects the durable /goal command line as a user-style record.
-  if (node.kind === 'command-input') {
-    const text = nodeText(node.data);
-    if (text === null) return <GenericCallCard node={node} />;
-    return <div className={css.user} data-reader-anchor data-reader-key={nodeKey} data-reader-command-input>
-      <p className={css.meta}>命令输入</p>
-      <Blocks {...render} blocks={[{ kind: 'text', text }]} source="user" />
-    </div>;
-  }
-  // ui-workflow-run projects a durable workflow run with its phase and member
-  // totals; the nested child-session replay stays native, the reader shows a
-  // summary record with the raw snapshot one expand away.
-  if (node.kind === 'workflow-run') {
-    const summary = workflowRunSummary(node.data);
-    const title = summary.name ?? '工作流运行';
-    const meta = `${workflowStatusLabel(summary.status)}`
-      + (summary.memberCount != null ? ` · ${summary.memberCount} 个子会话` : '')
-      + (summary.phaseCount != null ? ` · ${summary.phaseCount} 个阶段` : '');
-    const failed = summary.status === 'failed';
-    return <NoticeCard
-      title={title}
-      meta={meta}
-      tone={failed ? 'error' : 'info'}
-      state={summary.status === 'running' ? 'running' : failed ? 'error' : summary.status === null ? undefined : 'success'}
-      markers={{ 'data-reader-workflow-run': '' }}
-    >
-      <RecordJson label="工作流记录" payload={node.data} />
-    </NoticeCard>;
-  }
-  // Anything this build has no dedicated presentation for — known kinds from
-  // newer hosts, plugin-projected records (agent-teams and friends), and the
-  // unclaimed append-surface fallback — reads as one generic tool-call card.
-  return <GenericCallCard node={node} />;
-});
-
-/** A record this build cannot present natively: shown as a plain 工具调用 in
- *  the default notice-card style, with the raw payload one expand away. The
- *  kind (or the payload's own type / the node id for genuinely unknown
- *  evidence) stays visible as the meta, so the record remains identifiable
- *  without the reader advertising its own gap. */
-function GenericCallCard({ node }: { node: ChatConversationViewNode }) {
-  const meta = node.kind !== 'unknown' ? node.kind
-    : typeof node.data === 'object' && node.data !== null && 'type' in node.data && typeof (node.data as { type?: unknown }).type === 'string'
-      ? (node.data as { type: string }).type
-      : node.id;
-  return <NoticeCard
-    title="工具调用"
-    meta={meta}
-    tone="info"
-    markers={{ 'data-reader-anchor': '', 'data-reader-generic-call': '' }}
-  >
-    <RecordJson label="原始记录" payload={node.data} />
-  </NoticeCard>;
-}
-
-function GroupStatus({ group, useSession, motion }: Pick<ReaderProps, 'useSession'> & { group: ReaderGroup; motion: boolean }) {
-  const pendingCount = usePendingSelector(useSession, pending => pending.length);
-  const text = useChatSelector(useSession, chat => {
-    const turn = group.turn === null ? undefined : chat.timeline.turns.get(group.turn);
-    if (turn?.status === 'closed') {
-      if (turn.end?.data.reason.kind !== 'completed') return '执行过程';
-      const elapsed = turn.start && turn.end ? Math.max(0, Math.round((turn.end.time - turn.start.time) / 1000)) : null;
-      return elapsed === null ? '执行过程' : elapsed < 60 ? `用时 ${elapsed} 秒` : `用时 ${Math.floor(elapsed / 60)} 分 ${elapsed % 60} 秒`;
-    }
-    if (turn?.status !== 'open') return '执行过程';
-    if (pendingCount) return '等待你的操作';
-    const current = turn.steps.at(-1)?.data.get('assistant-step');
-    const last = current?.blocks.at(-1);
-    if (current?.status === 'running' && last?.kind === 'tool-call') return preparingLabel(last.name);
-    for (let index = group.keys.length - 1; index >= 0; index--) {
-      const node = chat.nodes.get(group.keys[index]);
-      if (!node) continue;
-      if (isNode(node, 'tool-call') && !('kind' in node.data.root)) return '正在使用工具';
-      if (isNode(node, 'assistant-step') && node.data.status === 'running') {
-        const last = node.data.blocks.at(-1);
-        return last?.kind === 'reasoning' ? '正在思考' : last?.kind === 'text' ? '正在输出' : '正在准备回复';
-      }
-    }
-    return '正在处理';
-  });
-  const busy = useChatSelector(useSession, chat => group.turn !== null && chat.timeline.turns.get(group.turn)?.status === 'open') && pendingCount === 0;
-  return <StatusText text={text} motion={motion} shimmer={busy} />;
-}
-
-function OperationalClusterBlock({
-  cluster,
-  expanded,
-  onToggle,
-  shared,
-  t,
-  boundary,
-  pinnedKeys,
-  motion,
-  collapseThinking,
-  pinProcess,
-  processButton,
-}: {
-  cluster: Extract<OperationalFlowItem, { kind: 'cluster' }>;
-  expanded: boolean;
-  onToggle: () => void;
-  shared: BlockRenderProps & Pick<ReaderProps, 'useSession'>;
-  t: ReaderProps['contextT'];
-  boundary: TurnBoundary;
-  pinnedKeys: readonly string[];
-  motion: boolean;
-  collapseThinking: boolean;
-  pinProcess: () => void;
-  processButton: RefObject<HTMLButtonElement>;
-}) {
-  const summaryText = formatOperationClusterSummary(cluster.summary);
-  return (
-    <div className={css.clusterBlock} data-operational-cluster={cluster.key} data-expanded={expanded} data-active={cluster.hasActive ? 'true' : undefined}>
-      <button
-        type="button"
-        className={css.clusterHeader}
-        aria-expanded={expanded}
-        onClick={onToggle}
-      >
-        <span className={css.clusterHeaderLeft}>
-          <span className={css.clusterIcon}>
-            <svg
-              className={css.chevron}
-              data-open={expanded}
-              viewBox="0 0 16 16"
-              width="12"
-              height="12"
-              aria-hidden="true"
-            >
-              <path d="m6 4 4 4-4 4" />
-            </svg>
-          </span>
-          <span className={css.clusterSummary}>{summaryText}</span>
-          {cluster.hasFailed && <span className={css.clusterFailure}>· {cluster.summary.failed} 个失败</span>}
-        </span>
-        <span className={css.clusterHeaderRight}>
-          <span className={css.clusterHint}>{expanded ? '收起详情' : '展开查看详细'}</span>
-        </span>
-      </button>
-      <CollapseBody open={expanded} motion={motion} className={css.clusterBody}>
-          <div className={css.clusterBodyInner}>
-            {cluster.items.map((item: ReaderFlowEntry) =>
-            item.kind === 'node' ? (
-              <Fragment key={item.key}>
-                <BlockBoundary>
-                  <ProcessNode
-                    useSession={shared.useSession}
-                    t={t}
-                    nodeKey={item.nodeKey}
-                    open={expanded}
-                    motion={motion}
-                    onRead={pinProcess}
-                    returnFocusTo={processButton}
-                  />
-                </BlockBoundary>
-                <BlockBoundary>
-                  <AssistantNode
-                    {...shared}
-                    boundary={boundary}
-                    nodeKey={item.nodeKey}
-                    pinned={pinnedKeys.includes(item.nodeKey)}
-                    processOpen={expanded}
-                    motion={motion}
-                    collapseThinking={collapseThinking}
-                    onRead={pinProcess}
-                    returnFocusTo={processButton}
-                  />
-                </BlockBoundary>
-                <BlockBoundary>
-                  <MainNode
-                    {...shared}
-                    boundary={boundary}
-                    nodeKey={item.nodeKey}
-                    pinned={pinnedKeys.includes(item.nodeKey)}
-                    processOpen={expanded}
-                  />
-                </BlockBoundary>
-              </Fragment>
-            ) : (
-              <Fragment key={item.key}>
-                {!isMergedExecutionFailure(item, boundary.status === 'closed') && (
-                  <BlockBoundary>
-                    <ProcessFragment
-                      open={expanded}
-                      motion={motion}
-                      onRead={pinProcess}
-                      returnFocusTo={processButton}
-                      nodeKey={item.key}
-                      framed
-                    >
-                      <ToolActivity
-                        {...shared}
-                        entry={item}
-                        motion={motion}
-                        turnClosed={boundary.status === 'closed'}
-                        onRead={pinProcess}
-                      />
-                    </ProcessFragment>
-                  </BlockBoundary>
-                )}
-                {item.block && (
-                  <BlockBoundary>
-                    <ToolMedia {...shared} block={item.block} open={expanded} />
-                  </BlockBoundary>
-                )}
-              </Fragment>
-            )
-          )}
-          </div>
-        </CollapseBody>
-    </div>
-  );
-}
-
-const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedProcessKeys, rewindHidden, rewindSpans, flowTail, ...props }: ReaderProps & { group: ReaderGroup; motion: boolean; pinnedKeys: readonly string[]; selectedProcessKeys: readonly string[]; rewindHidden: ReadonlySet<number>; rewindSpans: readonly RewindSpan[]; flowTail?: ReactNode }) {
-  const selectGroup = useMemo(() => createGroupSelector(group), [group]);
-  const chat = useChatSelector(props.useSession, selectGroup);
-  const turn = chat.turn;
-  const nextBoundary = boundaryOf(turn);
-  const boundary = useMemo(() => nextBoundary, [nextBoundary.status, nextBoundary.reason, nextBoundary.latestStep, nextBoundary.closingStep]);
-  const choiceKey = processChoiceKey(group.key, boundary);
-  const expansionChoice = props.useStore(state => state.expanded[choiceKey]);
-  const collapseThinking = props.useStore(state => state.collapseThinking ?? false);
-  const flowId = useId();
-  const processButton = useRef<HTMLButtonElement>(null);
-  const setExpanded = useCallback((value: boolean) => props.actions.setExpanded(choiceKey, value), [props.actions, choiceKey]);
-  const pinProcess = useCallback(() => setExpanded(true), [setExpanded]);
-  // The group's opening is the user message in 0.1.1, and in 0.1.2 the
-  // request's system-prompt row(s) sit above it (their anchor precedes the
-  // opening input). Both render as preambles above the process disclosure,
-  // keeping the opening input in its native position; any other leading run
-  // keeps the plain main-flow routing.
-  const leading = useMemo(() => {
-    let systemPrompts = 0;
-    let seenUser = false;
-    for (const key of group.keys) {
-      const node = chat.nodes.get(key);
-      if (!node) break;
-      if (!seenUser && node.kind === 'system-prompt') { systemPrompts++; continue; }
-      if (!seenUser && node.kind === 'user') { seenUser = true; continue; }
-      break;
-    }
-    return { systemPrompts, seenUser };
-  }, [chat, group.keys]);
-  const startsWithUser = leading.seenUser;
-  const preambleKeys = useMemo(() => startsWithUser ? group.keys.slice(0, leading.systemPrompts) : [], [startsWithUser, group.keys, leading.systemPrompts]);
-  const mainKeys = useMemo(() => startsWithUser ? group.keys.slice(leading.systemPrompts + 1) : group.keys, [startsWithUser, group.keys, leading.systemPrompts]);
-  const flow = useMemo(() => readerFlow({ ...group, keys: mainKeys }, turn, key => chat.nodes.get(key), { hidden: rewindHidden, spans: rewindSpans }), [chat, group, mainKeys, turn, rewindHidden, rewindSpans]);
-  const groupedFlow = useMemo(() => groupOperationalFlow(flow, key => chat.nodes.get(key)), [flow, chat]);
-  const [clusterExpanded, setClusterExpanded] = useState<Record<string, boolean>>({});
-  const toggleCluster = useCallback((clusterKey: string) => {
-    setClusterExpanded(prev => ({ ...prev, [clusterKey]: !prev[clusterKey] }));
-  }, []);
-  const hasProcess = flow.some(item => item.kind === 'tool' || hasProcessContent(chat.nodes.get(item.nodeKey), boundary));
-  // Only a real, still-active text selection delays folding. Merely clicking,
-  // focusing or scrolling the live card does not create a permanent override.
-  const holdingSelection = flow.some(item => selectedProcessKeys.includes(item.key));
-  const expanded = holdingSelection || processExpanded(expansionChoice, boundary);
-  const shared = { useSession: props.useSession, renderSlotChain: props.renderSlotChain, loadImage: props.loadImage };
-  const terminal = terminalLabel(boundary.reason);
-  const showTerminal = terminal && boundary.reason !== 'error' && boundary.reason !== 'max-tokens';
-  return <section className={css.turn} data-reader-turn={group.turn ?? 'unresolved'} data-reader-turn-state={boundary.status} data-reader-turn-result={boundary.reason ?? undefined}>
-    {preambleKeys.map(key => <BlockBoundary key={key}><MainNode {...shared} boundary={boundary} nodeKey={key} /></BlockBoundary>)}
-    {startsWithUser && <BlockBoundary><MainNode {...shared} boundary={boundary} nodeKey={group.keys[leading.systemPrompts]} /></BlockBoundary>}
-    {hasProcess && <Disclosure open={expanded} onChange={setExpanded} controls={flowId} buttonRef={processButton}
-      label={<GroupStatus group={group} useSession={props.useSession} motion={motion} />} status={turn?.steps.length ? `${turn.steps.length} 个步骤` : undefined} />}
-    {!hasProcess && boundary.status === 'open' && <div className={css.disclosure} data-reader-status-only>
-      <GroupStatus group={group} useSession={props.useSession} motion={motion} />
-    </div>}
-    <div id={flowId} className={css.mainFlow} data-reader-flow>
-      {groupedFlow.map(entry => {
-        if (entry.kind === 'cluster') {
-          const isClusterOpen = clusterExpanded[entry.key] ?? false;
-          return (
-            <ProcessFragment
-              key={entry.key}
-              open={expanded}
-              motion={motion}
-              onRead={pinProcess}
-              returnFocusTo={processButton}
-              nodeKey={entry.key}
-              framed
-            >
-              <OperationalClusterBlock
-                cluster={entry}
-                expanded={isClusterOpen}
-                onToggle={() => toggleCluster(entry.key)}
-                shared={shared}
-                t={props.contextT}
-                boundary={boundary}
-                pinnedKeys={pinnedKeys}
-                motion={motion}
-                collapseThinking={collapseThinking}
-                pinProcess={pinProcess}
-                processButton={processButton}
-              />
-            </ProcessFragment>
-          );
-        }
-        const item = entry.item;
-        return item.kind === 'node' ? (
-          <Fragment key={item.key}>
-            <BlockBoundary><ProcessNode useSession={props.useSession} t={props.contextT} nodeKey={item.nodeKey} open={expanded} motion={motion} onRead={pinProcess} returnFocusTo={processButton} /></BlockBoundary>
-            <BlockBoundary><AssistantNode {...shared} boundary={boundary} nodeKey={item.nodeKey} pinned={pinnedKeys.includes(item.nodeKey)} processOpen={expanded} motion={motion} collapseThinking={collapseThinking} onRead={pinProcess} returnFocusTo={processButton} /></BlockBoundary>
-            <BlockBoundary><MainNode {...shared} boundary={boundary} nodeKey={item.nodeKey} pinned={pinnedKeys.includes(item.nodeKey)} processOpen={expanded} /></BlockBoundary>
-          </Fragment>
-        ) : (
-          <Fragment key={item.key}>
-            {!isMergedExecutionFailure(item, boundary.status === 'closed') && <BlockBoundary><ProcessFragment open={expanded} motion={motion} onRead={pinProcess} returnFocusTo={processButton} nodeKey={item.key} framed>
-              <ToolActivity {...shared} entry={item} motion={motion} turnClosed={boundary.status === 'closed'} onRead={pinProcess} />
-            </ProcessFragment></BlockBoundary>}
-            {item.block && <BlockBoundary><ToolMedia {...shared} block={item.block} open={expanded} /></BlockBoundary>}
-          </Fragment>
-        );
-      })}
-      {showTerminal && <div className={css.notice} data-reader-terminal>{terminal}</div>}
-      {flowTail}
-    </div>
-  </section>;
-});
 
 export function Reader(rawProps: ReaderProps) {
   // 0.1.2 把 chat / pending 拆成了独立标准钩子；这里合成回 0.1.1 形状并替换
@@ -604,7 +27,7 @@ export function Reader(rawProps: ReaderProps) {
   const activatedAt = useRef(Date.now());
   const selectStructure = useMemo(createReaderStructureSelector, [props.sessionId]);
   const { visibleOrder, groups, hidden: rewindHidden, spans: rewindSpans, latestUserKey } = useChatSelector(props.useSession, selectStructure);
-  const pending = usePendingSelector(props.useSession, pending => pending, (a, b) => a.length === b.length && a.every((item, index) => item === b[index]));
+  const pending = usePendingSelector(props.useSession, value => value, (a, b) => a.length === b.length && a.every((item, index) => item === b[index]));
   const openError = useSessionSelector(props.useSession, snapshot => snapshot.openError);
   const loading = useSessionSelector(props.useSession, snapshot => snapshot.openState === 'loading');
   const hasMore = useSessionSelector(props.useSession, snapshot => snapshot.hasMore);
@@ -617,6 +40,16 @@ export function Reader(rawProps: ReaderProps) {
   const conversationIdle = !activity.key && pending.length === 0 && !loading;
   const streamMotion = useMemo(() => ({ enabled: motion, activatedAt: activatedAt.current }), [motion]);
   const scroll = useReadingScroll(root, motion);
+  const { openFile, fork, fileMentions, inspectCall, openView } = props;
+  // One value for every row: motion, host file/fork/inspect/view actions.
+  const actions = useMemo<ReaderActions>(() => ({
+    motion,
+    openFile: openFile ? path => { void openFile(path).catch(() => {}); } : undefined,
+    fork,
+    fileMentions,
+    inspectCall,
+    showInChat: focus => openView('chat', focus),
+  }), [motion, openFile, fork, fileMentions, inspectCall, openView]);
   // 兼容层根发现：阅读根是运行中在深层会话容器里挂载/卸载的，body 级观察器看不到
   // 它；由本组件在根挂载/卸载时广播事件，rewind 桥 / 轮统计行 / 收尾防吞只监听
   // 事件（见 compat/reader-root.ts watchReaderRoots），不在 body 上做全树观察。
@@ -675,7 +108,7 @@ export function Reader(rawProps: ReaderProps) {
   const pinnedKeys = usePinnedSelection(root);
   const selectedProcessKeys = usePinnedSelection(root, '[data-reader-process]');
   const [historyError, setHistoryError] = useState(false);
-  // 「本会话文件改动」作为最后一个轮次 mainFlow 的收尾插槽（见 groups.map）。
+  // 「本会话文件改动」作为最后一个轮次的收尾插槽（见 groups.map）。
   const fileChanges = useMemo(() => (
     <FileChangesPanel
       useProjection={props.useProjection}
@@ -692,60 +125,51 @@ export function Reader(rawProps: ReaderProps) {
       listDirNames={props.listDirNames}
     />
   ), [props.useProjection, props.jobsSource, props.watchJobs, props.useSession, props.useSessions, props.sessionId, visibleOrder, motion, hasMore, conversationIdle, props.openFile, props.listDirNames]);
-  return <StreamMotionContext.Provider value={streamMotion}><div ref={root} className={css.root} data-dsh-clearview={READER_VERSION} data-motion={motion ? 'on' : 'off'}>
-    <div className={css.column}>
-      <div className={css.toolbar} data-ud-check="reader-toolbar">
-        <Switch label={`折叠思考${collapseThinking ? '开' : '关'}`} checked={collapseThinking} onChange={() => props.actions.setCollapseThinking(!collapseThinking)}
-          title="开启后，每段思考默认折叠为“思考了 N 秒”，可单独展开阅读；关闭后恢复为始终可见的思考卡片。" />
-        <Switch label={`动效${motionPreference ? '开' : '关'}`} checked={motionPreference} onChange={() => props.actions.setMotion(!motionPreference)}
-          title="新到文字柔和显现，过程平滑展开；关闭后立即完整显示，自动遵循系统减少动态效果设置。" />
+  return <StreamMotionContext.Provider value={streamMotion}><ReaderActionsContext.Provider value={actions}>
+    <div ref={root} className={css.root} data-dsh-clearview={READER_VERSION} data-motion={motion ? 'on' : 'off'}>
+      <div className={css.column}>
+        <div className={css.toolbar} data-ud-check="reader-toolbar">
+          <Switch label={`折叠思考${collapseThinking ? '开' : '关'}`} checked={collapseThinking} onChange={() => props.actions.setCollapseThinking(!collapseThinking)}
+            title="开启后，已完成的思考只保留一行；关闭后显示前三行预览。" />
+          <Switch label={`动效${motionPreference ? '开' : '关'}`} checked={motionPreference} onChange={() => props.actions.setMotion(!motionPreference)}
+            title="新到文字柔和显现，过程平滑展开；关闭后立即完整显示，自动遵循系统减少动态效果设置。" />
+        </div>
+        {hasMore && <button type="button" className={css.historyButton} disabled={loadingOlder} onClick={async () => {
+          setHistoryError(false);
+          try { await props.loadOlder(); } catch { setHistoryError(true); }
+        }}>{loadingOlder ? '正在加载更早记录' : '加载更早记录'}</button>}
+        {historyError && <div className={css.notice}>历史记录加载失败，可再次尝试；现有内容未改变。</div>}
+        {openError && <div className={css.error} role="alert">会话暂时无法读取：{openError.message}</div>}
+        {loading && groups.length === 0 && <p className={css.empty} role="status">正在读取会话…</p>}
+        {groups.map((group, index) => <TurnSection key={group.key} {...props} group={group} pinnedKeys={pinnedKeys} selectedProcessKeys={selectedProcessKeys}
+          rewindHidden={rewindHidden} rewindSpans={rewindSpans} flowTail={index === groups.length - 1 ? fileChanges : undefined} />)}
+        {pending.length > 0 && <MountFade mounted={pending.length > 0} motion={motion}>{({ entering }) =>
+          <div className={`${css.attention} ${entering ? css.isEntering : css.isIn}`} role="alert" data-reader-attention>
+            <strong>{pending.some(item => item.kind === 'question') ? '需要你回答一个问题' : '需要你的确认'}</strong>
+            <span>请在下方原生操作区处理。此提示不会收进执行过程。</span>
+          </div>}</MountFade>}
+        <MountFade mounted={!!activity.key} motion={motion}>{({ entering }) => activity.key ? (
+          <button type="button" className={`${css.activityBar} ${entering ? css.isEntering : css.isIn}`}
+            style={activityWidth === null ? undefined : { width: `${activityWidth}px` }}
+            data-detached={scroll.detached ? 'true' : undefined}
+            data-phase={activity.phase} data-ud-check="reader-activity-bar"
+            title={scroll.detached ? '回到最新' : undefined} onClick={scroll.jump}>
+            <span className={css.activityBarContent} ref={trackActivityWidth}>
+              <span className={css.activityText} role="status" data-reader-activity-label>{activity.label}</span>
+              {activity.seconds !== null && (
+                <span className={css.activityTimer} data-reader-activity-timer aria-hidden="true">{formatSeconds(activity.seconds)}</span>
+              )}
+            </span>
+          </button>
+        ) : null}</MountFade>
+        <MountFade mounted={scroll.detached && !activity.key} motion={motion}>{({ entering }) => scroll.detached && !activity.key ? (
+          <div className={`${css.jumpDock} ${entering ? css.isEntering : css.isIn}`}><button type="button" className={css.jump} onClick={scroll.jump} aria-label="回到最新" title="回到最新">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M8 3v10m-4-4 4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button></div>
+        ) : null}</MountFade>
       </div>
-      {hasMore && <button type="button" className={css.historyButton} disabled={loadingOlder} onClick={async () => {
-        setHistoryError(false);
-        try { await props.loadOlder(); } catch { setHistoryError(true); }
-      }}>{loadingOlder ? '正在加载更早记录' : '加载更早记录'}</button>}
-      {historyError && <div className={css.notice}>历史记录加载失败，可再次尝试；现有内容未改变。</div>}
-      {openError && <div className={css.error} role="alert">会话暂时无法读取：{openError.message}</div>}
-      {loading && groups.length === 0 && <p className={css.empty} role="status">正在读取会话…</p>}
-      {groups.map((group, index) => <TurnGroup key={group.key} {...props} group={group} motion={motion} pinnedKeys={pinnedKeys} selectedProcessKeys={selectedProcessKeys} rewindHidden={rewindHidden} rewindSpans={rewindSpans} flowTail={index === groups.length - 1 ? fileChanges : undefined} />)}
-      {pending.length > 0 && <MountFade mounted={pending.length > 0} motion={motion}>{({ entering }) =>
-        <div className={`${css.attention} ${entering ? css.isEntering : css.isIn}`} role="alert" data-reader-attention>
-          <strong>{pending.some(item => item.kind === 'question') ? '需要你回答一个问题' : '需要你的确认'}</strong>
-          <span>请在下方原生操作区处理。此提示不会收进执行过程。</span>
-        </div>}</MountFade>}
-      <MountFade mounted={!!activity.key} motion={motion}>{({ entering }) => activity.key ? (
-        <button type="button" className={`${css.activityBar} ${entering ? css.isEntering : css.isIn}`}
-          style={activityWidth === null ? undefined : { width: `${activityWidth}px` }}
-          data-detached={scroll.detached ? 'true' : undefined}
-          data-phase={activity.phase} data-ud-check="reader-activity-bar"
-          title={scroll.detached ? '回到最新' : undefined} onClick={scroll.jump}>
-          <span className={css.activityBarContent} ref={trackActivityWidth}>
-            <span className={css.activitySpinner} aria-hidden="true" data-reader-activity-spinner>
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                <path className={css.activityStarMain} d="M6.5 4C7.16 7.58 8.43 8.84 12 9.5C8.43 10.16 7.16 11.43 6.5 15C5.84 11.43 4.58 10.16 1 9.5C4.58 8.84 7.16 7.58 6.5 4Z"/>
-                <path className={css.activityStarMid} d="M12.6 1.4C12.91 3.09 13.51 3.69 15.2 4C13.51 4.31 12.91 4.91 12.6 6.6C12.29 4.91 11.69 4.31 10 4C11.69 3.69 12.29 3.09 12.6 1.4Z"/>
-                <path className={css.activityStarTiny} d="M12.4 10.5C12.63 11.73 13.07 12.17 14.3 12.4C13.07 12.63 12.63 13.07 12.4 14.3C12.17 13.07 11.73 12.63 10.5 12.4C11.73 12.17 12.17 11.73 12.4 10.5Z"/>
-              </svg>
-            </span>
-            <span className={css.activityText} role="status" data-reader-activity-label>{activity.label}</span>
-            {activity.seconds !== null && (
-              <span className={css.activityTimer} data-reader-activity-timer aria-hidden="true">{formatSeconds(activity.seconds)}</span>
-            )}
-            <span className={css.activityJump} aria-hidden="true">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                <path d="M8 3v10m-4-4 4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </span>
-          </span>
-        </button>
-      ) : null}</MountFade>
-      <MountFade mounted={scroll.detached && !activity.key} motion={motion}>{({ entering }) => scroll.detached && !activity.key ? (
-        <div className={`${css.jumpDock} ${entering ? css.isEntering : css.isIn}`}><button type="button" className={css.jump} onClick={scroll.jump} aria-label="回到最新" title="回到最新">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path d="M8 3v10m-4-4 4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button></div>
-      ) : null}</MountFade>
     </div>
-  </div></StreamMotionContext.Provider>;
+  </ReaderActionsContext.Provider></StreamMotionContext.Provider>;
 }

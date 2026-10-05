@@ -1,0 +1,50 @@
+.panel {
+  min-width: 0;
+  border-radius: var(--dsw-radius-lg);
+  corner-shape: round;
+  background: var(--cv-panel-bg);
+  box-shadow: var(--cv-panel-ring), var(--dsw-shadow-lv1);
+  overflow: hidden;
+  contain: paint;
+  transition: box-shadow var(--cv-swap) var(--cv-ease);
+}
+.panel[data-status=error], .panel[data-status=interrupted] { box-shadow: 0 0 0 .5px color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, transparent), var(--dsw-shadow-lv1); }
+.panel[data-status=waiting] { box-shadow: 0 0 0 .5px color-mix(in srgb, var(--dsw-alias-state-business-primary) 45%, transparent), var(--dsw-shadow-lv1); }
+.header { min-width: 0; }
+.headerButton {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; min-height: 38px; padding: 9px 14px;
+  border: 0; background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit; font-size: var(--cv-font-secondary); line-height: 20px; text-align: left; cursor: pointer;
+  transition: background-color var(--cv-fast) ease;
+}
+.headerButton:hover { background: color-mix(in srgb, var(--dsw-alias-interactive-bg-hover) 60%, transparent); }
+.headerButton:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: -2px; }
+.glyph { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 14px; height: 14px; }
+.status { font-weight: 500; }
+.panel[data-status=running] .status { color: var(--dsw-alias-label-deep-diving, var(--dsw-alias-label-secondary)); }
+.panel[data-status=error] .status, .panel[data-status=interrupted] .status { color: var(--dsw-alias-state-error-primary); }
+.elapsed { flex: none; color: var(--dsw-alias-label-caption); font-variant-numeric: tabular-nums; }
+.spacer { flex: 1; }
+.tag { flex: none; padding: 1px 8px; border-radius: 999px; corner-shape: round; background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 17px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.tagDanger { background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent); color: var(--dsw-alias-state-error-primary); }
+.headerChevron { flex: none; color: var(--dsw-alias-label-caption); stroke: currentColor; fill: none; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; transition: transform var(--cv-size) var(--cv-ease); }
+.headerChevron[data-open=false] { transform: rotate(180deg); }
+.body { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 8px 14px 12px; border-top: .5px solid var(--dsw-alias-border-l2); }
+.step { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stepLabel { margin-top: 4px; color: var(--dsw-alias-label-caption); font-size: 11px; line-height: 20px; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+.earlier {
+  display: flex; align-items: center; gap: 6px;
+  height: var(--cv-row-height); margin: 0 -6px; padding: 0 6px;
+  border: 0; border-radius: var(--dsw-radius-sm); corner-shape: round; background: transparent;
+  color: var(--dsw-alias-label-tertiary); font: inherit; font-size: var(--cv-font-secondary); text-align: left; cursor: pointer;
+  transition: background-color var(--cv-fast) ease, color var(--cv-fast) ease;
+}
+.earlier:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); }
+.earlierChevron { flex: none; width: 16px; stroke: currentColor; fill: none; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.dot { flex: none; width: 2px; height: 2px; margin: 0 2px; border-radius: 999px; corner-shape: round; background: var(--dsw-alias-label-caption); }
+.earlierSummary { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--dsw-alias-label-caption); }
+[data-motion=off] .panel, [data-motion=off] .headerButton, [data-motion=off] .headerChevron, [data-motion=off] .earlier { transition: none; }
+@media (prefers-reduced-motion: reduce) { .panel, .headerButton, .headerChevron, .earlier { transition: none; } }
+@container (max-width: 480px) { .elapsed { display: none; } .headerButton { padding: 8px 12px; } .body { padding: 8px 12px 10px; } }

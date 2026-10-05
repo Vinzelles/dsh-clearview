@@ -169,23 +169,10 @@ export function preparingLabel(name: string): string {
 }
 
 /**
- * A settled execution failure that its error card fully presents: the card
- * embeds the tool's own details layout (result / input / raw record, the same
- * toolDetails the tool row uses), so the flow suppresses the per-tool activity
- * row instead of showing the same execution in two seats (row + card). Every
- * failed tool call merges — terminal, search, file edits, web and the rest.
- */
-export function isMergedExecutionFailure(entry: Pick<ToolActivityEntry, 'block' | 'draft'>, turnClosed = false): boolean {
-  const block = entry.block;
-  if (!block || !('kind' in block)) return false;
-  return activityPhase(entry, turnClosed) === 'failed';
-}
-
-/**
  * Some execution failures carry their exit code only inside the error text
  * (e.g. `Error: grep search failed (exit 2)`, `Error: exit code: 1 (no
  * output)`) while the block's meta/resultView stays empty. Recover a
- * non-zero exit code from such text so the merged card can state the real
+ * non-zero exit code from such text so the row can state the real
  * exit status instead of a clean-settle indicator. Returns undefined when
  * the text carries no usable code — the caller then falls back to a failure
  * label instead of fabricating a number.
@@ -195,109 +182,4 @@ export function exitCodeFromOutput(text: string, failed: boolean): number | unde
   const match = text.match(/\(exit (\d+)\)|exit code[:：]\s*(\d+)/i);
   const value = match ? Number(match[1] ?? match[2]) : NaN;
   return Number.isFinite(value) && value !== 0 ? value : undefined;
-}
-
-export interface OperationalClusterSummary {
-  commands: number;
-  tools: number;
-  operations: number;
-  failed: number;
-  skills: number;
-}
-
-export type OperationalFlowItem =
-  | { kind: 'single'; item: ReaderFlowEntry }
-  | { kind: 'cluster'; key: string; items: ReaderFlowEntry[]; summary: OperationalClusterSummary; hasActive: boolean; hasFailed: boolean };
-
-export function formatOperationClusterSummary(summary: OperationalClusterSummary): string {
-  const parts: string[] = [];
-  if (summary.skills > 0) parts.push(`使用了 ${summary.skills} 个技能`);
-  if (summary.commands > 0) parts.push(`运行了 ${summary.commands} 条命令`);
-  if (summary.tools > 0) parts.push(`进行了 ${summary.tools} 次工具调用`);
-  if (summary.operations > 0) parts.push(`执行了 ${summary.operations} 个操作`);
-  return parts.join('，');
-}
-
-export function groupOperationalFlow(
-  items: readonly ReaderFlowEntry[],
-  get: (key: string) => ChatConversationViewNode | undefined,
-): OperationalFlowItem[] {
-  const result: OperationalFlowItem[] = [];
-  let currentGroup: ReaderFlowEntry[] = [];
-
-  const flush = () => {
-    if (currentGroup.length === 0) return;
-    if (currentGroup.length === 1) {
-      result.push({ kind: 'single', item: currentGroup[0] });
-    } else {
-      let commands = 0;
-      let tools = 0;
-      let operations = 0;
-      let failed = 0;
-      let skills = 0;
-      let hasActive = false;
-      let hasFailed = false;
-
-      for (const entry of currentGroup) {
-        if (entry.kind === 'tool') {
-          tools++;
-          const phase = activityPhase(entry);
-          if (phase === 'preparing' || phase === 'running') hasActive = true;
-          if (phase === 'failed') { hasFailed = true; failed++; }
-
-          const summary = activitySummary(entry);
-          if (summary.name === 'skill') skills++;
-          if (summary.category === 'terminal') {
-            commands++;
-          } else if (summary.category === 'read' || summary.category === 'write') {
-            operations++;
-          }
-        } else if (entry.kind === 'node') {
-          const node = get(entry.nodeKey);
-          if (node?.kind === 'command' || node?.kind === 'manual-compaction') {
-            commands++;
-            operations++;
-            const outcome = node.kind === 'command'
-              ? (node.data as { outcome?: { kind?: string } | null }).outcome
-              : (node.data as { command: { outcome?: { kind?: string } | null } }).command.outcome;
-            if (outcome == null) hasActive = true;
-            if (outcome?.kind === 'error') { hasFailed = true; failed++; }
-          }
-        }
-      }
-
-      const first = currentGroup[0]!;
-      result.push({
-        kind: 'cluster',
-        key: `cluster:${first.kind === 'node' ? first.nodeKey : first.callId}`,
-        items: currentGroup,
-        summary: { commands, tools, operations, failed, skills },
-        hasActive,
-        hasFailed,
-      });
-    }
-    currentGroup = [];
-  };
-
-  for (const item of items) {
-    let isOp = false;
-    if (item.kind === 'tool') {
-      isOp = true;
-    } else if (item.kind === 'node') {
-      const node = get(item.nodeKey);
-      if (node?.kind === 'command' || node?.kind === 'manual-compaction') {
-        isOp = true;
-      }
-    }
-
-    if (isOp) {
-      currentGroup.push(item);
-    } else {
-      flush();
-      result.push({ kind: 'single', item });
-    }
-  }
-
-  flush();
-  return result;
 }

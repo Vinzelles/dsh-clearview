@@ -9,7 +9,7 @@
  *
  * 思考跟随追赶（原 reasoning-catchup.ts）已于 0.1.2 移除：外部观察者与插件
  * 步进两个滚动管理器竞争同一轨道，滑移被插件下一步掐断，正是「滚动反弹」的
- * 来源。0.1.3 起跟随改为 ReasoningCard 自身的连续速度匹配控制器
+ * 来源。0.1.3 起跟随改为 ReasoningRow 自身的连续速度匹配控制器
  * （followAdvance），追赶内聚于逐帧循环，无需任何外围补偿。
  *
  * 由插件客户端 apply(ctx) 启动（startCompat），生命周期挂插件 fiber：
