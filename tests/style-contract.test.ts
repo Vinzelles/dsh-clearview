@@ -50,3 +50,10 @@ test('role=button rows keep a focus ring and user bubbles keep the tight block g
   assert.match(sheet('Opening'), /\.user \{[^}]*--cv-blocks-gap: 10px/);
   assert.match(sheet('RecordRows'), /\.input \{[^}]*--cv-blocks-gap: 10px/);
 });
+
+test('the collapsed file-changes header cannot widen the reader (no negative side margin or width overshoot)', () => {
+  const header = /\.header \{([^}]*)\}/.exec(sheet('FileChanges'))?.[1] ?? '';
+  assert.notEqual(header, '', 'FileChanges .header rule exists');
+  assert.doesNotMatch(header, /margin:[^;]*-\d/, 'negative margin leaks into the scrollable area at narrow widths');
+  assert.doesNotMatch(header, /width:\s*calc\(100%\s*\+/, 'width overshoot leaks into the scrollable area at narrow widths');
+});

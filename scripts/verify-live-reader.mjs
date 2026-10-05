@@ -183,8 +183,8 @@ try {
   const clickTab = label => evaluate(`(() => { const tab = [...document.querySelectorAll('[role="tab"]')].find(node => node.textContent.trim() === ${JSON.stringify(label)}); tab?.click(); return !!tab; })()`);
   const selectedTab = () => evaluate(`[...document.querySelectorAll('[role="tab"]')].find(node => node.getAttribute('aria-selected') === 'true')?.textContent.trim() ?? null`);
   // Hover only: move the pointer over an element. Never a click.
-  const hover = async selector => {
-    const box = await evaluate(`(() => { const node = document.querySelector(${JSON.stringify(selector)}); if (!node) return null; node.scrollIntoView({ block: 'center' }); const r = node.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+  const hover = async (selector, fraction = 0.5) => {
+    const box = await evaluate(`(() => { const node = document.querySelector(${JSON.stringify(selector)}); if (!node) return null; node.scrollIntoView({ block: 'center' }); const r = node.getBoundingClientRect(); return { x: r.x + r.width * ${fraction}, y: r.y + r.height / 2 }; })()`);
     if (!box) return false;
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y });
     await delay(300);
@@ -336,6 +336,14 @@ try {
     await delay(400);
     await shot(`${name}-reduced-motion`);
     await send('Emulation.setEmulatedMedia', { features: [] });
+    // Hover look of the collapsed file-changes header (hover only): background plus side bleed.
+    await evaluate("(() => { const scroller = document.querySelector('[data-conversation-scroll]'); if (scroller) scroller.scrollTop = scroller.scrollHeight; })()");
+    await delay(400);
+    if (await hover('[data-dsh-clearview] [data-reader-file-changes] > button', 0.1)) {
+      item.changesHover = await evaluate("(() => { const node = document.querySelector('[data-dsh-clearview] [data-reader-file-changes] > button'); const style = getComputedStyle(node); const root = document.querySelector('[data-dsh-clearview]').getBoundingClientRect(); const box = node.getBoundingClientRect(); return { hovered: node.matches(':hover'), background: style.backgroundColor, boxShadow: style.boxShadow, left: Math.round(box.left), right: Math.round(box.right), rootRight: Math.round(root.right) }; })()");
+      await shot(`${name}-changes-hover`);
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+    }
     // Footer actions on the last closed turn. Fork is only checked for being
     // available: clicking it would create a session.
     const footer = "[...document.querySelectorAll('[data-dsh-clearview] [data-reader-turn-footer]')].at(-1)";
