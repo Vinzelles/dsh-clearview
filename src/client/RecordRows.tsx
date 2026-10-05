@@ -62,7 +62,9 @@ export function recordView(node: { kind: string; data: unknown }): RecordView {
     }
     case 'question-reply': {
       const first = Array.isArray(data?.questions) ? record(data.questions[0]) : null;
-      return { title: '已回答问题', summary: typeof first?.question === 'string' ? first.question : '', tone: 'done', showInChat: false };
+      const asked = typeof first?.question === 'string' ? first.question : '';
+      const fallback = typeof data?.text === 'string' ? data.text.split(/\r?\n/).map(line => line.trim()).find(Boolean) ?? '' : '';
+      return { title: '已回答问题', summary: asked || fallback, tone: 'done', showInChat: false };
     }
     case 'submitted-plan':
       return { title: typeof data?.title === 'string' && data.title !== '' ? data.title : '计划', summary: '已提交计划', tone: 'idle', showInChat: false };
@@ -106,17 +108,23 @@ function RecordJson({ label, payload }: { label: string; payload: unknown }) {
   return <div className={css.section}><h4 className={css.label}>{label}</h4><pre className={css.raw}>{text}</pre></div>;
 }
 
-function RecordBody({ kind, data, view, nodeKey, ...render }: BlockRenderProps & { kind: string; data: unknown; view: RecordView; nodeKey: string }) {
+/** Expanded content of one record, by kind. */
+export function RecordBody({ kind, data, view, nodeKey, ...render }: BlockRenderProps & { kind: string; data: unknown; view: RecordView; nodeKey: string }) {
   const { showInChat } = useReaderActions();
   const chatLink = view.showInChat && showInChat
     ? <button type="button" className={css.chatLink} onClick={() => showInChat(nodeKey)} data-reader-show-in-chat>在对话中查看</button>
     : null;
   if (kind === 'question-reply') {
-    const questions = Array.isArray(record(data)?.questions) ? (record(data)!.questions as unknown[]).map(record).filter(Boolean) as Record<string, unknown>[] : [];
-    return <div className={css.qa}>{questions.map(question => {
+    const raw = record(data)?.questions;
+    const questions = Array.isArray(raw) ? raw.map(record).filter((item): item is Record<string, unknown> => item !== null) : [];
+    if (!questions.length) {
+      const text = record(data)?.text;
+      return typeof text === 'string' && text !== '' ? <p className={css.replyText}>{text}</p> : <RecordJson label="原始记录" payload={data} />;
+    }
+    return <div className={css.qa}>{questions.map((question, index) => {
       const id = typeof question.id === 'string' ? question.id : '';
       const values = replyAnswerValues(data, id);
-      return <div key={id}>
+      return <div key={id || index}>
         <p className={css.question}>{typeof question.question === 'string' ? question.question : id}</p>
         {values.length ? <ul className={css.answers}>{values.map(value => <li key={value}>{value}</li>)}</ul> : <p className={css.skipped}>未作答</p>}
       </div>;
@@ -164,10 +172,13 @@ export const RecordRow = memo(function RecordRow({ useSession, nodeKey, t, onRea
 export const InputBubble = memo(function InputBubble({ useSession, nodeKey, ...render }: BlockRenderProps & Pick<ReaderProps, 'useSession'> & { nodeKey: string }) {
   const node = useChatSelector(useSession, chat => chat.nodes.get(nodeKey));
   if (!node || node.visibility === 'hidden') return null;
-  const label = node.kind === 'steering' ? '补充消息' : node.kind === 'command-input' ? '命令输入' : '用户消息';
+  const label = node.kind === 'steering' ? '补充消息' : '命令输入';
   const blocks = node.kind === 'command-input' ? [{ kind: 'text' as const, text: nodeText(node.data) ?? '' }] : contentBlocks(record(node.data)?.content);
-  return <div className={css.input} data-reader-input={node.kind} data-reader-key={nodeKey}>
-    <div className={css.bubble}><p className={css.inputMeta}>{label}</p><Blocks {...render} blocks={blocks} source="user" /></div>
+  const labeled = node.kind === 'steering' || node.kind === 'command-input';
+  // The seat (anchor + key, first child a .meta paragraph) is what compat/rewind-bridge reads to classify steering inputs.
+  return <div className={css.input} data-reader-input={node.kind} data-reader-anchor data-reader-key={nodeKey}>
+    {labeled && <p className={css.meta}>{label}</p>}
+    <Blocks {...render} blocks={blocks} source="user" />
   </div>;
 });
 

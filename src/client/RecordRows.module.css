@@ -7,15 +7,15 @@
 .section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .label { margin: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 18px; font-weight: 500; }
 .raw { margin: 0; max-height: 320px; overflow: auto; padding: 10px 12px; border-radius: var(--dsw-radius-sm); corner-shape: round; background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-secondary); font: 12px/18px var(--ds-font-family-code, ui-monospace, monospace); white-space: pre-wrap; overflow-wrap: anywhere; }
+.replyText { margin: 0; color: var(--dsw-alias-label-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
 .qa { display: flex; flex-direction: column; gap: 10px; }
 .question { margin: 0; color: var(--dsw-alias-label-secondary); font-weight: 500; }
 .answers { margin: 2px 0 0; padding-left: 18px; color: var(--dsw-alias-label-primary); }
 .skipped { margin: 2px 0 0; color: var(--dsw-alias-label-caption); font-size: 12px; }
 .chatLink { align-self: flex-start; margin-left: -6px; padding: 2px 6px; border: 0; border-radius: var(--dsw-radius-sm); corner-shape: round; background: transparent; color: var(--dsw-alias-state-business-primary); font: inherit; font-size: 12px; cursor: pointer; transition: background-color var(--cv-fast) ease; }
 .chatLink:hover { background: var(--dsw-alias-interactive-bg-hover); }
-.input { display: flex; justify-content: flex-end; margin: 6px 0; }
-.bubble { max-width: min(78%, 520px); padding: 6px 12px; border-radius: var(--dsw-radius-md); corner-shape: round; background: var(--dsw-specific-bubble); color: var(--dsw-alias-label-primary); font-size: var(--cv-font-secondary); line-height: 20px; overflow-wrap: anywhere; }
-.inputMeta { margin: 0 0 2px; color: var(--dsw-alias-label-caption); font-size: 11px; line-height: 16px; }
+.input { width: fit-content; max-width: min(78%, 520px); margin: 6px 0 6px auto; padding: 6px 12px; border-radius: var(--dsw-radius-md); corner-shape: round; background: var(--dsw-specific-bubble); color: var(--dsw-alias-label-primary); font-size: var(--cv-font-secondary); line-height: 20px; overflow-wrap: anywhere; }
+.meta { margin: 0 0 2px; color: var(--dsw-alias-label-caption); font-size: 11px; line-height: 16px; }
 .notice { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-height: var(--cv-row-height); font-size: var(--cv-font-secondary); line-height: 20px; }
 .noticeTitle { font-weight: 600; }
 .noticeTitle[data-tone=error] { color: var(--dsw-alias-state-error-primary); }

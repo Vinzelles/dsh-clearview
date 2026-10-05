@@ -2,7 +2,9 @@ import './support/dom.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { render } from './support/render.ts';
-import { InputBubble, RecordRow, TurnNotice, recordView, replyAnswerValues } from '../src/client/RecordRows.tsx';
+import { createElement } from 'react';
+import { ReaderActionsContext } from '../src/client/reader-context.ts';
+import { InputBubble, RecordBody, RecordRow, TurnNotice, recordView, replyAnswerValues } from '../src/client/RecordRows.tsx';
 import { Opening, labelsLine } from '../src/client/Opening.tsx';
 import { chatNode, chatOf, turnLocation } from './support/chat-fixture.ts';
 import { sessionHook } from './support/session.ts';
@@ -69,4 +71,52 @@ test('rows, inputs and notices render from their nodes', () => {
   assert.match(input, /补充消息[\s\S]*禁止使用子代理/);
   const notice = render(TurnNotice, { useSession, nodeKey: error.key });
   assert.match(notice, /本轮出现错误[\s\S]*upstream 500[\s\S]*HTTP_500/);
+});
+
+const body = (kind: string, data: unknown, showInChat?: (focus: string) => void) => {
+  const view = recordView({ kind, data });
+  const Seat = () => createElement(ReaderActionsContext.Provider, { value: { motion: false, showInChat } }, createElement(RecordBody, { kind, data, view, nodeKey: 'n1', ...blocks }));
+  return render(Seat, {});
+};
+
+test('a question reply lists selected and custom answers and marks unanswered questions', () => {
+  const html = body('question-reply', {
+    questions: [{ id: 'q1', question: '用哪个框架？' }, { id: 'q2', question: '要测试吗？' }],
+    answers: [{ id: 'q1', selected: ['React'], custom: '也可以 Vue' }],
+  });
+  assert.match(html, /用哪个框架？[\s\S]*<li>React<\/li><li>也可以 Vue<\/li>/);
+  assert.match(html, /要测试吗？[\s\S]*未作答/);
+});
+
+test('an unreadable question reply falls back to its model-facing text', () => {
+  const data = { questions: 'broken', text: '用户选择了 React\n并补充说明' };
+  assert.equal(recordView({ kind: 'question-reply', data }).summary, '用户选择了 React');
+  const html = body('question-reply', data);
+  assert.match(html, /replyText[^>]*>用户选择了 React\n并补充说明</);
+  assert.doesNotMatch(html, /未作答/);
+});
+
+test('a submitted plan shows its title in the row and its markdown in the body', () => {
+  const data = { title: '重构计划', markdown: '第一步：拆分模块' };
+  const turn = turnLocation({ status: 'closed', steps: [1] });
+  const plan = chatNode('submitted-plan', data, turn, 1);
+  const row = render(RecordRow, { useSession: sessionHook(chatOf([plan], [turn])), nodeKey: plan.key, t: ((key: string) => key) as never, onRead: () => {}, ...blocks });
+  assert.match(row, /重构计划/);
+  assert.match(body('submitted-plan', data), /第一步：拆分模块/);
+});
+
+test('generic cards offer 在对话中查看 only when the host can show them', () => {
+  for (const [kind, data] of [['workflow-run', { name: '发布', status: 'running', phases: [] }], ['agent-teams', {}]] as const) {
+    assert.match(body(kind, data, () => {}), /data-reader-show-in-chat[^>]*>在对话中查看/);
+    assert.doesNotMatch(body(kind, data), /在对话中查看/);
+  }
+  assert.doesNotMatch(body('command', { name: 'x', outcome: null }, () => {}), /在对话中查看/);
+});
+
+test('a steering input keeps the seat the rewind bridge reads', () => {
+  const turn = turnLocation({ status: 'open', steps: [1] });
+  const steering = chatNode('steering', { content: [{ type: 'text', text: '换个方案' }] }, turn, 1);
+  const html = render(InputBubble, { useSession: sessionHook(chatOf([steering], [turn])), nodeKey: steering.key, ...blocks });
+  // The bridge matches div[data-reader-anchor][data-reader-key] (not article) and reads a first-child <p> whose class contains "meta".
+  assert.match(html, new RegExp(`^<div class="input" data-reader-input="steering" data-reader-anchor="true" data-reader-key="${steering.key}"><p class="meta">补充消息</p>`));
 });
