@@ -8,3 +8,5 @@ artifacts/
 *.log
 *.tgz
 .DS_Store
+.superpowers/
+.perf-results/
