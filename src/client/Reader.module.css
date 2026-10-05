@@ -25,8 +25,9 @@
 .switchButton:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); }
 .switchLabel[data-checked=true] { color: var(--dsw-alias-label-secondary); }
 .root button:focus-visible, .root summary:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 2px; }
+.root [role=button]:not(button):focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: -2px; }
 
-.blocks { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.blocks { display: flex; flex-direction: column; gap: var(--cv-blocks-gap, 16px); min-width: 0; }
 .blocks:empty { display: none; }
 .blocks > :first-child { margin-top: 0; }
 .blocks > :last-child { margin-bottom: 0; }

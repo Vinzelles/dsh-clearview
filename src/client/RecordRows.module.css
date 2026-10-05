@@ -14,7 +14,7 @@
 .skipped { margin: 2px 0 0; color: var(--dsw-alias-label-caption); font-size: 12px; }
 .chatLink { align-self: flex-start; margin-left: -6px; padding: 2px 6px; border: 0; border-radius: var(--dsw-radius-sm); corner-shape: round; background: transparent; color: var(--dsw-alias-state-business-primary); font: inherit; font-size: 12px; cursor: pointer; transition: background-color var(--cv-fast) ease; }
 .chatLink:hover { background: var(--dsw-alias-interactive-bg-hover); }
-.input { width: fit-content; max-width: min(78%, 520px); margin: 6px 0 6px auto; padding: 6px 12px; border-radius: var(--dsw-radius-md); corner-shape: round; background: var(--dsw-specific-bubble); color: var(--dsw-alias-label-primary); font-size: var(--cv-font-secondary); line-height: 20px; overflow-wrap: anywhere; }
+.input { --cv-blocks-gap: 10px; width: fit-content; max-width: min(78%, 520px); margin: 6px 0 6px auto; padding: 6px 12px; border-radius: var(--dsw-radius-md); corner-shape: round; background: var(--dsw-specific-bubble); color: var(--dsw-alias-label-primary); font-size: var(--cv-font-secondary); line-height: 20px; overflow-wrap: anywhere; }
 .meta { margin: 0 0 2px; color: var(--dsw-alias-label-caption); font-size: 11px; line-height: 16px; }
 .notice { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-height: var(--cv-row-height); font-size: var(--cv-font-secondary); line-height: 20px; }
 .noticeTitle { font-weight: 600; }

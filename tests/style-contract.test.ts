@@ -26,7 +26,7 @@ test('compat CSS keeps only scroll anchoring, off-screen turns and the rewind br
   assert.match(COMPAT_CSS, /reader-scroll-anchor\.css/);
   assert.match(COMPAT_CSS, /reader-perf-long-content\.css/);
   assert.match(COMPAT_CSS, /rewind-reader-bridge\.css/);
-  for (const retired of ['toolState', 'jumpDock', 'reasonPlain', 'data-reader-reasoning-card', 'role="alert"\] \+ div', 'dshcp-turn-footer', 'dshcp-stats-row']) {
+  for (const retired of ['toolState', 'jumpDock', 'reasonPlain', 'data-reader-reasoning-card', String.raw`role="alert"\] \+ div`, 'dshcp-turn-footer', 'dshcp-stats-row']) {
     assert.doesNotMatch(COMPAT_CSS, new RegExp(retired), retired);
   }
 });
@@ -38,7 +38,15 @@ test('every css.<name> used by a component exists in its stylesheet', () => {
     if (!match) continue;
     const css = readFileSync(new URL(match[1]!, CLIENT), 'utf8');
     const used = new Set([...source.matchAll(/\bcss\.([A-Za-z_]\w*)/g)].map(found => found[1]!));
-    const missing = [...used].filter(name => !new RegExp(`\.${name}(?![\w-])`).test(css));
+    const missing = [...used].filter(name => !new RegExp(String.raw`\.${name}(?![\w-])`).test(css));
     assert.deepEqual(missing, [], `${file} references undefined classes in ${match[1]}`);
   }
+});
+
+test('role=button rows keep a focus ring and user bubbles keep the tight block gap', () => {
+  const reader = sheet('Reader');
+  assert.match(reader, /\.root \[role=button\]:not\(button\):focus-visible \{ outline: 2px solid/);
+  assert.match(reader, /\.blocks \{[^}]*gap: var\(--cv-blocks-gap, 16px\)/);
+  assert.match(sheet('Opening'), /\.user \{[^}]*--cv-blocks-gap: 10px/);
+  assert.match(sheet('RecordRows'), /\.input \{[^}]*--cv-blocks-gap: 10px/);
 });
