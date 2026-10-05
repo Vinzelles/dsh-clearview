@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { cssEscape } from './css-escape.js';
 import { FileChangesPanel } from './FileChanges.js';
 import { FloatingStatus } from './FloatingStatus.js';
 import { viewRequestAction } from './view-request.js';
@@ -54,7 +55,7 @@ export function Reader(rawProps: ReaderProps) {
   const { viewRequest, completeViewRequest } = props;
   useEffect(() => {
     if (!viewRequest || viewRequest.view !== 'reader') return;
-    const focus = CSS.escape(viewRequest.focus);
+    const focus = cssEscape(viewRequest.focus);
     const target = root.current?.querySelector<HTMLElement>(`[data-reader-key="${focus}"], [data-reader-tool-call="${focus}"]`) ?? null;
     // A request that arrives before its turn renders stays pending; the groups / loading deps re-run this.
     const action = viewRequestAction(target !== null, loading);

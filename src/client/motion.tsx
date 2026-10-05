@@ -3,6 +3,7 @@ import type { ReactNode, RefObject } from 'react';
 import clsx from 'clsx';
 import css from './Reader.module.css';
 import { TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives';
+import { cssEscape } from './css-escape.js';
 import { MOTION } from './motion-tokens.js';
 import { READING_SURFACE_GAP, readingFollowAction, readingScrollAction } from './reading-follow.js';
 import { pickAnchor, recallPosition, rememberPosition } from './reading-position.js';
@@ -385,7 +386,7 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, 
     const firstFrame = requestAnimationFrame(() => {
       measure();
       const saved = sessionId ? recallPosition(sessionId) : null;
-      const anchor = saved ? content.querySelector<HTMLElement>(`[data-reader-key="${CSS.escape(saved.anchorKey)}"]`) : null;
+      const anchor = saved ? content.querySelector<HTMLElement>(`[data-reader-key="${cssEscape(saved.anchorKey)}"]`) : null;
       if (saved && anchor) {
         writeTop(currentTop + anchor.getBoundingClientRect().top - scroll.getBoundingClientRect().top - saved.offset);
         following.current = false;
