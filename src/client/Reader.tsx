@@ -63,7 +63,7 @@ export function Reader(rawProps: ReaderProps) {
     completeViewRequest();
   }, [viewRequest, completeViewRequest, loading, groups]);
   // 兼容层根发现：阅读根是运行中在深层会话容器里挂载/卸载的，body 级观察器看不到
-  // 它；由本组件在根挂载/卸载时广播事件，rewind 桥 / 轮统计行 / 收尾防吞只监听
+  // 它；由本组件在根挂载/卸载时广播事件，rewind 桥 / 收尾防吞只监听
   // 事件（见 compat/reader-root.ts watchReaderRoots），不在 body 上做全树观察。
   useEffect(() => {
     const node = root.current;

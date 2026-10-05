@@ -12,7 +12,7 @@
  * 执行过程（走其 React 状态并持久化）。
  *
  * 数据通道：从阅读视图根元素上溯 React fiber 读取祖先组件 hook 中的会话快照（纯读取）。
- * 快照解析复用轮统计行的 normalizeSnapshot 双形态归一：0.1.1 命中 session 完整快照
+ * 快照解析复用 reader-root.ts 的 normalizeSnapshot 双形态归一：0.1.1 命中 session 完整快照
  * （chat 内嵌）；0.1.2 session 瘦身后命中 useChat 快照本体（nodes/timeline 顶层）。
  * 旧的 v.chat.* 判定在 0.1.2 上命中不了任何钩子状态，本模块会静默失效（0.1.14 修复）。
  *

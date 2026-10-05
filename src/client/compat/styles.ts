@@ -32,7 +32,7 @@ export const COMPAT_CSS = `/* ==== reader-scroll-anchor.css ==== */
  *    跳到更上方」）。实测：未 armed 时交换步跳变 ~146px；armed（内联精确高度）后
  *    18 步上滚 0 跳变。只作用于「已关闭且不是最后两轮」的 section：进行中的轮次永远
  *    完整渲染；最后两轮保持渲染（tail-keep 需要点击最近一轮 Disclosure，rewind 桥
- *    与统计行集中在视口底部附近）。
+ *    与回合页脚集中在视口底部附近）。
  * 2) heavy 只控制离屏布局优化；可见文字的 blur、shimmer、状态过渡和折叠效果
  *    与轻负载完全相同，不按内容规模降级。 */
 

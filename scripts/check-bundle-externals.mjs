@@ -1,4 +1,11 @@
 // The lazy-CJS bundle may require only the modules every supported host preloads.
+//
+// Accepted exception this check cannot see: store.ts resolves the engine store at runtime through a
+// guarded lookup of '@deepseek-ai/dsh-client-store' and '@deepseek-ai/dsh-client-runtime/client' (one per
+// host generation, each wrapped in try/catch). It calls the factory-scoped require under another name with
+// a computed specifier, not a literal require("..."), so the regex below never matches it.
+// tests/client-store-resolution.test.ts pins that shape and fails if either package becomes a hard-coded
+// require in source or in the built bundle.
 import { readFileSync } from 'node:fs';
 
 const bundle = readFileSync(process.argv[2] ?? 'lib/client.js', 'utf8');
