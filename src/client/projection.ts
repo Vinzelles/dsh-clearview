@@ -1,7 +1,5 @@
 import type { AssistantBlock, TurnLocation, ToolCallBlock } from '@deepseek-ai/dsh-client-ui-conversation/client';
 import type { ChatConversationViewNode } from '@deepseek-ai/dsh-client-ui-chat/client';
-import type { AssistantChatData } from '@deepseek-ai/dsh-client-ui-chat/client';
-import { executionFacts } from './tool-activity.js';
 
 export interface ReaderGroup { key: string; turn: number | null; keys: readonly string[] }
 export interface TurnBoundary { status: 'open' | 'closed' | 'unknown'; reason: string | null; latestStep: number; closingStep: number | null }
@@ -34,13 +32,6 @@ export function boundaryOf(turn: TurnLocation | undefined): TurnBoundary {
   };
 }
 
-export function isEarlierNarration(data: AssistantChatData, boundary: TurnBoundary): boolean {
-  // New body text, a tool call, or a settled step is not a completed turn.
-  if (data.status !== 'settled' || boundary.status !== 'closed' || boundary.reason !== 'completed') return false;
-  if (data.blocks.some(block => block.kind === 'image' || block.kind === 'other')) return false;
-  return boundary.closingStep !== null && data.step < boundary.closingStep;
-}
-
 export function processExpanded(choice: boolean | undefined, boundary: TurnBoundary): boolean {
   return choice ?? !(boundary.status === 'closed' && boundary.reason === 'completed');
 }
@@ -48,20 +39,6 @@ export function processExpanded(choice: boolean | undefined, boundary: TurnBound
 /** Reading while running must not pin the process open after completion. */
 export function processChoiceKey(groupKey: string, boundary: TurnBoundary): string {
   return `${groupKey}:${boundary.status}:${boundary.reason ?? 'pending'}`;
-}
-
-/** A body-only assistant step is not a thinking/process disclosure. */
-export function hasProcessContent(node: ChatConversationViewNode | undefined, boundary: TurnBoundary): boolean {
-  if (!node || node.visibility === 'hidden') return false;
-  if (node.kind === 'assistant-step') {
-    const data = node.data as AssistantChatData;
-    return data.blocks.some(block => block.kind === 'reasoning' && block.text.trim() !== '')
-      || (isEarlierNarration(data, boundary) && hasVisibleBody(data.blocks));
-  }
-  return node.kind === 'context'
-    || node.kind === 'command' || node.kind === 'manual-compaction'
-    || node.kind === 'model-retry'
-    || node.kind === 'compaction';
 }
 
 export function hasVisibleBody(blocks: readonly AssistantBlock[]): boolean {
@@ -82,11 +59,6 @@ export function assistantSegments(blocks: readonly AssistantBlock[]): { kind: 'r
     }
   });
   return segments;
-}
-
-export function toolFailed(block: ToolCallBlock): boolean {
-  const { exitCode, signal } = executionFacts(block);
-  return ('kind' in block && block.isError) || !!signal || (exitCode !== undefined && exitCode !== 0) || block.subCalls.some(toolFailed);
 }
 
 export function toolName(block: ToolCallBlock): string {
