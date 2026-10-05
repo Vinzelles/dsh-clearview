@@ -1,0 +1,20 @@
+.details { margin: 2px 0 6px calc(22px + var(--dsh-content-font-delta, 0px)); min-width: 0; overflow: hidden; border-radius: var(--dsw-radius-md); corner-shape: round; background: var(--cv-inset-bg); }
+.ledger { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; padding: 10px 12px 0; color: var(--dsw-alias-label-caption); font-size: 11px; line-height: 18px; font-variant-numeric: tabular-nums; }
+.engine { font-family: var(--ds-font-family-code, ui-monospace, monospace); }
+.inspect { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; padding: 0 6px; border: 0; border-radius: var(--dsw-radius-sm); corner-shape: round; background: transparent; color: var(--dsw-alias-state-business-primary); font: inherit; cursor: pointer; transition: background-color var(--cv-fast) ease; }
+.inspect:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.tabs { display: flex; gap: 14px; padding: 0 12px; }
+.tabs > button { padding: 8px 1px 6px; border: 0; border-bottom: 1.5px solid transparent; background: transparent; color: var(--dsw-alias-label-tertiary); font: inherit; font-size: 12px; line-height: 18px; cursor: pointer; transition: color var(--cv-fast) ease, border-color var(--cv-fast) ease; }
+.tabs > button:hover { color: var(--dsw-alias-label-secondary); }
+.tabs > button[aria-selected=true] { color: var(--dsw-alias-label-primary); border-bottom-color: var(--dsw-alias-label-primary); }
+.panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 10px 12px 12px; font-size: var(--cv-font-secondary); line-height: 21px; }
+.panel:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: -2px; }
+.note { margin: 0; color: var(--dsw-alias-label-caption); font-size: 12px; line-height: 18px; }
+.rawSection { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.rawLabel { margin: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; font-weight: 500; }
+.raw { margin: 0; max-height: 360px; overflow: auto; padding: 10px 12px; border-radius: var(--dsw-radius-sm); corner-shape: round; background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-secondary); font: 12px/18px var(--ds-font-family-code, ui-monospace, monospace); white-space: pre-wrap; overflow-wrap: anywhere; }
+.document { font-size: var(--cv-font-secondary); line-height: 21px; }
+.detail > summary { margin: 0 -6px; padding: 2px 6px; border-radius: var(--dsw-radius-sm); corner-shape: round; color: var(--dsw-alias-label-tertiary); font-size: 12px; cursor: pointer; }
+.detail > summary:hover { background: var(--dsw-alias-interactive-bg-hover); }
+[data-motion=off] .tabs > button, [data-motion=off] .inspect { transition: none; }
+@media (pointer: coarse) { .tabs > button { min-height: 44px; } }
