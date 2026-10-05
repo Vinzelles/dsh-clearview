@@ -40,7 +40,7 @@ export interface FileChangesPanelProps extends Pick<ReaderProps, 'useSession' | 
   hasMore: boolean;
   /** 阅读视图活动判定：无开放轮次、无待处理交互、窗口已加载。 */
   conversationIdle: boolean;
-  openFile?: (path: string) => void;
+  openFile?: (path: string) => void | Promise<void>;
   /** 列目录条目名（存在性校准用）；缺省时跳过校准。 */
   listDirNames?: (path: string) => Promise<ReadonlySet<string>>;
 }
@@ -122,6 +122,11 @@ export function FileChangesPanel({
   )}</MountFade>;
 }
 
+/** The host opener may reject (missing file, no handler); a click must never surface that as an unhandled rejection. */
+export function openFileQuietly(openFile: FileChangesPanelProps['openFile'], path: string): void {
+  try { void Promise.resolve(openFile?.(path)).catch(() => {}); } catch { /* a synchronous throw degrades the same way */ }
+}
+
 /** One operation group: label + count, then one path row per file (directory muted, name primary). */
 function FileGroup({ label, tone, items, openFile }: {
   label: string; tone: FileChangeKind; items: readonly FileChangeEntry[]; openFile?: FileChangesPanelProps['openFile'];
@@ -135,7 +140,7 @@ function FileGroup({ label, tone, items, openFile }: {
       const cut = item.display.lastIndexOf('/');
       const directory = cut < 0 ? '' : item.display.slice(0, cut + 1);
       const name = cut < 0 ? item.display : item.display.slice(cut + 1);
-      return <button key={item.key} type="button" className={css.file} title={item.display} disabled={!openFile} onClick={() => { void openFile?.(item.display); }}>
+      return <button key={item.key} type="button" className={css.file} title={item.display} disabled={!openFile} onClick={() => openFileQuietly(openFile, item.display)}>
         {directory && <span className={css.directory}>{directory}</span>}<span className={css.name}>{name}</span>
       </button>;
     })}
