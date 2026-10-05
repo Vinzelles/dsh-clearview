@@ -2,7 +2,12 @@
 // receives the locally built reader bundle through CDP response interception.
 // Nothing is installed and no message is sent; only existing sessions are opened.
 // Safety: this script only reads and navigates. It never types, never presses a key,
-// never clicks fork / rewind / approve / stop / settings / workspace entries.
+// never clicks fork / rewind / approve / stop / settings, and never creates a session.
+// Workspace rows (and their 「展开其余」 buttons) are only toggled open when READER_EXPAND lists
+// them, to reach sessions hidden in collapsed sidebar groups; the script counts session/create
+// requests and aborts if there is more than the host's own blank startup session.
+// READER_SESSIONS entries are title prefixes, or "#<id suffix>" to pick one session row by id.
+// READER_CONDITIONS=0 skips the font-size / theme / reduced-motion matrix (narrow still runs).
 // Side effects to expect: (1) loading the DSH page makes the host open its own blank startup
 // session; (2) the 复制回答 check clicks the real copy button, and headless Chrome may write the
 // answer text to your real system clipboard (the profile is isolated, the OS clipboard is not);
@@ -20,6 +25,8 @@ const titles = (process.env.READER_SESSIONS || '').split('|').map(value => value
 const out = resolve(process.env.READER_LIVE_OUTPUT || '.perf-results/live');
 // READER_NO_INTERCEPT=1 checks the bundle the host itself serves (after install).
 const intercept = process.env.READER_NO_INTERCEPT !== '1';
+const expand = (process.env.READER_EXPAND || '').split(',').map(value => value.trim()).filter(Boolean);
+const conditions = process.env.READER_CONDITIONS !== '0';
 if (!titles.length) throw new Error('Set READER_SESSIONS to "|"-separated session title prefixes.');
 mkdirSync(out, { recursive: true });
 
@@ -44,6 +51,11 @@ function spliceReaderModule(text) {
   return text.slice(0, start) + bundleText.trimEnd() + '\n' + (map >= 0 ? text.slice(map) : '');
 }
 
+const sessionCount = async () => {
+  const response = await fetch(new URL('/api/session/list', base), { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ type: 'client-request', rpcId: crypto.randomUUID(), method: 'session/list', payload: { args: { _request: {} } } }) });
+  return (await response.json()).result?.value?.items?.length ?? null;
+};
 const profile = mkdtempSync(join(tmpdir(), 'clearview-live-'));
 const chrome = spawn(process.env.CHROME_PATH || join(process.env.ProgramFiles || 'C:/Program Files', 'Google/Chrome/Application/chrome.exe'),
   ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--window-size=1440,900', 'about:blank'],
@@ -68,7 +80,8 @@ const removeProfile = () => {
 const bail = error => { console.error(error); killChrome(); removeProfile(); process.exit(2); };
 process.on('unhandledRejection', bail);
 process.on('uncaughtException', bail);
-const report = { base, entry: entry.url, sessions: [], exceptions: [], consoleErrors: [], replacements: 0, spliced: 0, comboPassedThrough: [], handlerErrors: [] };
+const sessionCountBefore = await sessionCount();
+const report = { base, entry: entry.url, sessions: [], exceptions: [], consoleErrors: [], replacements: 0, spliced: 0, sessionCreates: 0, comboPassedThrough: [], handlerErrors: [], sessionCountBefore };
 let ws;
 try {
   let port;
@@ -86,6 +99,7 @@ try {
   ws.onmessage = async event => {
     try {
       const message = JSON.parse(event.data);
+      if (message.method === 'Network.requestWillBeSent' && message.params.request.method === 'POST' && /session\/create/.test(message.params.request.postData ?? '')) report.sessionCreates++;
       const waiter = pending.get(message.id);
       if (waiter) { pending.delete(message.id); message.error ? waiter.fail(new Error(message.error.message)) : waiter.done(message.result); }
       if (message.method === 'Runtime.exceptionThrown') report.exceptions.push(message.params.exceptionDetails.exception?.description || message.params.exceptionDetails.text);
@@ -130,6 +144,7 @@ try {
   };
   await send('Runtime.enable');
   await send('Page.enable');
+  await send('Network.enable');
   await send('Browser.grantPermissions', { origin: new URL(base).origin, permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] }).catch(() => {});
   if (intercept) await send('Fetch.enable', { patterns: [{ urlPattern: '*dsh-clearview/client.js*', requestStage: 'Response' }] });
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -203,8 +218,24 @@ try {
     };
   })()`;
   // Only a session row in the sidebar tree is ever clicked (never a workspace row).
-  const sessionRows = title => `[...document.querySelectorAll('[role="treeitem"][data-row-key^="session:"]')]
-    .filter(node => node.textContent.trim().startsWith(${JSON.stringify(title)}))`;
+  const sessionRows = title => title.startsWith('#')
+    ? `[...document.querySelectorAll('[role="treeitem"][data-row-key^="session:"]')].filter(node => node.dataset.rowKey.endsWith(${JSON.stringify(title.slice(1))}))`
+    : `[...document.querySelectorAll('[role="treeitem"][data-row-key^="session:"]')].filter(node => node.textContent.trim().startsWith(${JSON.stringify(title)}))`;
+  // session/create beyond the host's own startup session means something created a session: stop at once.
+  const guardCreates = () => { if (report.sessionCreates > 1) throw new Error('a session was created during the run (' + report.sessionCreates + ' session/create requests)'); };
+  // Toggle the listed workspace rows open, then their 「展开其余」 buttons, until none is left.
+  const expandWorkspaces = async () => {
+    for (const workspace of expand) {
+      await evaluate(`(() => { const row = [...document.querySelectorAll('[role="treeitem"][data-row-key^="workspace:"]')].find(node => node.textContent.trim() === ${JSON.stringify(workspace)}); if (row && row.getAttribute('aria-expanded') === 'false') row.click(); })()`);
+      await delay(1200);
+      for (let round = 0; round < 25; round++) {
+        const more = await evaluate(`(() => { const row = [...document.querySelectorAll('[role="treeitem"][data-row-key^="workspace:"]')].find(node => node.textContent.trim() === ${JSON.stringify(workspace)}); const button = [...(row?.closest('[class*=groupSection]')?.querySelectorAll('button') ?? [])].find(node => /展开其余/.test(node.textContent)); if (!button) return false; button.click(); return true; })()`);
+        if (!more) break;
+        await delay(1200);
+      }
+      guardCreates();
+    }
+  };
   const clickSession = async title => {
     // The sidebar fills in after the page is ready; wait for the row instead of guessing a delay.
     if (!await until(`${sessionRows(title)}.length > 0`, 20000)) return false;
@@ -221,9 +252,15 @@ try {
     return true;
   };
 
+  await until("!!document.querySelector('[role=treeitem][data-row-key^=\"session:\"]')", 20000);
+  await expandWorkspaces();
+  report.sidebarRows = await evaluate("(() => { const out = {}; let group = ''; for (const node of document.querySelectorAll('[role=treeitem]')) { const key = node.dataset.rowKey || ''; if (key.startsWith('workspace:')) group = node.textContent.trim(); else out[group] = (out[group] ?? 0) + 1; } return out; })()");
   for (const [index, title] of titles.entries()) {
     const name = `s${index + 1}`;
+    // The sidebar drops its 「展开其余」 state after a session switch, so expand again before each pick.
+    if (index > 0) await expandWorkspaces();
     const item = { title, opened: await clickSession(title) };
+    guardCreates();
     report.sessions.push(item);
     if (!item.opened) continue;
     await delay(1500);
@@ -304,6 +341,55 @@ try {
       await clickTab('阅读');
       await delay(800);
     }
+    // Coverage of the node kinds a session has: triggers, panel statuses, records, 「前 N 步」.
+    // Only local disclosure state is toggled (panel headers, trigger / record rows, 「前 N 步」).
+    const scrollShot = async (selector, label) => {
+      const found = await evaluate(`(() => { const node = document.querySelector(${JSON.stringify(selector)}); if (!node) return false; node.scrollIntoView({ block: 'center' }); return true; })()`);
+      if (found) { await delay(500); await shot(`${name}-${label}`); }
+      return found;
+    };
+    await evaluate("[...document.querySelectorAll('[data-dsh-clearview] [data-reader-disclosure][data-expanded=\"false\"] > button')].slice(0, 12).forEach(button => button.click())");
+    await delay(900);
+    const cov = item.coverage = { triggers: {}, panels: {}, records: {}, earlier: [] };
+    cov.counts = await evaluate("(() => { const root = document.querySelector('[data-dsh-clearview]'); const tally = (selector, attribute) => { const out = {}; root.querySelectorAll(selector).forEach(node => { const key = node.getAttribute(attribute) ?? ''; out[key] = (out[key] ?? 0) + 1; }); return out; }; return { turnResults: tally('section[data-reader-turn]', 'data-reader-turn-result'), panelStatuses: tally('[data-reader-panel]', 'data-status'), triggers: tally('[data-reader-trigger]', 'data-reader-trigger'), records: tally('[data-reader-record-kind]', 'data-reader-record-kind'), stoppedTags: [...root.querySelectorAll('*')].filter(node => node.children.length === 0 && node.textContent.trim() === '已停止').length }; })()");
+    for (const type of Object.keys(cov.counts.triggers)) {
+      cov.triggers[type] = await evaluate(`(() => { const node = document.querySelector('[data-dsh-clearview] [data-reader-trigger="${type}"]'); const button = node.querySelector('button'); button.click(); return { title: button.textContent.slice(0, 60), height: button.getBoundingClientRect().height }; })()`);
+      await delay(400);
+      cov.triggers[type].shot = await scrollShot(`[data-reader-trigger="${type}"]`, `trigger-${type}`);
+      cov.triggers[type].body = await evaluate(`document.querySelector('[data-reader-trigger="${type}"]')?.textContent.slice(0, 160)`);
+    }
+    for (const status of Object.keys(cov.counts.panelStatuses).filter(value => value !== 'done')) {
+      cov.panels[status] = await evaluate(`(() => { const panel = document.querySelector('[data-dsh-clearview] [data-reader-panel][data-status="${status}"]'); const header = panel.querySelector(':scope > [data-reader-disclosure]'); return { header: header.textContent.slice(0, 80), open: header.getAttribute('data-expanded'), steps: panel.querySelectorAll('[data-reader-step]').length }; })()`);
+      cov.panels[status].shot = await scrollShot(`[data-reader-panel][data-status="${status}"]`, `panel-${status}`);
+    }
+    for (const kind of Object.keys(cov.counts.records)) {
+      cov.records[kind] = await evaluate(`(() => { const record = document.querySelector('[data-dsh-clearview] [data-reader-record-kind="${kind}"]'); const row = record.querySelector('[data-disclosure-row]'); row.click(); return { title: row.textContent.slice(0, 80), height: row.getBoundingClientRect().height, tone: record.getAttribute('data-record-tone') }; })()`);
+      await delay(500);
+      cov.records[kind].shot = await scrollShot(`[data-reader-record-kind="${kind}"]`, `record-${kind}`);
+      cov.records[kind].body = await evaluate(`document.querySelector('[data-reader-record-kind="${kind}"]')?.textContent.slice(0, 200)`);
+      cov.records[kind].showInChat = await evaluate(`!!document.querySelector('[data-reader-record-kind="${kind}"] [data-reader-show-in-chat]')`);
+      if (cov.records[kind].showInChat) {
+        await evaluate(`document.querySelector('[data-reader-record-kind="${kind}"] [data-reader-show-in-chat]').click()`);
+        await delay(900);
+        cov.records[kind].showInChatTab = await selectedTab();
+        await shot(`${name}-record-${kind}-in-chat`);
+        await clickTab('阅读');
+        await delay(900);
+      }
+    }
+    // 「前 N 步」: the panel keeps only the latest steps while a turn did not finish well.
+    for (let nth = 0; nth < 3; nth++) {
+      const before = await evaluate(`(() => { const button = document.querySelector('[data-dsh-clearview] [data-reader-earlier]'); if (!button) return null; const panel = button.closest('[data-reader-panel]'); const total = panel.querySelector(':scope > [data-reader-disclosure]').textContent.match(/(\\d+) 步/)?.[1] ?? null; button.setAttribute('data-live-earlier', '1'); panel.setAttribute('data-live-earlier-panel', '1'); return { text: button.textContent.trim().slice(0, 80), height: button.getBoundingClientRect().height, status: panel.getAttribute('data-status'), headerSteps: total, groupsBefore: panel.querySelectorAll('[data-reader-step]').length, toolsBefore: panel.querySelectorAll('[data-reader-tool-call]').length, reasoningBefore: panel.querySelectorAll('[data-reader-reasoning]').length }; })()`);
+      if (!before) break;
+      await scrollShot('[data-live-earlier]', `earlier-closed-${nth}`);
+      await evaluate("document.querySelector('[data-live-earlier]').click()");
+      await delay(700);
+      const after = await evaluate("(() => { const panel = document.querySelector('[data-live-earlier-panel]'); return { buttonGone: !panel.querySelector('[data-reader-earlier]'), groupsAfter: panel.querySelectorAll('[data-reader-step]').length, toolsAfter: panel.querySelectorAll('[data-reader-tool-call]').length, reasoningAfter: panel.querySelectorAll('[data-reader-reasoning]').length, fol\ds: panel.querySelectorAll('[\data-rea\der-fol\d]').length, fol\dSum: [...panel.querySelectorAll('[\data-rea\der-fol\d]')].re\duce((sum, no\de) => sum + Number(no\de.textContent.match(/\\d+/)?.[0] ?? 0), 0), hea\derTools: panel.querySelector(':scope > [\data-rea\der-\disclosure]').textContent.match(/(\\d+) 次工具/)?.[1] ?? null, labels: [...panel.querySelectorAll('[data-reader-step]')].slice(0, 3).map(node => node.getAttribute('data-reader-step')) }; })()");
+      await scrollShot('[data-live-earlier-panel]', `earlier-open-${nth}`);
+      cov.earlier.push({ ...before, ...after });
+      await evaluate("document.querySelectorAll('[data-live-earlier],[data-live-earlier-panel]').forEach(node => { node.removeAttribute('data-live-earlier'); node.removeAttribute('data-live-earlier-panel'); })");
+    }
+    guardCreates();
     // Conditions first, while the reader still has the whole pane: narrow width, host font
     // size 13/14/16, dark / light, reduced motion. Opening a file below adds a right
     // sidebar that would crowd these screenshots, so that happens last.
@@ -325,6 +411,7 @@ try {
     await shot(`${name}-narrow-bottom`);
     item.narrowBottom = await evaluate(measure);
     await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+    if (conditions) {
     item.fontSizes = {};
     for (const size of ['13px', '14px', '16px']) {
       await evaluate(`document.body.style.setProperty('--dsh-content-font-size', '${size}')`);
@@ -366,6 +453,7 @@ try {
     await delay(400);
     await shot(`${name}-reduced-motion`);
     await send('Emulation.setEmulatedMedia', { features: [] });
+    }
     // Hover look of the collapsed file-changes header (hover only): background plus side bleed.
     await evaluate("(() => { const scroller = document.querySelector('[data-conversation-scroll]'); if (scroller) scroller.scrollTop = scroller.scrollHeight; })()");
     await delay(400);
@@ -393,7 +481,9 @@ try {
       if (item[key]) { await delay(900); await shot(`${name}-${key}`); }
     }
     item.final = await evaluate(collect);
+    guardCreates();
   }
+  report.sessionCountAfter = await sessionCount();
 } finally {
   try { ws?.close(); } catch {}
   const exited = new Promise(done => chrome.once('exit', done));
@@ -402,10 +492,12 @@ try {
   removeProfile();
 }
 report.profileRemoved = !existsSync(profile);
+if (report.sessionCountAfter === undefined) report.sessionCountAfter = await sessionCount().catch(() => null);
 const readerErrors = report.exceptions.concat(report.consoleErrors).filter(text => /clearview|data-reader|dsh-clearview/i.test(text));
 report.pass = (!intercept || report.replacements + report.spliced > 0)
   && report.sessions.every(item => item.opened && item.readerMounted && item.initial?.version === '0.2.0' && item.initial.blockErrors.length === 0 && item.final?.blockErrors.length === 0)
-  && readerErrors.length === 0 && report.handlerErrors.length === 0 && report.profileRemoved;
+  && readerErrors.length === 0 && report.handlerErrors.length === 0 && report.profileRemoved
+  && report.sessionCreates <= 1 && report.sessionCountBefore === report.sessionCountAfter;
 report.readerErrors = readerErrors;
 writeFileSync(join(out, 'report.json'), JSON.stringify(report, null, 2));
 console.log(JSON.stringify({ pass: report.pass, replacements: report.replacements, spliced: report.spliced, comboPassedThrough: report.comboPassedThrough.length, sessions: report.sessions.map(item => ({ title: item.title, opened: item.opened, initial: item.initial })), readerErrors }, null, 2));
