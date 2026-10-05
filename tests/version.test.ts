@@ -1,0 +1,9 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { READER_VERSION } from '../src/client/version.ts';
+
+test('the root version attribute follows package.json', () => {
+  const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(READER_VERSION, manifest.version);
+});
