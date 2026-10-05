@@ -75,6 +75,11 @@ function ResultView({ entry, model, phase, ...render }: BlockRenderProps & { ent
   return <p className={css.note}>工具没有返回可展示的内容。</p>;
 }
 
+/** Jumps from a tool row to the same call in the trace view. */
+export function InspectButton({ callId, inspectCall }: { callId: string; inspectCall: (callId: string) => void }) {
+  return <button type="button" className={css.inspect} onClick={() => inspectCall(callId)} data-reader-inspect><IconInspectOutlineRegular size={12} />在轨迹中查看</button>;
+}
+
 /** Ledger + result / input / raw tabs for one tool call, inside a recessed block. */
 export function ToolDetails({ entry, model, phase, ...render }: BlockRenderProps & { entry: ToolActivityEntry; model: Model; phase: ToolPhase }) {
   const { inspectCall } = useReaderActions();
@@ -108,7 +113,7 @@ export function ToolDetails({ entry, model, phase, ...render }: BlockRenderProps
       <span data-reader-tool-progress>{phase === 'preparing' ? `已接收 ${number.format(model.raw.length)} 字符输入` : phase === 'running' ? '已提交 · 等待工具返回' : phase === 'interrupted' ? '已停止 · 输入记录保留' : elapsed !== null ? `执行 ${duration(elapsed)}` : '结果已记录'}</span>
       {facts.exitCode !== undefined && <span>退出码 {facts.exitCode}</span>}
       {facts.signal && <span>信号 {facts.signal}</span>}
-      {inspectCall && <button type="button" className={css.inspect} onClick={() => inspectCall(entry.callId)} data-reader-inspect><IconInspectOutlineRegular size={12} />在轨迹中查看</button>}
+      {inspectCall && <InspectButton callId={entry.callId} inspectCall={inspectCall} />}
     </div>
     <div className={css.tabs} role="tablist" aria-label={`${model.title}的执行数据`} onKeyDown={event => {
       const index = tabs.findIndex(item => item[0] === tab);

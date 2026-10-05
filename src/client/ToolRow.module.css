@@ -6,7 +6,7 @@
 .summaryContent { min-width: 0; overflow: hidden; }
 .summaryText { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--cv-font-secondary); }
 .end { flex: none; margin-left: 8px; color: var(--dsw-alias-label-caption); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.tool[data-tool-phase=failed] > div > .end, .tool[data-tool-phase=failed] .end { color: var(--dsw-alias-state-error-primary); }
+.failedEnd { color: var(--dsw-alias-state-error-primary); }
 .children { display: flex; flex-direction: column; gap: 2px; margin-left: calc(22px + var(--dsh-content-font-delta, 0px)); }
 .deep { margin: 0; color: var(--dsw-alias-label-caption); font-size: 12px; }
 .media { display: flex; flex-direction: column; gap: 12px; }

@@ -3,6 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement, type ComponentType } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { InspectButton, ToolDetails } from '../src/client/ToolDetails.tsx';
+import { activitySummary } from '../src/client/tool-activity.ts';
 import { ReaderActionsContext, type ReaderActions } from '../src/client/reader-context.ts';
 import { errorExcerpt } from '../src/client/ProcessRow.tsx';
 import { ToolImages, ToolRow, toolEndLabel } from '../src/client/ToolRow.tsx';
@@ -63,4 +65,27 @@ test('tool images stay visible as media blocks', () => {
   assert.match(html, /data-reader-tool-media/);
   assert.match(html, /data-reader-image/);
   assert.equal(renderIn({ motion: true }, ToolImages, { entries: [toolEntry('c6', 1, settledTool('c6', 'bash', {}))], ...render }), '');
+});
+
+test('only the failed row carries the failed end label, not its healthy sub-calls', () => {
+  const child = settledTool('c8', 'read', { path: 'a.ts' });
+  const parent = settledTool('c7', 'bash', { command: 'npm run build' }, { isError: true, content: [{ type: 'text', text: 'Error: exit code: 2' }], subCalls: [child] });
+  const html = renderIn({ motion: true }, ToolRow, { entry: toolEntry('c7', 1, parent), turnClosed: true, onRead: () => {}, ...render });
+  assert.equal(html.match(/failedEnd/g)?.length, 1);
+  assert.match(html, /class="end failedEnd">退出码 2</);
+  assert.match(html, /data-reader-tool-call="c8"[\s\S]*class="end">1\.5 秒</);
+});
+
+test('the inspect button renders only when the host can inspect a call, and calls it with the call id', () => {
+  const entry = toolEntry('c9', 1, settledTool('c9', 'bash', { command: 'ls' }));
+  const props = { entry, model: activitySummary(entry), phase: 'succeeded' as const, ...render };
+  const withHost = renderIn({ motion: true, inspectCall: () => {} }, ToolDetails, props);
+  assert.match(withHost, /data-reader-inspect/);
+  assert.match(withHost, /在轨迹中查看/);
+  assert.doesNotMatch(renderIn({ motion: true }, ToolDetails, props), /data-reader-inspect/);
+  const calls: string[] = [];
+  const button = InspectButton({ callId: 'c9', inspectCall: id => calls.push(id) });
+  assert.equal(button.type, 'button');
+  (button.props as { onClick: () => void }).onClick();
+  assert.deepEqual(calls, ['c9']);
 });

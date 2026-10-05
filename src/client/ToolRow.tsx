@@ -78,7 +78,7 @@ export const ToolRow = memo(function ToolRow({ entry, turnClosed, onRead, depth 
       collapsedContent={<>
         <RowSeparator />
         <TextShimmer active={active && motion} className={css.summary} contentClassName={css.summaryContent}><span className={css.summaryText} title={summary}>{summary}</span></TextShimmer>
-        {end && <span className={css.end}>{end}</span>}
+        {end && <span className={failed ? `${css.end} ${css.failedEnd}` : css.end}>{end}</span>}
       </>} />
     {failed && !open && <ErrorSummary text={errorExcerpt(native?.errorSummary ?? text)} />}
     <ProcessFragment open={open} motion={motion} onRead={onRead} returnFocusTo={control} nodeKey={`${entry.key}:detail`} framed>
