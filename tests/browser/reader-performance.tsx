@@ -5,7 +5,7 @@ import { Reader } from 'fixture-source/Reader.tsx';
 import * as bridge from 'fixture-source/compat/session-snapshot.ts';
 import { injectCompatStyles } from 'fixture-source/compat/styles.ts';
 import { cachedSnapshot } from 'fixture-source/compat/reader-root.ts';
-import { footerTextForTurn } from 'fixture-source/compat/turn-metrics-footer.ts';
+import { turnMeta, turnMetaText } from 'fixture-source/turn-meta.ts';
 declare const __BASELINE__: boolean;
 const failures: string[] = [];
 const check = (condition: unknown, message: string) => { if (!condition)
@@ -208,7 +208,7 @@ async function reader() {
         check(host.querySelectorAll('[data-reader-turn]').length === 21, 'restored chat lost turns');
         const snap = cachedSnapshot(host.querySelector('[data-dsh-clearview]')! as HTMLElement);
         check(snap?.chat.timeline.turns.get(21)?.status === 'closed', 'DOM compat snapshot stale');
-        check(!!snap && !!footerTextForTurn(snap, 21), 'turn footer missing after fine-grained subscriptions');
+        check(!!snap && turnMetaText(turnMeta(snap.chat.timeline.turns.get(21))) !== '', 'turn footer missing after fine-grained subscriptions');
     }
     const result = { frameP95: quantile(frames, .95), frameMax: Math.max(...frames), framesOver25: frames.filter(n => n > 25).length, samples: frames.length, commitP95: quantile(commits, .95), historyBlockRenders, chatSubscribers: chat.subscriberCount(), sessionSubscribers: sess.subscriberCount(), pendingSubscribers: pend.subscriberCount(), peakAnimations: animations, blurActive: blur, heavyPreserved, shimmerPreserved, scrollRange: Math.max(...scrolls) - Math.min(...scrolls), maxActiveChars: text.length, turns: 21, tools: 20 };
     flushSync(() => root.render(null));

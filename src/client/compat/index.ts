@@ -2,11 +2,10 @@
  * 阅读视图兼容层汇总（原 dsh-custom-patcher patches/client 下与 clearview
  * 配套的 12 个补丁内聚于此）：
  *   - styles.ts               7 个 CSS → 运行时注入 <style id="dsh-clearview-compat">
- *   - composer-readability.ts 画布色变量 + 统计行毛玻璃标记
  *   - memory-tail-keep.ts     收尾总结被折叠吞掉时自动展开执行过程
  *   - perf-guard.ts           内容规模超阈值点亮 data-dshcp-heavy 优化离屏布局
  *   - rewind-bridge.ts        dsh-rewind 撤回/复制按钮兼容桥
- *   - turn-metrics-footer.ts  补回轮次统计行
+ *   - （统计行与 composer 标记已于 0.2.0 移除：统计改由 TurnFooter 读 turn-tail 公开数据）
  *
  * 思考跟随追赶（原 reasoning-catchup.ts）已于 0.1.2 移除：外部观察者与插件
  * 步进两个滚动管理器竞争同一轨道，滑移被插件下一步掐断，正是「滚动反弹」的
@@ -17,11 +16,9 @@
  * 插件卸载时各模块经 ctx.effect 自动清理。
  */
 import { injectCompatStyles } from './styles.js';
-import * as composerReadability from './composer-readability.js';
 import * as memoryTailKeep from './memory-tail-keep.js';
 import * as perfGuard from './perf-guard.js';
 import * as rewindBridge from './rewind-bridge.js';
-import * as turnMetricsFooter from './turn-metrics-footer.js';
 
 /**
  * 可重入守卫：宿主 boot handoff/HMR 可能对插件 apply() 触发两次；若不先销毁
@@ -36,11 +33,9 @@ export function startCompat(ctx: any): void {
   injectCompatStyles();
   const cleanups: Array<() => void> = [];
   const patches: Array<[string, (ctx: any) => (() => void) | void]> = [
-    ['composer-readability', composerReadability.apply],
     ['memory-tail-keep', memoryTailKeep.apply],
     ['perf-guard', perfGuard.apply],
     ['rewind-bridge', rewindBridge.apply],
-    ['turn-metrics-footer', turnMetricsFooter.apply],
   ];
   for (const [name, fn] of patches) {
     try {

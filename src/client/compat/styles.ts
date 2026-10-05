@@ -5,12 +5,11 @@
  * 与原 patcher 注入语义一致）。
  *
  * 包含：
- *  - reader-composer-layout.css      悬浮输入框布局适配（回到最新药丸/统计行毛玻璃）
+ *  - reader-composer-layout.css      悬浮输入框布局适配（回到最新药丸）
  *  - reader-perf-long-content.css    离屏轮次 content-visibility + 重载降级（heavy 标记）
  *  - reader-reasoning-follow.css     思考跟随态底部渐隐修正
  *  - reader-reasoning-plain.css      短思考引用式左竖线
  *  - reader-tool-error-dedup.css     工具失败重复错误详情去重
- *  - reader-turn-metrics-footer.css  轮次统计行视觉（hover 淡入）
  *  - rewind-reader-bridge.css        rewind 兼容桥 actions 行样式
  */
 
@@ -32,19 +31,10 @@ export const COMPAT_CSS = `/* ==== reader-tool-state.css ==== */
 /* 阅读视图 × 悬浮输入框布局适配：不给任何大块区域加实底（保持原生透底美学）。
  *   1. 「回到最新」按钮 sticky bottom 抬到输入框正上方（原生 12px 会被悬浮输入框盖住）；
  *   2. 按钮视觉已并入插件主体（与运行状态条同款毛玻璃，见 Reader.module.css .jump），
- *      不再需要 canvas-solid 实底补丁；
- *   3. 底部统计行容器局部毛玻璃（容器由 JS 标记 [data-dshcp-stats-row]，
- *      类名带构建 hash，CSS 无法稳定命中）。 */
+ *      不再需要 canvas-solid 实底补丁。 */
 
 [data-dsh-clearview] [class*="jumpDock"] {
   bottom: calc(var(--dsh-composer-height, 152px) + 12px) !important;
-}
-
-[data-composer-seat] [data-dshcp-stats-row] {
-  backdrop-filter: blur(10px) saturate(1.2);
-  border-radius: 8px;
-  padding-top: 2px;
-  padding-bottom: 2px;
 }
 
 /* ==== reader-perf-long-content.css ==== */
@@ -96,39 +86,6 @@ export const COMPAT_CSS = `/* ==== reader-tool-state.css ==== */
 
 [data-dsh-clearview] div[role="alert"] + div > div[data-slot="dsh-clearview.block"] > div[data-reader-text] {
   display: none !important;
-}
-
-/* ==== reader-turn-metrics-footer.css ==== */
-/* 轮次统计行（由 turn-metrics-footer 注入 .dshcp-turn-footer）：14px 三级文字色；
- * 有 hover 能力的设备默认透明、hover/focus 淡入 80ms；触屏常显。只切 opacity 不切 display。 */
-
-[data-dsh-clearview] .dshcp-turn-footer {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  font-size: var(--dsh-content-font-size, 14px);
-  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
-  color: var(--dsw-alias-label-tertiary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: opacity 160ms ease;
-}
-
-[data-dsh-clearview] section[data-reader-turn] > .dshcp-turn-footer {
-  margin-top: 4px;
-  padding-left: 12px;
-}
-
-@media (hover: hover) {
-  [data-dsh-clearview] .dshcp-turn-footer {
-    opacity: 0;
-  }
-
-  [data-dsh-clearview] section[data-reader-turn]:hover .dshcp-turn-footer,
-  [data-dsh-clearview] section[data-reader-turn]:focus-within .dshcp-turn-footer {
-    opacity: 1;
-  }
 }
 
 /* ==== rewind-reader-bridge.css ==== */
