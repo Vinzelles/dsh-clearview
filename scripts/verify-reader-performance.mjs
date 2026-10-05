@@ -1,6 +1,6 @@
 import { build } from 'esbuild';
-import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,7 +16,35 @@ const tracing = process.argv.includes('--trace');
 await build({ entryPoints: [join(repo, 'tests/browser/reader-performance.tsx')], bundle: true, write: true, outfile: join(out, 'fixture.js'), platform: 'browser', format: 'iife', jsx: 'automatic', target: 'es2022', external: ['react', 'react/*', 'react-dom', 'react-dom/*', '@deepseek-ai/*'], define: { 'process.env.NODE_ENV': '"production"', '__BASELINE__': String(baseline) }, plugins: [{ name: 'fixture-source', setup(b) { b.onResolve({ filter: /^fixture-source\// }, a => ({ path: join(source, 'src/client', a.path.slice('fixture-source/'.length)) })); } }], banner: { js: 'var require = (name) => { if (!(name in window.__clearviewTestModules)) throw new Error("Missing test host module: "+name); return window.__clearviewTestModules[name]; };' } });
 const profile = mkdtempSync(join(tmpdir(), 'clearview-browser-'));
 const chrome = spawn(process.env.CHROME_PATH || join(process.env.ProgramFiles || 'C:/Program Files', 'Google/Chrome/Application/chrome.exe'), ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--window-size=1280,950', 'about:blank'], { stdio: 'ignore', windowsHide: true });
-const timer = setTimeout(() => { chrome.kill(); process.exit(2); }, 180000);
+const delay = ms => new Promise(done => setTimeout(done, ms));
+// Chrome must never outlive the run, and its profile must always be removed: on success, on
+// failure, on timeout and on an uncaught error. taskkill /T also stops Chrome's helper processes.
+const killChrome = () => {
+    if (!chrome.pid || chrome.exitCode !== null)
+        return;
+    if (process.platform === 'win32')
+        spawnSync('taskkill', ['/PID', String(chrome.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+    else
+        chrome.kill('SIGKILL');
+};
+const removeProfile = () => {
+    let failure;
+    for (let attempt = 0; attempt < 30; attempt++) {
+        try {
+            rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 });
+            return;
+        }
+        catch (error) {
+            failure = error;
+        }
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+    }
+    console.error('could not remove temporary profile', profile, failure?.message);
+};
+const bail = error => { console.error(error); killChrome(); removeProfile(); process.exit(2); };
+process.on('unhandledRejection', bail);
+process.on('uncaughtException', bail);
+const timer = setTimeout(() => bail(new Error('performance run timed out')), 180000);
 let ws;
 try {
     let port;
@@ -101,8 +129,14 @@ try {
         process.exitCode = 1;
 }
 finally {
-    ws?.close();
-    chrome.kill();
     clearTimeout(timer);
-    console.log('Stopped test Chrome PID', chrome.pid);
+    try {
+        ws?.close();
+    }
+    catch { }
+    const exited = new Promise(done => chrome.once('exit', done));
+    killChrome();
+    await Promise.race([exited, delay(5000)]);
+    removeProfile();
+    console.log('Stopped test Chrome PID', chrome.pid, existsSync(profile) ? '(profile NOT removed)' : '(profile removed)');
 }

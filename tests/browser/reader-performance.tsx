@@ -103,12 +103,12 @@ function makeData() { const turns = new Map(), nodes = new Map(), order: string[
     turn.steps.push(step);
     add({ key: `a${t}`, kind: 'assistant-step', location: { kind: 'step', turn, step }, data });
     if (t !== 21)
-        turn.data.set('turn-tail', { closing: { step: 20, time: Date.now(), blocks: data.blocks } });
+        turn.data.set('turn-tail', { closing: { step: 20, time: Date.now(), finalNode: { seq: 900 + t }, blocks: data.blocks } });
     turns.set(t, turn);
 } return { order, nodes, timeline: { turns, turnOrder: [...turns.keys()] } }; }
 async function reader() {
     const chat = store(makeData(), true);
-    const sess = store({ running: true, queue: [], openState: 'loaded', hasMore: false, loadingOlder: false, openError: null });
+    const sess = store({ running: true, queue: [], pendingSubmissions: [], openState: 'loaded', hasMore: false, loadingOlder: false, openError: null });
     const pend = store(new Map(), true);
     const prefs = store({ motion: true, collapseThinking: false, expanded: {} });
     const sessions = store({ byId: { fixture: { cwd: 'C:/synthetic' } }, jobsBySession: {} });
@@ -116,7 +116,9 @@ async function reader() {
     let historyBlockRenders = 0;
     const renderSlotChain = (_name: any, owner: any, options: any) => { if (owner.block.text?.startsWith('已检查实现'))
         historyBlockRenders++; return options.fallback; };
-    const props: any = { sessionId: 'fixture', useSession: sess.use, useChat: chat.use, useSessionPendingInteraction: pend.use, useStore: prefs.use, useSessions: sessions.use, actions, renderSlotChain, loadOlder: async () => { }, loadImage: async () => { throw Error('No image in fixture'); }, t: (key: any) => key };
+    const props: any = { sessionId: 'fixture', useSession: sess.use, useChat: chat.use, useSessionPendingInteraction: pend.use, useStore: prefs.use, useSessions: sessions.use, actions, renderSlotChain, loadOlder: async () => { }, loadImage: async () => { throw Error('No image in fixture'); }, t: (key: any) => key, contextT: (key: any) => key,
+        useProjection: () => undefined, jobsSource: { subscribe: () => () => { }, getSnapshot: () => ({ rows: {} }) }, watchJobs: () => () => { },
+        openView: () => { }, viewRequest: null, completeViewRequest: () => { } };
     injectCompatStyles();
     flushSync(() => root.render(<Reader {...props}/>));
     await wait(600);
@@ -150,12 +152,12 @@ async function reader() {
         animations = Math.max(animations, live.length);
         blur ||= live.some(a => (a.effect as KeyframeEffect)?.getKeyframes().some(f => String(f.filter).includes('blur(1px)')));
         if (!heavyChecked && now - start > 1000) {
-            const reader = host.querySelector<HTMLElement>('[data-dsh-clearview]')!, word = reader.querySelector('[data-reader-word][data-word-state="resolving"]'), shimmer = reader.querySelector('[data-reader-shimmer="true"]');
+            const reader = host.querySelector<HTMLElement>('[data-dsh-clearview]')!, word = reader.querySelector('[data-reader-word][data-word-state="resolving"]'), shimmer = reader.querySelector('[data-shimmer] > [inert]');
             if (word) {
                 heavyChecked = true;
                 reader.dataset.dshcpHeavy = 'on';
                 heavyPreserved = getComputedStyle(word).filter.includes('blur(');
-                shimmerPreserved = !!shimmer && getComputedStyle(shimmer, '::before').display !== 'none' && getComputedStyle(shimmer, '::before').animationName !== 'none';
+                shimmerPreserved = !!shimmer && getComputedStyle(shimmer).display !== 'none';
                 reader.dataset.dshcpHeavy = 'off';
                 if (!__BASELINE__) {
                     check(heavyPreserved, 'heavy mode removed blur');
@@ -169,6 +171,10 @@ async function reader() {
     performance.mark('clearview-stream-end');
     check(host.querySelectorAll('[data-reader-turn]').length === 21, 'full Reader turn count');
     check(!host.querySelector('[data-reader-block-error]'), 'Reader error boundary');
+    const earlier = host.querySelector<HTMLButtonElement>('[data-reader-earlier]');
+    earlier?.click();
+    await wait(300);
+    const foldRows = host.querySelectorAll('[data-reader-fold]').length;
     check(host.querySelectorAll('[data-reader-tool-call]').length === 20, 'tool rows missing');
     check(animations > 0 && blur, 'original blur animation was not active');
     if (!__BASELINE__)
@@ -187,7 +193,7 @@ async function reader() {
     flushSync(() => append(text += '补充说明。'.repeat(8), false));
     await wait(250);
     check(host.scrollTop <= paused + 2, 'manual upward scroll did not pause follow');
-    const jump = host.querySelector<HTMLButtonElement>('[data-detached="true"]');
+    const jump = host.querySelector<HTMLButtonElement>('[data-reader-activity-pill], [data-reader-jump]');
     check(!!jump, 'back-to-latest control missing');
     jump?.click();
     await wait(80);
@@ -195,7 +201,7 @@ async function reader() {
     const old = chat.get(), oldNode = old.nodes.get('a21'), oldTurn = old.timeline.turns.get(21);
     const data = { ...oldNode.data, status: 'settled' };
     const step = { step: 20, data: new Map([['assistant-step', data]]) };
-    const turn = { ...oldTurn, status: 'closed', steps: [...oldTurn.steps.slice(0, -1), step], end: { time: Date.now(), data: { reason: { kind: 'completed' } } }, data: new Map([['turn-tail', { closing: { step: 20, time: Date.now(), blocks: data.blocks } }]]) };
+    const turn = { ...oldTurn, status: 'closed', steps: [...oldTurn.steps.slice(0, -1), step], end: { time: Date.now(), data: { reason: { kind: 'completed' } } }, data: new Map([['turn-tail', { closing: { step: 20, time: Date.now(), finalNode: { seq: 921 }, blocks: data.blocks } }]]) };
     flushSync(() => { chat.set({ ...old, nodes: new Map(old.nodes).set('a21', { ...oldNode, data, location: { kind: 'step', turn, step } }), timeline: { ...old.timeline, turns: new Map(old.timeline.turns).set(21, turn) } }); sess.set({ ...sess.get(), running: false }); });
     await wait(750);
     const lastText = host.querySelector('[data-reader-turn="21"] [data-reader-text]')?.textContent;
@@ -210,7 +216,7 @@ async function reader() {
         check(snap?.chat.timeline.turns.get(21)?.status === 'closed', 'DOM compat snapshot stale');
         check(!!snap && turnMetaText(turnMeta(snap.chat.timeline.turns.get(21))) !== '', 'turn footer missing after fine-grained subscriptions');
     }
-    const result = { frameP95: quantile(frames, .95), frameMax: Math.max(...frames), framesOver25: frames.filter(n => n > 25).length, samples: frames.length, commitP95: quantile(commits, .95), historyBlockRenders, chatSubscribers: chat.subscriberCount(), sessionSubscribers: sess.subscriberCount(), pendingSubscribers: pend.subscriberCount(), peakAnimations: animations, blurActive: blur, heavyPreserved, shimmerPreserved, scrollRange: Math.max(...scrolls) - Math.min(...scrolls), maxActiveChars: text.length, turns: 21, tools: 20 };
+    const result = { frameP95: quantile(frames, .95), frameMax: Math.max(...frames), framesOver25: frames.filter(n => n > 25).length, samples: frames.length, commitP95: quantile(commits, .95), historyBlockRenders, chatSubscribers: chat.subscriberCount(), sessionSubscribers: sess.subscriberCount(), pendingSubscribers: pend.subscriberCount(), peakAnimations: animations, blurActive: blur, heavyPreserved, shimmerPreserved, scrollRange: Math.max(...scrolls) - Math.min(...scrolls), maxActiveChars: text.length, turns: 21, tools: 20, earlierClicked: !!earlier, foldRowsAfterEarlier: foldRows };
     flushSync(() => root.render(null));
     return result;
 }
