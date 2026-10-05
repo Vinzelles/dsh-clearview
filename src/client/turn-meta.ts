@@ -92,3 +92,8 @@ export function presentedFiles(turn: TurnLocation | undefined): PresentedFileRef
   }
   return order.map(path => latest.get(path)!);
 }
+
+/** True when later non-rendered evidence means the closing reply is no longer the transcript tail. */
+export function branchUnavailable(turn: TurnLocation | undefined): boolean {
+  return !!turn && record(turnData(turn, 'turn-tail'))?.branchUnavailable === true;
+}

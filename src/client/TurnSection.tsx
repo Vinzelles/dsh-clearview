@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { AssistantChatData } from '@deepseek-ai/dsh-client-ui-chat/client';
-import { BlockBoundary, Blocks, CopyAnswer } from './Blocks.js';
+import { BlockBoundary, Blocks } from './Blocks.js';
 import { useChatSelector, usePendingSelector } from './compat/session-snapshot.js';
 import type { MarkdownFileMentions } from './markdown/render.js';
 import { StatusText } from './motion.js';
@@ -18,6 +18,7 @@ import { InputBubble, RecordRow, TurnNotice } from './RecordRows.js';
 import type { RewindSpan } from './rewind-hidden.js';
 import { activityPhase, readerFlow } from './tool-activity.js';
 import { ToolImages, ToolRow } from './ToolRow.js';
+import { TurnFooter } from './TurnFooter.js';
 import { closingOf } from './turn-meta.js';
 import type { BlockRenderProps, ReaderProps } from './types.js';
 import css from './TurnSection.module.css';
@@ -172,6 +173,7 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, select
     if (!node || node.kind !== 'assistant-step') return [];
     return assistantSegments((node.data as AssistantChatData).blocks).find(part => part.start === segment.start)?.blocks ?? [];
   }), [layout.answer, get]);
+  const answerText = useMemo(() => answerBlocks.flatMap(block => block.kind === 'text' ? [block.text] : []).join('\n\n'), [answerBlocks]);
   const terminal = terminalLabel(boundary.reason);
   const showTerminal = terminal && boundary.reason !== 'error' && boundary.reason !== 'max-tokens';
   return <section className={css.turn} data-reader-turn={group.turn ?? 'unresolved'} data-reader-turn-state={boundary.status} data-reader-turn-result={boundary.reason ?? undefined}>
@@ -191,7 +193,7 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, select
     </BlockBoundary>)}
     {layout.notices.map(key => <BlockBoundary key={key}><TurnNotice useSession={props.useSession} nodeKey={key} /></BlockBoundary>)}
     {showTerminal && <p className={css.terminal} data-reader-terminal>{terminal}</p>}
-    {status === 'done' && <CopyAnswer blocks={answerBlocks} />}
+    {closed && <TurnFooter turn={turn} answerText={answerText} />}
     {flowTail}
   </section>;
 });
