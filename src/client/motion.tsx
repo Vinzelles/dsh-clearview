@@ -1,10 +1,9 @@
-import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import clsx from 'clsx';
 import css from './Reader.module.css';
 import { TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives';
 import { MOTION } from './motion-tokens.js';
-import { StreamMotionContext } from './streaming.js';
 import { READING_SURFACE_GAP, readingFollowAction, readingScrollAction } from './reading-follow.js';
 import { pickAnchor, recallPosition, rememberPosition } from './reading-position.js';
 
@@ -90,19 +89,6 @@ export function StatusText({ text, motion, shimmer = false, className }: { text:
     </span>
     <span className={css.srOnly} role="status" aria-live="polite" aria-atomic="true">{text}</span>
   </span>;
-}
-
-export function Disclosure({ open, onChange, label, status, controls, buttonRef }: {
-  open: boolean; onChange: (value: boolean) => void; label: ReactNode;
-  status?: string; controls: string; buttonRef: RefObject<HTMLButtonElement>;
-}) {
-  return <div className={css.disclosure} data-reader-disclosure data-expanded={open}>
-    <button ref={buttonRef} type="button" className={css.disclosureButton} aria-label={`${open ? '收起' : '展开'}思考与过程${status ? `，${status}` : ''}`} aria-expanded={open} aria-controls={controls} onClick={() => onChange(!open)}>
-      {label}
-      {status && <span className={css.disclosureStatus}>{status}</span>}
-      <svg className={css.chevron} data-open={open} viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg>
-    </button>
-  </div>;
 }
 
 /** Supplemental details stay in source order beside their own narration. */
@@ -237,38 +223,6 @@ export function MountFade({ mounted, motion, children }: {
   if (!present) return null;
   if (!motionOn) return <>{children({ entering: false })}</>;
   return <>{children({ entering })}</>;
-}
-
-/** Retire only narration that was actually visible; historical rows stay folded. */
-export function RetiringContent({ visible, children }: { visible: boolean; children: ReactNode }) {
-  const { enabled } = useContext(StreamMotionContext);
-  const root = useRef<HTMLDivElement>(null);
-  const animation = useRef<Animation | null>(null);
-  const [present, setPresent] = useState(visible);
-  const [focusHeld, setFocusHeld] = useState(false);
-  useLayoutEffect(() => {
-    const element = root.current;
-    if (visible) {
-      animation.current?.cancel(); animation.current = null;
-      setPresent(true);
-      return;
-    }
-    if (!element) return;
-    if (element.contains(document.activeElement)) { setFocusHeld(true); return; }
-    if (focusHeld) return;
-    const from = element.getBoundingClientRect().height;
-    animation.current?.cancel(); animation.current = null;
-    if (!enabled || from < 1) { setPresent(false); return; }
-    const next = element.animate([{ height: `${from}px`, opacity: 1 }, { height: '0px', opacity: 0 }], { duration: MOTION.size, easing: EASING, fill: 'both' });
-    animation.current = next;
-    next.onfinish = () => { if (animation.current === next) { animation.current = null; next.cancel(); setPresent(false); } };
-  }, [visible, enabled, focusHeld]);
-  useEffect(() => () => animation.current?.cancel(), []);
-  if (!visible && !present) return null;
-  return <div ref={root} className={css.retiringContent} data-reader-retiring={visible ? 'visible' : 'retiring'} data-ud-motion="reader-progress-retire"
-    onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocusHeld(false); }}>
-    {children}
-  </div>;
 }
 
 // DOM-only behavior: the native Session remains the sole source of business data.

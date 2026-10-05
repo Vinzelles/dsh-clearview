@@ -5,36 +5,19 @@
  * 与原 patcher 注入语义一致）。
  *
  * 包含：
- *  - reader-composer-layout.css      悬浮输入框布局适配（回到最新药丸）
- *  - reader-perf-long-content.css    离屏轮次 content-visibility + 重载降级（heavy 标记）
- *  - reader-reasoning-follow.css     思考跟随态底部渐隐修正
- *  - reader-reasoning-plain.css      短思考引用式左竖线
- *  - reader-tool-error-dedup.css     工具失败重复错误详情去重
+ *  - reader-scroll-anchor.css        对话滚动容器交给原生 scroll anchoring
+ *  - reader-perf-long-content.css    已关闭旧轮次的离屏渲染（heavy 标记）
  *  - rewind-reader-bridge.css        rewind 兼容桥 actions 行样式
+ *
+ * 0.2.0 起移除：工具状态胶囊、回到最新药丸定位、思考卡渐隐/短思考、失败去重、
+ * 统计行（这些表面已由组件自身样式承担）。
  */
 
-export const COMPAT_CSS = `/* ==== reader-tool-state.css ==== */
-/* 确保工具状态徽标不残留旧构建的半圆药丸样式，统一为工具行同款圆角矩形。 */
-[data-dsh-clearview] [class*="toolState"] {
-  border-radius: 6px !important;
-  padding: 2px 8px !important;
-}
-
-/* ==== reader-scroll-anchor.css ==== */
+export const COMPAT_CSS = `/* ==== reader-scroll-anchor.css ==== */
 /* 对话滚动容器交给原生 scroll anchoring 负责脱离底部后的位置保持；
  * 插件不再叠加手动锚点补偿，避免滚动历史时被二次锚定拽跳。 */
 [data-conversation-scroll] {
   overflow-anchor: auto;
-}
-
-/* ==== reader-composer-layout.css ==== */
-/* 阅读视图 × 悬浮输入框布局适配：不给任何大块区域加实底（保持原生透底美学）。
- *   1. 「回到最新」按钮 sticky bottom 抬到输入框正上方（原生 12px 会被悬浮输入框盖住）；
- *   2. 按钮视觉已并入插件主体（与运行状态条同款毛玻璃，见 Reader.module.css .jump），
- *      不再需要 canvas-solid 实底补丁。 */
-
-[data-dsh-clearview] [class*="jumpDock"] {
-  bottom: calc(var(--dsh-composer-height, 152px) + 12px) !important;
 }
 
 /* ==== reader-perf-long-content.css ==== */
@@ -60,32 +43,6 @@ export const COMPAT_CSS = `/* ==== reader-tool-state.css ==== */
 [data-dsh-clearview][data-dshcp-heavy="on"] section[data-reader-turn][data-reader-turn-state="closed"][data-cv-armed="1"]:not(:last-of-type):not(:nth-last-of-type(2)) {
   content-visibility: auto;
   contain-intrinsic-size: auto 480px;
-}
-
-/* ==== reader-reasoning-follow.css ==== */
-/* 跟随态只保留顶部渐隐，底部不再渐隐（否则最新一行被遮罩淡掉）；
- * 手动阅读态不受影响（插件按 data-edges 自行切换）。 */
-
-[data-dsh-clearview] [data-reader-reasoning-card][data-following=true] [data-reader-reasoning-scroll] {
-  -webkit-mask-image: linear-gradient(transparent 0, black var(--reason-fade), black 100%) !important;
-  mask-image: linear-gradient(transparent 0, black var(--reason-fade), black 100%) !important;
-}
-
-/* ==== reader-reasoning-plain.css ==== */
-/* 短思考（未形成卡片）：不加容器，降低存在感，避免和正文混淆。 */
-
-[data-dsh-clearview] [data-reader-reasoning-card][data-overflow=false][data-expanded=false] [class*="reasonPlain"] {
-  opacity: 0.72;
-  color: var(--dsw-alias-label-tertiary);
-}
-
-/* ==== reader-tool-error-dedup.css ==== */
-/* 工具失败时同一结果被呈现三次；隐藏红色提示条下方重复的完整错误文本。
- * 注意 Blocks 每块套了一层 data-slot 包装（display:contents 不改层级），选择器必须写全。
- * 完整详情未丢失：工具卡片展开后的页签与标题摘要仍在。 */
-
-[data-dsh-clearview] div[role="alert"] + div > div[data-slot="dsh-clearview.block"] > div[data-reader-text] {
-  display: none !important;
 }
 
 /* ==== rewind-reader-bridge.css ==== */

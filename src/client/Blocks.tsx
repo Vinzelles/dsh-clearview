@@ -2,7 +2,6 @@ import { Component, Fragment, memo, useEffect, useLayoutEffect, useRef, useState
 import type { ReactNode } from 'react';
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment';
 import type { AssistantBlock } from '@deepseek-ai/dsh-client-ui-conversation/client';
-import { writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives';
 import { JsonBlockL } from './native/labeled-blocks.js';
 import type { BlockRenderProps, ReaderBlockOwner } from './types.js';
 import { useStreamingText } from './streaming.js';
@@ -141,22 +140,3 @@ export const Blocks = memo(function Blocks({ blocks, streaming = false, source =
     </BlockBoundary>)}
   </div>;
 });
-
-export function CopyAnswer({ blocks }: { blocks: readonly AssistantBlock[] }) {
-  const [receipt, setReceipt] = useState('');
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
-  const text = blocks.filter((block): block is Extract<AssistantBlock, { kind: 'text' }> => block.kind === 'text').map(block => block.text).join('\n\n');
-  if (!text.trim()) return null;
-  return <div className={css.answerActions}>
-    <button type="button" className={css.iconButton} aria-label="复制回答" title="复制回答" onClick={async () => {
-      const accepted = await writeClipboard(text);
-      setReceipt(accepted ? '已复制' : '未能复制，请手动选择文字');
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => setReceipt(''), 2000);
-    }}>
-      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="1.5" /><path d="M3 10H2.8A.8.8 0 0 1 2 9.2V2.8a.8.8 0 0 1 .8-.8h6.4a.8.8 0 0 1 .8.8V3" /></svg>
-    </button>
-    <span role="status" className={css.meta}>{receipt}</span>
-  </div>;
-}

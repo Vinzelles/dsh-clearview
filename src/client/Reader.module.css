@@ -19,105 +19,43 @@
   overflow-anchor: auto;
   container-type: inline-size;
 }
-.column { max-width: var(--dsh-chat-content-width, 748px); width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; min-width: 0; }
-.toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 20px; }
-.textButton, .historyButton, .iconButton, .disclosureButton, .imageOpen, .dialogClose { font: inherit; cursor: pointer; }
-.textButton { border: 0; background: transparent; color: var(--dsw-alias-label-secondary); padding: 2px 6px; border-radius: 6px; white-space: nowrap; transition: background-color 160ms ease, color 160ms ease; }
-.textButton:hover, .iconButton:hover, .disclosureButton:hover { background: var(--dsw-alias-interactive-bg-hover); }
-/* Toolbar switches */
-.switchButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  border: 0;
-  background: transparent;
-  padding: 3px 6px;
-  border-radius: 7px;
-  color: var(--dsw-alias-label-secondary);
-  font: inherit;
-  font-size: 12px;
-  line-height: 20px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.switchButton:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
-}
-.switchButton, .switchLabel { transition: background-color 160ms ease, color 160ms ease; }
-.switchLabel[data-checked=true] { color: var(--dsw-alias-label-primary); }
-.switchLabel[data-checked=false] { color: var(--dsw-alias-label-tertiary); }
-.switchButton:hover .switchLabel { color: var(--dsw-alias-label-primary); }
-.root button:focus-visible, .root summary:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 3px; }
-.turn { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.turn + .turn { margin-top: 12px; }
-.user { align-self: flex-end; max-width: min(525px, 82%); padding: 10px 16px; border-radius: 22px; background: var(--dsw-specific-bubble); color: var(--dsw-alias-label-primary); line-height: 24px; margin-bottom: 4px; overflow-wrap: anywhere; }
-.user .blocks { gap: 10px; }
-/* 用户消息文本叶子（替代宿主 primitives 的 MessageText）：与原生 .text 等价，
-   字号/行高继续继承气泡，只补换行与断词两条。 */
-.userText { white-space: pre-wrap; word-break: break-word; }
-.answer { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
-.readingText { min-width: 0; }
-.reasonPlain {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font: inherit;
-  color: inherit;
-}
+.column { display: flex; flex-direction: column; gap: 22px; width: 100%; max-width: var(--dsh-chat-content-width, 748px); min-width: 0; margin: 0 auto; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
+.switchButton { display: inline-flex; align-items: center; gap: 8px; padding: 2px 8px; border: 0; border-radius: var(--dsw-radius-sm); background: transparent; color: var(--dsw-alias-label-tertiary); font: inherit; white-space: nowrap; cursor: pointer; transition: background-color var(--cv-fast) ease, color var(--cv-fast) ease; }
+.switchButton:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); }
+.switchLabel[data-checked=true] { color: var(--dsw-alias-label-secondary); }
+.root button:focus-visible, .root summary:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 2px; }
 
-/* Short thinking: plain, quieter text without a separate container. */
-.reasonCard[data-overflow=false][data-expanded=false] .reasonPlain,
-[data-dsh-clearview] [data-reader-reasoning-card][data-overflow=false][data-expanded=false] [class*="reasonPlain"] {
-  opacity: 0.72;
-  color: var(--dsw-alias-label-tertiary);
-}
+.blocks { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.blocks:empty { display: none; }
+.blocks > :first-child { margin-top: 0; }
+.blocks > :last-child { margin-bottom: 0; }
+.blocks :global(.md-table-wide) { max-width: 100%; }
+.readingText { min-width: 0; }
 .readingText button { min-width: 24px; min-height: 24px; }
+.userText { white-space: pre-wrap; word-break: break-word; }
+.reasonPlain { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; color: inherit; }
 .streamWord { display: inline-block; }
 .streamInlineWord { display: inline; }
 .streamWord, .streamInlineWord, .streamAtom, .streamInlineAtom { opacity: 1; filter: none; }
 .streamAtom, .streamInlineAtom { min-width: 0; }
 .streamInlineAtom { display: inline; }
 @media (prefers-reduced-motion: reduce) { .streamWord, .streamInlineWord, .streamAtom, .streamInlineAtom { opacity: 1 !important; filter: none !important; } }
-.retiringContent { min-width: 0; }
-.retiringContent[data-reader-retiring=retiring] { overflow: hidden; }
-.mainFlow, .blocks { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-.mainFlow { padding-bottom: 20px; }
-.mainFlow:empty, .blocks:empty { display: none; }
-.blocks > :first-child { margin-top: 0; }
-.blocks > :last-child { margin-bottom: 0; }
-.blocks :global(.md-table-wide) { max-width: 100%; }
-.disclosure { min-width: 0; }
-.disclosureButton { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 32px; border: 0; background: transparent; border-radius: 7px; color: var(--dsw-alias-label-tertiary); font-size: 14px; line-height: 24px; font-weight: 400; padding: 4px 6px; margin-left: -6px; text-align: left; transition: background-color 160ms ease, color 160ms ease; }
-.disclosureStatus {
-  flex: none;
-  padding: 0 6px;
-  border-radius: 6px;
-  font-size: 12px;
-  line-height: 20px;
-  color: var(--dsw-alias-label-secondary);
-  background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 55%, transparent);
-  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 55%, transparent);
-}
-.disclosure[data-reader-status-only] { display: flex; align-items: center; min-height: 32px; }
+
 .statusText { display: inline-flex; min-width: 0; max-width: 100%; font: inherit; color: inherit; }
 .srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
-/* Transitions.dev — Thinking states, supplied by the user. Native DSH colors;
-   the hidden sizer shares this font and the short phases share a left edge. */
 .think {
   --think-swap: 200ms;
   --think-gap: 50ms;
   --think-distance: 4px;
   --think-blur: 1px;
-  --think-shimmer: 2000ms;
-  --think-base: var(--dsw-alias-label-secondary);
-  --think-highlight: var(--dsw-alias-label-primary);
   --think-ease: cubic-bezier(.2,.8,.2,1);
   position: relative; display: inline-block; max-width: 100%; text-align: left;
 }
 .thinkSizer { display: block; visibility: hidden; white-space: nowrap; }
 .thinkText {
   position: absolute; top: 0; left: 0; right: 0; display: block;
-  color: var(--think-base); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   transform: translateY(0); filter: blur(0); opacity: 1;
   transition: transform var(--think-swap) var(--think-ease), filter var(--think-swap) var(--think-ease), opacity var(--think-swap) var(--think-ease);
 }
@@ -131,664 +69,52 @@
   .thinkText { transition: none !important; transform: none !important; filter: none !important; opacity: 1 !important; }
   .thinkText[data-reader-status-copy=outgoing] { display: none !important; }
 }
-.chevron { flex: none; stroke: currentColor; fill: none; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; transition: transform 260ms cubic-bezier(.22,1,.36,1), opacity 160ms ease; }
-.chevron[data-open=true] { transform: rotate(90deg); }
+
 .disclosureBody { overflow: hidden; height: 0; }
-/* CollapseBody's animated shell: clips its children while the WAAPI height
-   animation is shorter than the content, so nothing paints outside the card. */
 .collapseBody { overflow: hidden; }
-.processContents { display: flow-root; border-left: 1px solid var(--dsw-alias-border-l2); padding: 3px 0 2px 17px; margin: 0 0 0 6px; color: var(--dsw-alias-label-secondary); font-size: 14px; line-height: 24px; }
-.processContents > :last-child { margin-bottom: 0; }
-.processFrame { min-width: 0; padding-right: 2px; }
-.toolActivity { min-width: 0; color: var(--dsw-alias-label-secondary); }
-.nativeToolRow { min-width: 0; padding-left: 12px; border-radius: 6px; transition: background-color 160ms ease; }
-.toolActivity[data-tool-phase=preparing] .nativeToolRow,
-.toolActivity[data-tool-phase=running] .nativeToolRow {
-  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 8%, transparent);
-}
-.toolActivity[data-tool-phase=returned] .nativeToolRow,
-.toolActivity[data-tool-phase=succeeded] .nativeToolRow {
-  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 7%, transparent);
-}
-.toolActivity[data-tool-phase=failed] .nativeToolRow,
-.toolActivity[data-tool-phase=interrupted] .nativeToolRow {
-  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 7%, transparent);
-}
-/* The whole tool row is the click target (expandOnRowClick); the host
-   primitives only swap the leading icon on hover, so give the row itself the
-   same interactive background as the other clickable rows. Placed after the
-   phase tints so it wins the specificity tie. */
-.toolActivity .nativeToolRow:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-.rowSeparator { flex: none; width: 2px; height: 2px; margin: 0 8px; border-radius: 1px; background: var(--dsw-alias-label-caption); }
-.nativeToolSummary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsw-alias-label-tertiary); font-size: 14px; line-height: 24px; }
-.nativeToolRow:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 3px; border-radius: 4px; }
-.toolState {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex: none;
-  font-size: 11px;
-  line-height: 16px;
-  white-space: nowrap;
-  margin-left: 8px;
-  padding: 2px 8px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease;
-}
-.toolState::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  flex: none;
-}
-.toolState[data-phase=preparing], .toolState[data-phase=running] {
-  color: var(--dsw-alias-state-business-primary);
-  border-color: color-mix(in srgb, var(--dsw-alias-state-business-primary) 32%, transparent);
-  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 13%, transparent);
-}
-.toolState[data-phase=returned], .toolState[data-phase=succeeded] {
-  color: var(--dsw-alias-state-success-primary);
-  border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 32%, transparent);
-  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 13%, transparent);
-}
-.toolState[data-phase=failed], .toolState[data-phase=interrupted] {
-  color: var(--dsw-alias-state-error-primary);
-  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 32%, transparent);
-  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 13%, transparent);
-}
-.toolState[data-phase=preparing]::before,
-.toolState[data-phase=running]::before {
-  animation: tool-state-pulse 1.15s ease-in-out infinite;
-}
-/* Every in-flight phase carries the same status motion, not just `running`:
-   a terminal command's long execution is what made the pulse/shimmer visible,
-   while write/read/search rows spend most of their visible lifetime in
-   `preparing` (the model streams the tool input — for write that is the whole
-   file content) and their actual execution settles in milliseconds. Gating the
-   motion on `running` alone left those rows visually static; the row tint above
-   already treats preparing and running as one active state, so the chip pulse
-   and summary sweep do the same. */
-.toolActivity[data-tool-phase=preparing] .toolState,
-.toolActivity[data-tool-phase=running] .toolState {
-  animation: dsh-cluster-active-pulse 1.8s ease-in-out infinite;
-}
-@supports (background-clip: text) or (-webkit-background-clip: text) {
-  .toolActivity[data-tool-phase=preparing] .nativeToolSummary,
-  .toolActivity[data-tool-phase=running] .nativeToolSummary {
-    background-image: linear-gradient(90deg,
-      color-mix(in srgb, var(--dsw-alias-label-secondary) 35%, transparent) 0%,
-      var(--dsw-alias-label-primary) 50%,
-      color-mix(in srgb, var(--dsw-alias-label-secondary) 35%, transparent) 100%);
-    background-size: 200% 100%;
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    animation: dsh-cluster-active-shimmer 2.2s linear infinite;
-  }
-}
-@keyframes tool-state-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: .55; }
-}
-.toolLedger { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; padding: 10px 14px 0; color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 18px; font-variant-numeric: tabular-nums; }
-.toolEngine { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.toolDetails { margin: 6px 0 0 22px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; min-width: 0; overflow: hidden; }
-/* Inside a merged failure card the same toolDetails block is reused as-is; the
-   22px indent only aligns with the tool row's disclosure, so it is dropped,
-   and the card's own border stands in for the toolDetails frame. */
-.errorCard .toolDetails { margin-left: 0; border: 0; }
-.toolTabs { display: flex; align-items: center; gap: 15px; padding: 0 14px; }
-.toolTabs > button { background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 10px 1px 8px; font: inherit; font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-secondary); cursor: pointer; transition: color 160ms ease, border-color 160ms ease; }
-.toolTabs > button:hover { color: var(--dsw-alias-label-primary); }
-.toolTabs > button[aria-selected=true] { color: var(--dsw-alias-label-primary); border-bottom-color: var(--dsw-alias-state-business-primary); }
-.toolPanel { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; font-size: 13px; line-height: 22px; }
-.toolPanel:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: -3px; }
-.toolDetailNote { margin: 0 0 9px; font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-secondary); }
-.toolRawLabel { margin: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; font-weight: 500; }
-.toolRaw { margin: 0; max-height: 400px; padding: 12px; overflow: auto; border-radius: 8px; background: var(--dsw-alias-bg-module-platform); color: var(--dsw-alias-label-primary); font: 12px/20px ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
-/* Shared raw-record rhythm (row 原始数据 tab and merged card 完整记录): the
-   same 12px column gap the tool panel uses, so the expanded content reads
-   identically in both seats. */
-.toolRawSection { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.toolDocument .blocks { font-size: 13px; line-height: 22px; }
-.toolChildren { margin: 0 14px 12px 24px; padding-left: 12px; border-left: 1px solid var(--dsw-alias-border-l2); display: flex; flex-direction: column; gap: 9px; }
+.processFrame { min-width: 0; }
+.processContents { display: flow-root; min-width: 0; }
 
-/* Operational cluster block (consecutive commands, tools, ops) */
-.clusterBlock {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  min-width: 0;
-  border-radius: 10px;
-  /* The card is the clip for the expanding body: the WAAPI height animation
-     makes .clusterBody shorter than its content mid-flight, and without this
-     the inner stack paints past the rounded card edge. */
-  overflow: hidden;
-  background: var(--dsw-alias-bg-module-platform);
-  background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 50%, transparent);
-  backdrop-filter: blur(6px);
-  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 80%, rgba(255, 255, 255, 0.08));
-  margin: 0;
-  transition: background-color 160ms ease, border-color 160ms ease;
-}
-.clusterBlock:hover {
-  background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 82%, transparent);
-  border-color: color-mix(in srgb, var(--dsw-alias-border-l1) 75%, rgba(255, 255, 255, 0.12));
-}
-.clusterHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  min-height: 32px;
-  padding: 6px 12px;
-  background: transparent;
-  border: 0;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  border-radius: 7px;
-  user-select: none;
-  transition: background-color 160ms ease;
-}
-.clusterHeader:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-.clusterHeader:focus-visible {
-  outline: 2px solid var(--dsw-alias-state-business-primary);
-  outline-offset: -2px;
-}
-.clusterHeaderLeft {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex: 1;
-}
-.clusterIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--dsw-alias-label-tertiary);
-  flex: none;
-}
-.clusterSummary {
-  min-width: 0;
-  font-size: 13px;
-  line-height: 20px;
-  font-weight: 500;
-  color: var(--dsw-alias-label-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.clusterFailure {
-  flex: none;
-  font-size: 12px;
-  line-height: 18px;
-  font-weight: 500;
-  color: var(--dsw-alias-state-error-primary);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.clusterHeaderRight {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  margin-left: 8px;
-}
-.clusterHint {
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
-}
-.clusterBody {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  border-top: 1px solid var(--dsw-alias-border-l2);
-  /* Clip the inner stack while the animated height is still shorter than its
-     content (same role .disclosureBody plays for ProcessFragment); the card
-     above clips the remaining corner artifacts to the rounded border. */
-  overflow: hidden;
-}
-/* Padding + gaps live on the inner stack so the WAAPI height animation on
-   .clusterBody never snaps content at its start/end frames. */
-.clusterBodyInner {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  padding: 8px 12px 12px 12px;
-}
-
-.clusterBlock[data-active="true"] .clusterSummary,
-.clusterBlock[data-active="true"] .clusterHint {
-  animation: dsh-cluster-active-pulse 1.8s ease-in-out infinite;
-}
-@keyframes dsh-cluster-active-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.55; }
-}
-@supports (background-clip: text) or (-webkit-background-clip: text) {
-  .clusterBlock[data-active="true"] .clusterSummary {
-    background-image: linear-gradient(90deg,
-      color-mix(in srgb, var(--dsw-alias-label-secondary) 35%, transparent) 0%,
-      var(--dsw-alias-label-primary) 50%,
-      color-mix(in srgb, var(--dsw-alias-label-secondary) 35%, transparent) 100%);
-    background-size: 200% 100%;
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    animation: dsh-cluster-active-shimmer 2.2s linear infinite;
-  }
-}
-@keyframes dsh-cluster-active-shimmer {
-  0% { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
-}
-[data-motion="off"] .clusterBlock[data-active="true"] .clusterSummary,
-[data-motion="off"] .clusterBlock[data-active="true"] .clusterHint,
-[data-motion="off"] .clusterBlock[data-active="true"] .clusterSummary {
-  animation: none !important;
-  background-image: none !important;
-  color: inherit !important;
-}
-@media (prefers-reduced-motion: reduce) {
-  .clusterBlock[data-active="true"] .clusterSummary,
-  .clusterBlock[data-active="true"] .clusterHint {
-    animation: none !important;
-    background-image: none !important;
-    color: inherit !important;
-  }
-}
-
-@container (max-width: 420px) { .toolLedger { padding-left: 33px; padding-right: 10px; } .toolPanel { padding: 10px; } .toolChildren { margin-left: 12px; padding-left: 8px; } }
-@media (pointer: coarse) { .toolTabs > button { min-height: 44px; } }
-/* Continuous reasoning follow (0.1.4+): the rAF controller writes the native
-   scroll offset per frame against cached metrics, so neither the fade nor the
-   scroll cost grows with transcript length; the viewport is always a native
-   scroller and the track is a plain wrapper. */
-.reasonCard {
-  --reason-preview-height: 224px;
-  --reason-fade: 28px;
-  position: relative;
-  min-width: 0;
-  overflow: hidden;
-  padding: 16px 20px 10px;
-  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 80%, rgba(255, 255, 255, 0.08));
-  border-radius: 12px;
-  background: var(--dsw-alias-bg-module-platform);
-  background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 50%, transparent);
-  backdrop-filter: blur(6px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  scroll-margin-block: 16px calc(var(--dsh-composer-height, 152px) + 16px);
-  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
-  /* Paint containment only. The card already clips its content (overflow:
-     hidden + border-radius), so this cannot change what is painted; it stops
-     the card's own per-frame changes — the reasoning follow write and the
-     streaming text behind it — from invalidating paint above the card.
-     Deliberately NOT will-change: transform. Promoting every reasoning card
-     to its own compositor layer looked promising in one noisy run (34.3% ->
-     21.4% of a core) but an interleaved 3x A/B on the same 26-card reader
-     measured 26.7% vs 26.4% of a core — within noise — while 26 permanent
-     layers cost raster memory. No hint ships without a repeatable win. */
-  contain: paint;
-}
-.reasonCard:hover {
-  background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 80%, transparent);
-  border-color: color-mix(in srgb, var(--dsw-alias-border-l1) 75%, rgba(255, 255, 255, 0.12));
-}
-.reasonHeading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 20px; font-variant-numeric: tabular-nums; }
-.reasonCard[data-overflow=false][data-expanded=false] {
-  border-color: transparent;
-  border-radius: 0;
-  background: transparent;
-  backdrop-filter: none;
-  box-shadow: none;
-  padding: 0;
-}
-.reasonCard[data-overflow=false][data-expanded=false] .reasonHeading { padding: 0; }
-.reasonCard[data-overflow=false][data-expanded=false] .reasonText { padding: 4px 0 0 22px; }
-/* Compact thinking rows (global "折叠思考" switch) */
-.reasonLabel { display: inline-flex; align-items: center; gap: 5px; font-weight: 500; }
-.reasonIcon { flex: none; color: inherit; }
-.reasonCard[data-collapsed=true] {
-  border-color: transparent;
-  border-radius: 0;
-  background: transparent;
-  backdrop-filter: none;
-  box-shadow: none;
-  padding: 0;
-}
-.reasonCard[data-collapsed=true] .reasonHeading { padding: 0; }
-.reasonCollapsed {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 32px;
-  padding: 2px 4px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--dsw-alias-label-secondary);
-  font: inherit;
-  font-size: 13px;
-  line-height: 20px;
-  text-align: left;
-  cursor: pointer;
-  transition: background-color 160ms ease, color 160ms ease;
-}
-.reasonCollapsed:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
-}
-.reasonCollapsedIcon { flex: none; color: inherit; }
-/* Settled collapsed rows stay one visual step below the body: the inherited
-   secondary alias still reads as solid, so the finished "思考 · N 秒" summary
-   is dropped to 0.72 (the same finished-thinking treatment .reasonPlain gets)
-   — the more transparent the summary, the clearer it separates from the 16px
-   body text. Running rows lift back to full opacity for their shimmer. */
-.reasonCollapsedText { font-weight: 500; min-width: 0; opacity: 0.72; }
-.reasonCollapsedHint { margin-left: auto; flex: none; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
-.reasonCollapsedChevron { flex: none; stroke: currentColor; fill: none; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
-.reasonCollapsed[data-active=true] .reasonCollapsedHint {
-  animation: dsh-cluster-active-pulse 1.8s ease-in-out infinite;
-}
-@supports (background-clip: text) or (-webkit-background-clip: text) {
-  .reasonCollapsed[data-active=true] .reasonCollapsedText {
-    background-image: linear-gradient(90deg,
-      color-mix(in srgb, var(--dsw-alias-label-secondary) 35%, transparent) 0%,
-      var(--dsw-alias-label-primary) 50%,
-      color-mix(in srgb, var(--dsw-alias-label-secondary) 35%, transparent) 100%);
-    background-size: 200% 100%;
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    /* Running rows animate at full opacity; only the settled row fades. */
-    opacity: 1;
-    animation: dsh-cluster-active-shimmer 2.2s linear infinite;
-  }
-}
-.reasonViewport {
-  position: relative;
-  max-height: var(--reason-preview-height);
-  overflow: auto;
-  scroll-behavior: auto;
-  overflow-anchor: none;
-  /* 不要加 overscroll-behavior-y: contain：思考视口是 mainFlow 里最大的嵌套
-     垂直滚动区，contain 会让「滚轮落在它顶部/底部边缘」时整个滚轮事件被吞掉
-     （实测 outerDelta=0），表现为鼠标在主流程区滚动无反应、必须移到两侧空白
-     才能滚动。去掉后边缘滚轮按嵌套滚动惯例回传给阅读器滚动区，与 .toolRaw、
-     pre、上下文注入块等其他嵌套滚动区行为一致。 */
-  scrollbar-width: thin;
-  scrollbar-color: var(--dsw-alias-border-l1) transparent;
-}
-.reasonCard[data-expanded=true] .reasonViewport { max-height: min(60vh, 560px, var(--reason-reading-height, 560px)); }
-/* Fold-thinking mode reuses the normal preview height; it does not jump to
-   the tall manual-reading viewport when a collapsed row is opened. */
-.reasonCard[data-compact=true] .reasonViewport { max-height: var(--reason-preview-height); }
-.reasonViewport[data-edges=both], .reasonCard[data-following=true][data-overflow=true] .reasonViewport {
-  -webkit-mask-image: linear-gradient(transparent 0, black var(--reason-fade), black calc(100% - var(--reason-fade)), transparent 100%);
-  mask-image: linear-gradient(transparent 0, black var(--reason-fade), black calc(100% - var(--reason-fade)), transparent 100%);
-}
-.reasonViewport[data-edges=top] {
-  -webkit-mask-image: linear-gradient(transparent 0, black var(--reason-fade), black 100%);
-  mask-image: linear-gradient(transparent 0, black var(--reason-fade), black 100%);
-}
-.reasonViewport[data-edges=bottom] {
-  -webkit-mask-image: linear-gradient(black 0, black calc(100% - var(--reason-fade)), transparent 100%);
-  mask-image: linear-gradient(black 0, black calc(100% - var(--reason-fade)), transparent 100%);
-}
-.reasonCard[data-expanded=true] .reasonViewport { -webkit-mask-image: none; mask-image: none; }
-.reasonViewport:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: -3px; }
-.reasonTrack { position: relative; }
-.reasonText { padding: 8px 0 12px; font-size: 14px; line-height: 24px; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }
-.reasonText .readingText > div { font-size: inherit; line-height: inherit; color: inherit; }
-.reasonFooter { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0 0; font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-secondary); }
-.reasonAction { display: inline-flex; justify-content: center; align-items: center; gap: 5px; min-height: 28px; padding: 4px 6px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; white-space: nowrap; transition: background-color 160ms ease, color 160ms ease; }
-.reasonAction:hover { background: var(--dsw-alias-interactive-bg-hover); }
-.reasonAction:disabled { cursor: default; opacity: .65; }
-.reasonAction svg { flex: none; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
-.reasonCaption { padding-left: 6px; }
-@container (max-width: 480px) { .reasonCard { --reason-preview-height: 192px; } }
-@media (pointer: coarse) { .reasonAction { min-height: 44px; } }
-@media (forced-colors: active) { .reasonViewport { -webkit-mask-image: none !important; mask-image: none !important; } }
-@supports not (backdrop-filter: blur(1px)) {
-  .reasonCard, .clusterBlock, .noticeCard, .errorCard {
-    background: var(--dsw-alias-bg-module-platform);
-  }
-}
-.detail { font-size: 13px; line-height: 22px; color: var(--dsw-alias-label-secondary); }
-.detail > summary { cursor: pointer; padding: 3px 6px; margin: 0 -6px; border-radius: 6px; transition: background-color 160ms ease; }
-.detail > summary:hover { background: var(--dsw-alias-interactive-bg-hover); }
-.detail[open] > summary { margin-bottom: 8px; }
-/* Command / compaction records are the same expandable card as the other
-   notices (single-line summary, whole row clickable); the lifecycle state is
-   carried by the title color (running pulse / success green / error red). */
-.noticeCard[data-state=running] .noticeCardTitle {
-  color: var(--dsw-alias-state-business-primary);
-  animation: dsh-cluster-active-pulse 1.8s ease-in-out infinite;
-}
-.noticeCard[data-state=success] .noticeCardTitle {
-  color: var(--dsw-alias-state-success-primary);
-}
-.meta { font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-tertiary); margin-top: 0; }
-.stopped { align-self: flex-start; border-radius: 6px; padding: 0 6px; background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 18px; margin-top: 12px; }
-.notice, .error, .attention { border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 22px; overflow-wrap: anywhere; }
-.notice { background: var(--dsw-alias-bg-module-platform); color: var(--dsw-alias-label-secondary); }
-.error { background: var(--dsw-alias-interactive-bg-hover-danger); color: var(--dsw-alias-state-error-primary); }
-.error p { margin: 6px 0; }
-.errorCard {
-  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 32%, transparent);
-  /* Collapsed rows share the 6px radius of the native tool row; opening rounds
-     the card back to the 10px card-family radius. */
-  border-radius: 6px;
-  background: var(--dsw-alias-interactive-bg-hover-danger);
-  background: color-mix(in srgb, var(--dsw-alias-interactive-bg-hover-danger) 45%, transparent);
-  backdrop-filter: blur(6px);
-  color: var(--dsw-alias-state-error-primary);
-  overflow: hidden;
-  transition: border-radius 160ms ease, background-color 160ms ease, border-color 160ms ease;
-}
-.errorCard[data-open=true] { border-radius: 10px; }
-/* Shared expandable-card header: a real <button> (not a <summary>) so the
-   body can stay mounted and animate through CollapseBody. Collapsed = one
-   24px process line (13px/20px, so the shrunken row keeps a small font);
-   open = roomier header. */
-.errorCard > button,
-.noticeCard > button {
-  display: flex;
-  align-items: center;
-  flex-wrap: nowrap;
-  gap: 6px 10px;
-  width: 100%;
-  padding: 2px 12px;
-  min-height: 24px;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 13px;
-  line-height: 20px;
-  text-align: left;
-  cursor: pointer;
-  /* Padding drives the collapsed 24px ↔ open header height; the separator is
-     an inset shadow so it never shifts layout, and both animate with the body. */
-  box-shadow: inset 0 -1px 0 transparent;
-  transition: background-color 160ms ease, padding 160ms ease, box-shadow 160ms ease;
-}
-.errorCard > button:hover,
-.noticeCard > button:hover { background: var(--dsw-alias-interactive-bg-hover); }
-.errorCard[data-open=true] > button {
-  padding: 8px 12px;
-  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--dsw-alias-state-error-primary) 22%, transparent);
-}
-.noticeCard[data-open=true] > button {
-  padding: 8px 12px;
-  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--dsw-alias-border-l2) 45%, transparent);
-}
-.errorCardTitle {
-  font-weight: 500;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.errorCardMeta {
-  font-variant-numeric: tabular-nums;
-  opacity: 0.85;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.errorCardHint {
-  margin-left: auto;
-  flex: none;
-  font-size: 12px;
-  line-height: 18px;
-  opacity: 0.75;
-  white-space: nowrap;
-}
-.errorCardBody {
-  padding: 10px 12px 12px;
-  color: var(--dsw-alias-label-secondary);
-}
-.errorCardBody .blocks { gap: 8px; }
-.noticeCard {
-  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 65%, transparent);
-  /* Same collapsed/open radius rhythm as .errorCard. */
-  border-radius: 6px;
-  background: var(--dsw-alias-bg-module-platform);
-  background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 45%, transparent);
-  backdrop-filter: blur(6px);
-  color: var(--dsw-alias-label-secondary);
-  overflow: hidden;
-  transition: border-radius 160ms ease, background-color 160ms ease, border-color 160ms ease;
-}
-.noticeCard[data-open=true] { border-radius: 10px; }
-.noticeCardTitle {
-  font-weight: 500;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.noticeCardBody {
-  padding: 10px 12px 12px;
-  color: var(--dsw-alias-label-secondary);
-}
-.noticeCardBody .blocks { gap: 8px; }
-/* 上下文压缩记录（manual-compaction / compaction，data-reader-compaction-record）：
-   对话中的关键节点，设计为状态卡片突出显示——常驻卡片 chrome（边框 + 半透明
-   底色 + 毛玻璃）并按状态着色（运行=业务蓝、成功=绿、失败=红），状态圆点 +
-   着色标题是视觉主体；仍可展开但交互被弱化：无提示文案、无 hover 盒子，
-   右侧只有一枚小尺寸低亮度的 chevron 静置暗示。 */
-.noticeCard[data-reader-compaction-record][data-state=running] {
-  border-color: color-mix(in srgb, var(--dsw-alias-state-business-primary) 45%, transparent);
-  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent);
-}
-.noticeCard[data-reader-compaction-record][data-state=success] {
-  border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 45%, transparent);
-  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent);
-}
-.errorCard[data-reader-compaction-record] {
-  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, transparent);
-  background: color-mix(in srgb, var(--dsw-alias-interactive-bg-hover-danger) 60%, transparent);
-}
-.errorCard[data-reader-compaction-record] > button:hover,
-.noticeCard[data-reader-compaction-record] > button:hover { background: transparent; }
-.errorCard[data-reader-compaction-record] .errorCardHint,
-.noticeCard[data-reader-compaction-record] .errorCardHint { display: none; }
-.errorCard[data-reader-compaction-record] > button .chevron,
-.noticeCard[data-reader-compaction-record] > button .chevron { opacity: 0.45; }
-.errorCard[data-reader-compaction-record] > button:hover .chevron,
-.noticeCard[data-reader-compaction-record] > button:hover .chevron { opacity: 0.9; }
-/* 状态卡片比普通可展开行更高（36px，与展开态卡片头部同一高度），flex 垂直居中；
-   展开与收起共用该高度，头部不再因开合跳变。 */
-.noticeCard[data-reader-compaction-record] > button,
-.errorCard[data-reader-compaction-record] > button {
-  min-height: 36px;
-  padding: 8px 12px;
-  align-items: center;
-}
-/* 右侧打勾：整理完成的状态徽标（仅 success；运行中/失败不显示），
-   margin-left:auto 把它推到卡片最右缘。 */
-.noticeCard[data-reader-compaction-record][data-state=success] > button::after {
-  content: '';
-  flex: none;
-  margin-left: auto;
-  width: 14px;
-  height: 14px;
-  background: var(--dsw-alias-state-success-primary);
-  -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="m3 8.5 3.5 3.5L13 5" fill="none" stroke="black" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>') center / contain no-repeat;
-  mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="m3 8.5 3.5 3.5L13 5" fill="none" stroke="black" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>') center / contain no-repeat;
-}
-.attention { display: flex; flex-direction: column; gap: 3px; border: 1px solid var(--dsw-alias-state-business-primary); color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-base); }
-.attention span { color: var(--dsw-alias-label-secondary); }
-.unknown { background: var(--dsw-alias-bg-module-platform); border: 1px solid var(--dsw-alias-border-l2); border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 22px; }
+.notice { padding: 10px 14px; border-radius: var(--dsw-radius-md); corner-shape: round; background: var(--cv-inset-bg); color: var(--dsw-alias-label-secondary); font-size: var(--cv-font-secondary); line-height: 21px; overflow-wrap: anywhere; }
+.error { padding: 10px 14px; border-radius: var(--dsw-radius-md); corner-shape: round; background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent); color: var(--dsw-alias-state-error-primary); font-size: var(--cv-font-secondary); line-height: 21px; overflow-wrap: anywhere; }
+.unknown { padding: 10px 14px; border-radius: var(--dsw-radius-md); corner-shape: round; background: var(--cv-inset-bg); font-size: var(--cv-font-secondary); line-height: 21px; }
 .unknown p { margin: 0 0 6px; }
-.historyButton { align-self: center; background: transparent; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 4px 12px; font-size: 12px; color: var(--dsw-alias-label-secondary); transition: background-color 160ms ease, color 160ms ease, opacity 160ms ease; }
-.historyButton:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.attention {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 10px 14px;
+  border-radius: var(--dsw-radius-lg); corner-shape: round;
+  background: var(--cv-panel-bg);
+  box-shadow: 0 0 0 .5px color-mix(in srgb, var(--dsw-alias-state-business-primary) 45%, transparent), var(--dsw-shadow-lv1);
+  color: var(--dsw-alias-label-primary); font-size: var(--cv-font-secondary); line-height: 20px;
+}
+.attention span { color: var(--dsw-alias-label-secondary); }
+.attention.isEntering { opacity: 0; transform: translateY(4px); transition: none; }
+.attention.isIn { opacity: 1; transform: none; transition: opacity var(--cv-swap) var(--cv-ease), transform var(--cv-swap) var(--cv-ease); }
+.historyButton { align-self: center; padding: 4px 12px; border: 0; border-radius: var(--dsw-radius-sm); background: var(--dsw-alias-interactive-bg-hover-solid, var(--dsw-alias-interactive-bg-hover)); color: var(--dsw-alias-label-secondary); font: inherit; font-size: 12px; cursor: pointer; transition: color var(--cv-fast) ease, opacity var(--cv-fast) ease; }
+.historyButton:hover:not(:disabled) { color: var(--dsw-alias-label-primary); }
 .historyButton:disabled { opacity: .55; cursor: default; }
 .empty { padding: 40px 0; color: var(--dsw-alias-label-tertiary); text-align: center; }
-.answerActions { display: flex; align-items: center; gap: 8px; margin: 13px 0 0 -6px; min-height: 28px; }
-.iconButton { display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; padding: 6px; background: transparent; color: var(--dsw-alias-label-tertiary); transition: background-color 160ms ease, color 160ms ease, transform 160ms cubic-bezier(.22,1,.36,1); }
-.iconButton:hover { color: var(--dsw-alias-label-primary); }
-.iconButton:active { transform: scale(0.92); }
-.iconButton svg { fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
-.imageFigure { margin: 0; width: min(100%, 460px); align-self: flex-start; }
-.imageFrame { position: relative; border-radius: 12px; background: var(--dsw-alias-bg-module-platform); border: 1px solid var(--dsw-alias-border-l2); overflow: hidden; max-width: 100%; max-height: 520px; min-height: 96px; }
-.imageOpen { border: 0; padding: 0; position: absolute; inset: 0; background: transparent; display: flex; width: 100%; height: 100%; }
-.imageOpen img { display: block; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity 200ms cubic-bezier(.22,1,.36,1), filter 160ms ease; }
+.textButton { padding: 2px 6px; border: 0; border-radius: var(--dsw-radius-sm); background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; white-space: nowrap; cursor: pointer; transition: background-color var(--cv-fast) ease, color var(--cv-fast) ease; }
+.textButton:hover { background: var(--dsw-alias-interactive-bg-hover); }
+
+.imageFigure { align-self: flex-start; width: min(100%, 460px); margin: 0; }
+.imageFrame { position: relative; max-width: 100%; max-height: 520px; min-height: 96px; overflow: hidden; border: .5px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-lg); corner-shape: round; background: var(--cv-inset-bg); }
+.imageOpen { position: absolute; inset: 0; display: flex; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: zoom-in; }
+.imageOpen img { display: block; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity var(--cv-swap) var(--cv-ease), filter var(--cv-fast) ease; }
 .imageOpen img[data-ready=true] { opacity: 1; }
 .imageOpen:hover img[data-ready=true] { filter: brightness(1.06); }
-.imagePlaceholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 8px; color: var(--dsw-alias-label-tertiary); font-size: 13px; pointer-events: none; }
+.imagePlaceholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--dsw-alias-label-tertiary); font-size: var(--cv-font-secondary); pointer-events: none; }
 .imagePlaceholder button { pointer-events: auto; }
-.imageFigure figcaption { color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 20px; margin-top: 6px; overflow-wrap: anywhere; }
-.imageDialog { border: 1px solid var(--dsw-alias-border-l2); padding: 38px 20px 20px; border-radius: 16px; background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary); max-width: 90vw; max-height: 90vh; }
-.imageDialog::backdrop { background: var(--dsw-alias-bg-mask-photo); opacity: 0; transition: opacity 200ms cubic-bezier(.22,1,.36,1); }
+.imageFigure figcaption { margin-top: 6px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
+.imageDialog { max-width: 90vw; max-height: 90vh; padding: 38px 20px 20px; border: .5px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-lg); corner-shape: round; background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary); box-shadow: var(--dsw-elevation-panel); }
+.imageDialog::backdrop { background: var(--dsw-alias-bg-mask-photo); opacity: 0; transition: opacity var(--cv-swap) var(--cv-ease); }
 .imageDialog[open]::backdrop { opacity: 1; }
-.imageDialog img { max-width: 82vw; max-height: 75vh; display: block; object-fit: contain; }
-.dialogClose { position: absolute; right: 8px; top: 4px; border: 0; background: transparent; color: inherit; width: 32px; height: 32px; border-radius: 8px; font-size: 24px; transition: background-color 160ms ease, transform 160ms cubic-bezier(.22,1,.36,1); }
+.imageDialog img { display: block; max-width: 82vw; max-height: 75vh; object-fit: contain; }
+.dialogClose { position: absolute; top: 4px; right: 8px; width: 32px; height: 32px; border: 0; border-radius: var(--dsw-radius-sm); background: transparent; color: inherit; font-size: 24px; cursor: pointer; transition: background-color var(--cv-fast) ease, transform var(--cv-fast) ease; }
 .dialogClose:hover { background: var(--dsw-alias-interactive-bg-hover); }
-.dialogClose:active { transform: scale(0.9); }
-/* Mount enter for live-only floating surfaces: transform/opacity only.
-   Historical mounts render settled (no replay); exits unmount instantly.
-   First paint is settled: the entering class only appears when MountFade
-   detects a fresh live mount, so a historical bar/pill never flashes.
-   isIn owns the settled state's transition list — keep width in it or label
-   changes lose their animation once the bar settles. */
-.attention.isEntering { opacity: 0; transform: translateY(6px); transition: none; }
-.attention.isIn { opacity: 1; transform: none; transition: opacity 220ms cubic-bezier(.22,1,.36,1), transform 220ms cubic-bezier(.22,1,.36,1); }
-[data-motion=off] .chevron, [data-motion=off] .imageOpen img, [data-motion=off] .textButton, [data-motion=off] .switchButton, [data-motion=off] .iconButton, [data-motion=off] .disclosureButton, [data-motion=off] .clusterHeader, [data-motion=off] .reasonCollapsed, [data-motion=off] .reasonAction, [data-motion=off] .dialogClose, [data-motion=off] .historyButton, [data-motion=off] .toolTabs > button, [data-motion=off] .nativeToolRow, [data-motion=off] .detail > summary, [data-motion=off] .errorCard, [data-motion=off] .noticeCard, [data-motion=off] .errorCard > button, [data-motion=off] .noticeCard > button { transition: none; }
-[data-motion=off] .isEntering, [data-motion=off] .isIn { transition: none; }
-[data-motion=off] .toolActivity[data-tool-phase=preparing] .nativeToolSummary,
-[data-motion=off] .toolActivity[data-tool-phase=preparing] .toolState,
-[data-motion=off] .toolActivity[data-tool-phase=running] .nativeToolSummary,
-[data-motion=off] .toolActivity[data-tool-phase=running] .toolState,
-[data-motion=off] .reasonCollapsed[data-active=true] .reasonCollapsedText,
-[data-motion=off] .reasonCollapsed[data-active=true] .reasonCollapsedHint,
-[data-motion=off] .noticeCard[data-state=running] .noticeCardTitle { animation: none !important; }
-@media (prefers-reduced-motion: reduce) {
-  .chevron, .imageOpen img, .textButton, .switchButton, .iconButton, .disclosureButton, .clusterHeader, .reasonCollapsed, .reasonAction, .dialogClose, .historyButton, .toolTabs > button, .nativeToolRow, .detail > summary, .errorCard, .noticeCard, .errorCard > button, .noticeCard > button, .fileChanges, .fileHeader, .fileChip, .fileChipMore, .isEntering, .isIn { transition: none; }
-  .toolState::before,
-  .toolActivity[data-tool-phase=preparing] .nativeToolSummary,
-  .toolActivity[data-tool-phase=preparing] .toolState,
-  .toolActivity[data-tool-phase=running] .nativeToolSummary,
-  .toolActivity[data-tool-phase=running] .toolState,
-  .reasonCollapsed[data-active=true] .reasonCollapsedText,
-  .reasonCollapsed[data-active=true] .reasonCollapsedHint,
-  .noticeCard[data-state=running] .noticeCardTitle { animation: none !important; }
-}
-@media (pointer: coarse) { .disclosureButton { min-height: 44px; } }
-@media (max-width: 600px) { .column { gap: 18px; } .toolbar { font-size: 11px; } .user { max-width: 90%; } }
+.dialogClose:active { transform: scale(.96); }
+
+[data-motion=off] .switchButton, [data-motion=off] .historyButton, [data-motion=off] .textButton, [data-motion=off] .imageOpen img, [data-motion=off] .dialogClose, [data-motion=off] .isEntering, [data-motion=off] .isIn { transition: none; }
+@media (prefers-reduced-motion: reduce) { .switchButton, .historyButton, .textButton, .imageOpen img, .dialogClose, .isEntering, .isIn { transition: none; } }
+@media (pointer: coarse) { .switchButton { min-height: 32px; } }
+@media (max-width: 600px) { .column { gap: 18px; } }
