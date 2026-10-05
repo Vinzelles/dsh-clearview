@@ -3,8 +3,14 @@
 // Nothing is installed and no message is sent; only existing sessions are opened.
 // Safety: this script only reads and navigates. It never types, never presses a key,
 // never clicks fork / rewind / approve / stop / settings / workspace entries.
-import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+// Side effects to expect: (1) loading the DSH page makes the host open its own blank startup
+// session; (2) the 复制回答 check clicks the real copy button, and headless Chrome may write the
+// answer text to your real system clipboard (the profile is isolated, the OS clipboard is not);
+// (3) the temporary Chrome profile (%TEMP%/clearview-live-*) is removed when the run ends: the
+// script stops Chrome (taskkill /T /F on Windows), waits for it to exit, then deletes the
+// profile with retries, on success, on failure and on an uncaught error.
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -43,7 +49,26 @@ const chrome = spawn(process.env.CHROME_PATH || join(process.env.ProgramFiles ||
   ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--window-size=1440,900', 'about:blank'],
   { stdio: 'ignore', windowsHide: true });
 const delay = ms => new Promise(done => setTimeout(done, ms));
-const report = { base, entry: entry.url, sessions: [], exceptions: [], consoleErrors: [], replacements: 0, spliced: 0, comboPassedThrough: [] };
+const killChrome = () => {
+  if (!chrome.pid || chrome.exitCode !== null) return;
+  if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(chrome.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+  else chrome.kill('SIGKILL');
+};
+// Chrome's helper processes can hold the profile for a moment after the main process is gone,
+// so removal retries for up to ~15s (synchronous: it also runs on the fatal exit path).
+const removeProfile = () => {
+  let failure;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    try { rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 }); return; } catch (error) { failure = error; }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+  }
+  console.error('could not remove temporary profile', profile, failure?.message);
+};
+// Fatal paths that bypass the main flow: never leave Chrome attached to the real DSH page.
+const bail = error => { console.error(error); killChrome(); removeProfile(); process.exit(2); };
+process.on('unhandledRejection', bail);
+process.on('uncaughtException', bail);
+const report = { base, entry: entry.url, sessions: [], exceptions: [], consoleErrors: [], replacements: 0, spliced: 0, comboPassedThrough: [], handlerErrors: [] };
 let ws;
 try {
   let port;
@@ -59,30 +84,35 @@ try {
   const pending = new Map();
   const send = (method, params = {}) => new Promise((done, fail) => { const n = ++id; pending.set(n, { done, fail }); ws.send(JSON.stringify({ id: n, method, params })); });
   ws.onmessage = async event => {
-    const message = JSON.parse(event.data);
-    const waiter = pending.get(message.id);
-    if (waiter) { pending.delete(message.id); message.error ? waiter.fail(new Error(message.error.message)) : waiter.done(message.result); }
-    if (message.method === 'Runtime.exceptionThrown') report.exceptions.push(message.params.exceptionDetails.exception?.description || message.params.exceptionDetails.text);
-    if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') report.consoleErrors.push(message.params.args.map(arg => arg.value ?? arg.description ?? '').join(' ').slice(0, 500));
-    if (message.method === 'Fetch.requestPaused') {
-      const { requestId, request, responseStatusCode } = message.params;
-      const list = comboList(request.url);
-      let replaced = null;
-      if (list.includes('dsh-clearview/client.js') && responseStatusCode === 200) {
-        if (list.length === 1) replaced = bundleText;
-        else {
-          const { body, base64Encoded } = await send('Fetch.getResponseBody', { requestId });
-          replaced = spliceReaderModule(base64Encoded ? Buffer.from(body, 'base64').toString('utf8') : body);
+    try {
+      const message = JSON.parse(event.data);
+      const waiter = pending.get(message.id);
+      if (waiter) { pending.delete(message.id); message.error ? waiter.fail(new Error(message.error.message)) : waiter.done(message.result); }
+      if (message.method === 'Runtime.exceptionThrown') report.exceptions.push(message.params.exceptionDetails.exception?.description || message.params.exceptionDetails.text);
+      if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') report.consoleErrors.push(message.params.args.map(arg => arg.value ?? arg.description ?? '').join(' ').slice(0, 500));
+      if (message.method === 'Fetch.requestPaused') {
+        const { requestId, request, responseStatusCode } = message.params;
+        const list = comboList(request.url);
+        let replaced = null;
+        if (list.includes('dsh-clearview/client.js') && responseStatusCode === 200) {
+          if (list.length === 1) replaced = bundleText;
+          else {
+            const { body, base64Encoded } = await send('Fetch.getResponseBody', { requestId });
+            replaced = spliceReaderModule(base64Encoded ? Buffer.from(body, 'base64').toString('utf8') : body);
+          }
         }
+        if (replaced === null) {
+          report.comboPassedThrough.push(request.url);
+          await send('Fetch.continueRequest', { requestId });
+          return;
+        }
+        await send('Fetch.fulfillRequest', { requestId, responseCode: 200, body: Buffer.from(replaced, 'utf8').toString('base64'),
+          responseHeaders: [{ name: 'Content-Type', value: 'text/javascript; charset=utf-8' }, { name: 'Cache-Control', value: 'no-store' }] });
+        if (list.length === 1) report.replacements++; else report.spliced++;
       }
-      if (replaced === null) {
-        report.comboPassedThrough.push(request.url);
-        await send('Fetch.continueRequest', { requestId });
-        return;
-      }
-      await send('Fetch.fulfillRequest', { requestId, responseCode: 200, body: Buffer.from(replaced, 'utf8').toString('base64'),
-        responseHeaders: [{ name: 'Content-Type', value: 'text/javascript; charset=utf-8' }, { name: 'Cache-Control', value: 'no-store' }] });
-      if (list.length === 1) report.replacements++; else report.spliced++;
+    } catch (error) {
+      // A failed interception reply must not become an unhandled rejection that skips cleanup.
+      report.handlerErrors.push(String(error?.stack ?? error).slice(0, 500));
     }
   };
   const evaluate = async expression => {
@@ -366,13 +396,16 @@ try {
   }
 } finally {
   try { ws?.close(); } catch {}
-  chrome.kill();
-  setTimeout(() => { try { rmSync(profile, { recursive: true, force: true }); } catch {} }, 1500).unref();
+  const exited = new Promise(done => chrome.once('exit', done));
+  killChrome();
+  await Promise.race([exited, delay(5000)]);
+  removeProfile();
 }
+report.profileRemoved = !existsSync(profile);
 const readerErrors = report.exceptions.concat(report.consoleErrors).filter(text => /clearview|data-reader|dsh-clearview/i.test(text));
 report.pass = (!intercept || report.replacements + report.spliced > 0)
   && report.sessions.every(item => item.opened && item.readerMounted && item.initial?.version === '0.2.0' && item.initial.blockErrors.length === 0 && item.final?.blockErrors.length === 0)
-  && readerErrors.length === 0;
+  && readerErrors.length === 0 && report.handlerErrors.length === 0 && report.profileRemoved;
 report.readerErrors = readerErrors;
 writeFileSync(join(out, 'report.json'), JSON.stringify(report, null, 2));
 console.log(JSON.stringify({ pass: report.pass, replacements: report.replacements, spliced: report.spliced, comboPassedThrough: report.comboPassedThrough.length, sessions: report.sessions.map(item => ({ title: item.title, opened: item.opened, initial: item.initial })), readerErrors }, null, 2));
