@@ -15,15 +15,15 @@
 .header:hover { background: var(--dsw-alias-interactive-bg-hover); box-shadow: 6px 0 0 var(--dsw-alias-interactive-bg-hover), -6px 0 0 var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); }
 .changes[data-open=true] .header { padding: 9px 14px; border-radius: 0; box-shadow: none; }
 .title { flex: none; color: var(--dsw-alias-label-secondary); font-size: var(--cv-font-secondary); font-weight: 500; }
-.meta { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--dsw-alias-label-caption); font-size: 12px; }
+.meta { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--dsw-alias-label-caption); font-size: 12px; line-height: 18px; }
 .tags { display: inline-flex; flex: none; gap: 6px; }
-.tag { padding: 1px 8px; border-radius: 999px; corner-shape: round; font-size: 11px; line-height: 17px; font-weight: 500; }
+.tag { padding: 1px 8px; border-radius: 999px; corner-shape: round; font-size: 12px; line-height: 18px; font-weight: 500; }
 .tag[data-tone=added] { color: var(--dsw-alias-state-success-primary); background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent); }
 .tag[data-tone=modified] { color: var(--dsw-alias-state-business-primary); background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent); }
 .tag[data-tone=deleted] { color: var(--dsw-alias-state-error-primary); background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent); }
 .body { display: flex; flex-direction: column; gap: 10px; padding: 8px 14px 12px; border-top: .5px solid var(--dsw-alias-border-l2); }
 .group { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.groupLabel { display: flex; align-items: center; gap: 6px; color: var(--dsw-alias-label-caption); font-size: 11px; line-height: 20px; }
+.groupLabel { display: flex; align-items: center; gap: 6px; color: var(--dsw-alias-label-caption); font-size: 12px; line-height: 18px; }
 .dot { width: 6px; height: 6px; border-radius: 50%; corner-shape: round; background: var(--dsw-alias-label-caption); }
 .group[data-tone=added] .dot { background: var(--dsw-alias-state-success-primary); }
 .group[data-tone=modified] .dot { background: var(--dsw-alias-state-business-primary); }

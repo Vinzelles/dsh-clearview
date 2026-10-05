@@ -3,7 +3,7 @@
   display: flex; align-items: center;
   width: calc(100% + 12px); height: var(--cv-row-height);
   margin: 0 -6px; padding: 0 6px;
-  border: 0; border-radius: var(--dsw-radius-sm);
+  border: 0; border-radius: var(--dsw-radius-sm); corner-shape: round;
   background: transparent; color: var(--dsw-alias-label-tertiary);
   font: inherit; font-size: var(--cv-font-secondary); text-align: left; cursor: pointer;
   transition: background-color var(--cv-fast) ease, color var(--cv-fast) ease;
@@ -30,7 +30,7 @@
 .text { min-width: 0; }
 .controls { position: absolute; top: 6px; right: 6px; display: flex; gap: 2px; opacity: 0; transition: opacity var(--cv-fast) ease; }
 .inset:hover .controls, .inset:focus-within .controls { opacity: 1; }
-.control { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--dsw-radius-sm); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-secondary); cursor: pointer; }
+.control { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--dsw-radius-sm); corner-shape: round; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-secondary); cursor: pointer; }
 .control:hover { color: var(--dsw-alias-label-primary); }
 .control:disabled { opacity: .5; cursor: default; }
 @media (pointer: coarse) { .controls { opacity: 1; } }
