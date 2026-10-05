@@ -13,7 +13,8 @@ if (!testUrl)
     throw new Error('Set DSH_TEST_URL to the running test host (read-only, fresh browser profile).');
 const baseline = process.argv.includes('--baseline');
 const tracing = process.argv.includes('--trace');
-await build({ entryPoints: [join(repo, 'tests/browser/reader-performance.tsx')], bundle: true, write: true, outfile: join(out, 'fixture.js'), platform: 'browser', format: 'iife', jsx: 'automatic', target: 'es2022', external: ['react', 'react/*', 'react-dom', 'react-dom/*', '@deepseek-ai/*'], define: { 'process.env.NODE_ENV': '"production"', '__BASELINE__': String(baseline) }, plugins: [{ name: 'fixture-source', setup(b) { b.onResolve({ filter: /^fixture-source\// }, a => ({ path: join(source, 'src/client', a.path.slice('fixture-source/'.length)) })); } }], banner: { js: 'var require = (name) => { if (!(name in window.__clearviewTestModules)) throw new Error("Missing test host module: "+name); return window.__clearviewTestModules[name]; };' } });
+const expandEarlier = process.argv.includes('--expand-earlier');
+await build({ entryPoints: [join(repo, 'tests/browser/reader-performance.tsx')], bundle: true, write: true, outfile: join(out, 'fixture.js'), platform: 'browser', format: 'iife', jsx: 'automatic', target: 'es2022', external: ['react', 'react/*', 'react-dom', 'react-dom/*', '@deepseek-ai/*'], define: { 'process.env.NODE_ENV': '"production"', '__BASELINE__': String(baseline), '__EXPAND_EARLIER__': String(expandEarlier) }, plugins: [{ name: 'fixture-source', setup(b) { b.onResolve({ filter: /^fixture-source\// }, a => ({ path: join(source, 'src/client', a.path.slice('fixture-source/'.length)) })); } }], banner: { js: 'var require = (name) => { if (!(name in window.__clearviewTestModules)) throw new Error("Missing test host module: "+name); return window.__clearviewTestModules[name]; };' } });
 const profile = mkdtempSync(join(tmpdir(), 'clearview-browser-'));
 const chrome = spawn(process.env.CHROME_PATH || join(process.env.ProgramFiles || 'C:/Program Files', 'Google/Chrome/Application/chrome.exe'), ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--window-size=1280,950', 'about:blank'], { stdio: 'ignore', windowsHide: true });
 const delay = ms => new Promise(done => setTimeout(done, ms));
@@ -122,7 +123,7 @@ try {
         traceSummary = { events: [...groups.values()].sort((a, b) => b.totalMs - a.totalMs).slice(0, 18), cpu: [...hits].sort((a, b) => b[1] - a[1]).slice(0, 20).map(([id, samples]) => ({ samples, ...nodes.get(id).callFrame })), slowest: stream.sort((a, b) => b.dur - a.dur).slice(0, 10).map(e => ({ name: e.name, duration: e.dur / 1000, args: e.args })) };
         writeFileSync(join(out, baseline ? 'baseline-trace.json' : 'optimized-trace.json'), JSON.stringify({ trace, cpu }));
     }
-    const report = { source, baseline, browser: version.product, errors: errors.slice(initialErrors), ...result, ...traceSummary ? { traceSummary } : {} };
+    const report = { source, baseline, expandEarlier, browser: version.product, errors: errors.slice(initialErrors), ...result, ...traceSummary ? { traceSummary } : {} };
     writeFileSync(join(out, baseline ? 'baseline.json' : 'optimized.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report, null, 2));
     if (report.errors.length || report.failures.length)

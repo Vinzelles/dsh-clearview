@@ -7,6 +7,7 @@ import { injectCompatStyles } from 'fixture-source/compat/styles.ts';
 import { cachedSnapshot } from 'fixture-source/compat/reader-root.ts';
 import { turnMeta, turnMetaText } from 'fixture-source/turn-meta.ts';
 declare const __BASELINE__: boolean;
+declare const __EXPAND_EARLIER__: boolean;
 const failures: string[] = [];
 const check = (condition: unknown, message: string) => { if (!condition)
     failures.push(message); };
@@ -122,7 +123,15 @@ async function reader() {
     injectCompatStyles();
     flushSync(() => root.render(<Reader {...props}/>));
     await wait(600);
+    // Default path: the open turn condenses its 20 earlier steps behind [data-reader-earlier], so they are not
+    // rendered during the measured window. Variant: open that range first so every row is present throughout.
+    if (__EXPAND_EARLIER__) {
+        host.querySelector<HTMLButtonElement>('[data-reader-earlier]')?.click();
+        await wait(600);
+    }
     historyBlockRenders = 0;
+    const toolRowsBeforeStream = host.querySelectorAll('[data-reader-tool-call]').length;
+    let toolRowsAtHeavyCheck = -1;
     const frames: number[] = [], commits: number[] = [], scrolls: number[] = [];
     let last = 0, lastInput = 0, animations = 0, blur = false;
     let heavyPreserved = false, shimmerPreserved = false, heavyChecked = false;
@@ -152,12 +161,14 @@ async function reader() {
         animations = Math.max(animations, live.length);
         blur ||= live.some(a => (a.effect as KeyframeEffect)?.getKeyframes().some(f => String(f.filter).includes('blur(1px)')));
         if (!heavyChecked && now - start > 1000) {
-            const reader = host.querySelector<HTMLElement>('[data-dsh-clearview]')!, word = reader.querySelector('[data-reader-word][data-word-state="resolving"]'), shimmer = reader.querySelector('[data-shimmer] > [inert]');
+            const reader = host.querySelector<HTMLElement>('[data-dsh-clearview]')!, word = reader.querySelector('[data-reader-word][data-word-state="resolving"]'), shimmers = [...reader.querySelectorAll<HTMLElement>('[data-shimmer] > [inert]')];
             if (word) {
                 heavyChecked = true;
                 reader.dataset.dshcpHeavy = 'on';
+                toolRowsAtHeavyCheck = host.querySelectorAll('[data-reader-tool-call]').length;
                 heavyPreserved = getComputedStyle(word).filter.includes('blur(');
-                shimmerPreserved = !!shimmer && getComputedStyle(shimmer).display !== 'none';
+                // A visible shimmer decoration that really animates (a running Web Animation or a CSS animation), not just a rendered node.
+                shimmerPreserved = shimmers.some(node => getComputedStyle(node).display !== 'none' && (node.getAnimations({ subtree: true }).length > 0 || getComputedStyle(node).animationName !== 'none'));
                 reader.dataset.dshcpHeavy = 'off';
                 if (!__BASELINE__) {
                     check(heavyPreserved, 'heavy mode removed blur');
@@ -216,7 +227,7 @@ async function reader() {
         check(snap?.chat.timeline.turns.get(21)?.status === 'closed', 'DOM compat snapshot stale');
         check(!!snap && turnMetaText(turnMeta(snap.chat.timeline.turns.get(21))) !== '', 'turn footer missing after fine-grained subscriptions');
     }
-    const result = { frameP95: quantile(frames, .95), frameMax: Math.max(...frames), framesOver25: frames.filter(n => n > 25).length, samples: frames.length, commitP95: quantile(commits, .95), historyBlockRenders, chatSubscribers: chat.subscriberCount(), sessionSubscribers: sess.subscriberCount(), pendingSubscribers: pend.subscriberCount(), peakAnimations: animations, blurActive: blur, heavyPreserved, shimmerPreserved, scrollRange: Math.max(...scrolls) - Math.min(...scrolls), maxActiveChars: text.length, turns: 21, tools: 20, earlierClicked: !!earlier, foldRowsAfterEarlier: foldRows };
+    const result = { frameP95: quantile(frames, .95), frameMax: Math.max(...frames), framesOver25: frames.filter(n => n > 25).length, samples: frames.length, commitP95: quantile(commits, .95), historyBlockRenders, chatSubscribers: chat.subscriberCount(), sessionSubscribers: sess.subscriberCount(), pendingSubscribers: pend.subscriberCount(), peakAnimations: animations, blurActive: blur, heavyPreserved, shimmerPreserved, scrollRange: Math.max(...scrolls) - Math.min(...scrolls), maxActiveChars: text.length, turns: 21, tools: 20, expandEarlier: __EXPAND_EARLIER__, toolRowsDuringStream: { beforeStream: toolRowsBeforeStream, atHeavyCheck: toolRowsAtHeavyCheck }, earlierClicked: !!earlier, foldRowsAfterEarlier: foldRows };
     flushSync(() => root.render(null));
     return result;
 }
