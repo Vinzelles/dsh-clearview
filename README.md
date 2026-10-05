@@ -14,18 +14,22 @@
 
 ## 功能亮点
 
-- **原生过程可见**：思考、工具调用和中途说明保持源顺序；Skill / Read / Bash、上下文来源、文件路径和原始详情仍然可读。
-- **长思考卡片**：原文放进带边缘淡出的轻卡片，rAF 连续跟随（EMA 速度匹配 + 比例项收敛，稳态零可见滞后）；展开后继续跟随；滚动、聚焦或选字暂停，点击「回到最新」恢复并清除阅读器内选区/焦点。
-- **成功才收起**：只有成功结束的整轮才折叠执行过程；错误、中断、审批和未知终止状态不会被当成成功隐藏。
-- **克制动效**：忙碌态文字 shimmer，新文字按源顺序逐词渐显；历史不重新打字，遵守系统减少动态效果；`liveFloor` 仅保留正在显现的词包装，历史内容按节点订阅，完成词按帧统一收尾。
+- **过程面板**：一轮的过程收进一个原生骨架、柔和层次的细线面板。头部一眼可见状态、用时、步数、工具数和失败数；运行中较早的步骤压成一行，只完整显示最新一步，连续 6 个以上工具调用只留最后 3 个；成功结束后整块收成一条，回答留在原处。错误、中断、审批和未知终止状态保持展开。
+- **统一行语法**：工具、思考、记录都用原生 24px 行语法，状态点和进行中动效直接用宿主原生的 `StateDot` / `TextShimmer`；圆角与字号跟随宿主。Skill / Read / Bash、上下文来源、文件路径和原始详情仍然可读，详情放在内凹块里，可「在轨迹中查看」。
+- **思考行与实时内凹块**：思考以一行呈现（用时、首句预览、字数），展开或进行中显示内凹块；rAF 连续跟随（EMA 速度匹配 + 比例项收敛，稳态零可见滞后），滚动、聚焦或选字暂停，点击「回到最新」恢复。跟随控制器与 0.1.x 相同。
+- **轮次尾部**：成功结束的轮次末尾给出交付文件卡片（点击在右侧栏打开）、复制回答、从这里分支，以及时间 · 用时 · 用量。数据来自宿主公开的 turn-tail，不再向 DOM 注入统计行。
+- **收尾正文的文件名链接**：回答里提到的文件名可点击，在右侧栏打开。
+- **0.2.0 新节点**：turn-trigger 开场（定时任务、子代理、后台任务等触发来源）、问答记录、已提交计划、通用卡片「在对话中查看」；轮次中途的补充消息和命令输入按时间位置显示在面板内；成功的斜杠命令输出显示在回答区，其生命周期行仍在面板里。
+- **阅读位置记忆**：切走再回来时恢复到离开时的位置，按会话记录，只存在内存里，刷新页面后不保留。
+- **克制动效**：新文字按源顺序逐词渐显，历史不重新打字，遵守系统减少动态效果；heavy 模式只启用离屏 `content-visibility`，不会降级可见动效。
 - **原生内容回退**：保留 Markdown、代码、表格、公式、链接、图片与 DSH 原生工具结果组件；不执行模型生成的 HTML / JavaScript。
-- **兼容层内聚**（`src/client/compat/`）：原 `dsh-custom-patcher` 的 13 个阅读视图配套补丁已全部并入——composer 可读性、轮次统计行、`dsh-rewind` 兼容桥、收尾总结防折叠、负载守卫 heavy 离屏布局优化（保留 blur/shimmer）、离屏轮次 `content-visibility` 等，运行时经 `<style id="dsh-clearview-compat">` 注入，挂插件 fiber 生命周期，可重入。
+- **兼容层内聚**（`src/client/compat/`）：保留阅读视图配套的滚动锚定、`dsh-rewind` 兼容桥、收尾总结防折叠、负载守卫 heavy 离屏布局优化与离屏轮次 `content-visibility`，运行时经 `<style id="dsh-clearview-compat">` 注入，挂插件 fiber 生命周期，可重入。0.2.0 起 composer 可读性与轮次统计行两个模块已移除。
 
 没有收到 reasoning 的消息不会被补写或推测思考；插件不翻译、摘要或重新解释原始 Think 文本。
 
 ## 安装（dsh-market / dsh plugin）
 
-需要已安装、可正常工作的 DeepSeek Harness。在市场页面找到本插件，或直接执行：
+需要已安装、可正常工作的 DeepSeek Harness 0.2.0-rc.2（插件的 peer 依赖精确钉在该版本：`@deepseek-ai/cordis` 4.0.4、`react` 18.3.1，其余 `@deepseek-ai/dsh-*` 均为 0.2.0-rc.2）。在市场页面找到本插件，或直接执行：
 
 ```sh
 dsh plugin --profile web add github:Vinzelles/dsh-clearview
@@ -44,10 +48,10 @@ dsh plugin --profile web add github:Vinzelles/dsh-clearview
 Node.js 需要 `^22.19.0 || >=24`。构建复用你明确指定的 Harness（`DSHX_HARNESS`）的现有依赖，不下载另一份宿主，也不改宿主源码。
 
 ```sh
-# 1. 克隆并安装依赖
+# 1. 克隆并链接依赖（先把目标 generation 的宿主包链接进 node_modules，类型和测试读取 0.2.0 的真实契约）
 git clone https://github.com/Vinzelles/dsh-clearview.git
 cd dsh-clearview
-node scripts/link-harness-dependencies.mjs "$DSHX_HARNESS"
+npm run link:generation -- <generation>/packages
 
 # 2. 测试与构建
 npm test
@@ -66,6 +70,13 @@ dshx activate-new-client dsh-clearview --profile web --port "$DSH_WEB_PORT" --ha
 
 更新已有客户端时，拉取源码、重新构建，用 `dshx activation-plan --change client` 核对更新方式，再验证实际页面。不要为客户端动效更新重启宿主。想立即对照原版，直接选择「对话」；记录、模型和输入框一直由 DSH 持有。
 
+## 不支持
+
+- **点赞 / 点踩**：宿主只允许经原生 `assistant-actions` slot 注入，阅读页拿不到该入口。
+- **交付文件的「默认应用打开」和「在文件夹中显示」**：阅读页只能在右侧栏打开交付文件。
+- **原生「工作细节」模式**：阅读页用自己的过程面板，不接入该模式。
+- **原生轮次导航栏**：阅读页不提供。
+
 ## 设计与安全边界
 
 - 基于公开会话投影的呈现层：不读取私有 provider 日志、不改写提示词、不篡改模型设置。
@@ -76,7 +87,7 @@ dshx activate-new-client dsh-clearview --profile web --port "$DSH_WEB_PORT" --ha
 
 ## 测试
 
-单元测试覆盖：流式顺序与轮次边界、异常保留、长思考两行跟随、Unicode/组合 emoji、Markdown/GFM/公式、流式缓冲、阅读保护守卫（选区/焦点暂停与「回到最新」浮现）、`dsh-rewind` 隐藏契约、执行集群聚合与运行状态条派生、执行失败并入报错卡片（合并判定与退出码恢复）。安装后仍需在真实宿主验证，不能把单元测试通过当作页面已加载。
+`npm test` 当前共 255 项，全部通过。覆盖：流式顺序与轮次边界、异常保留、思考行与长思考跟随、Unicode/组合 emoji、Markdown/GFM/公式、流式缓冲、阅读保护守卫（选区/焦点暂停与「回到最新」浮现）、`dsh-rewind` 隐藏契约、步骤分组与面板状态、轮次尾部数据、turn-trigger 与记录行、视图请求与阅读位置、样式契约、浏览器语法与运行时外部依赖门禁。安装后仍需在真实宿主验证，不能把单元测试通过当作页面已加载。
 
 ## 许可与致谢
 

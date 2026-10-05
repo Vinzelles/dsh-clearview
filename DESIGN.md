@@ -20,7 +20,7 @@ Only a successful public turn-close boundary folds process and intermediate comm
 
 ## Long reasoning
 
-A neutral card bounds the transcript without replacing it. The viewport mask is 28px. Follow is continuous, not stepped: one rAF loop writes the viewport's native scroll offset per frame, driven by a velocity-matched controller — an EMA of the measured tail growth feeds the speed forward and a proportional term closes residual lag. Under steady streaming the viewport moves at exactly the content speed with zero visible lag; a burst or a resume closes the gap smoothly at a capped speed. The position is clamped to the live tail every frame, so the viewport never passes the transcript end, rolls back, clones the transcript or loops old text; a shrinking tail re-aims instead of freezing. All metrics are cached from the resize signal, so neither the scroll nor the fade costs more as a single card grows long: the loop reads no layout, and native scrolling rasterizes against the viewport, not the transcript. When the stream stops or the loop settles, it parks itself until the next growth.
+A neutral card bounds the transcript without replacing it. The viewport mask is 26px. Follow is continuous, not stepped: one rAF loop writes the viewport's native scroll offset per frame, driven by a velocity-matched controller — an EMA of the measured tail growth feeds the speed forward and a proportional term closes residual lag. Under steady streaming the viewport moves at exactly the content speed with zero visible lag; a burst or a resume closes the gap smoothly at a capped speed. The position is clamped to the live tail every frame, so the viewport never passes the transcript end, rolls back, clones the transcript or loops old text; a shrinking tail re-aims instead of freezing. All metrics are cached from the resize signal, so neither the scroll nor the fade costs more as a single card grows long: the loop reads no layout, and native scrolling rasterizes against the viewport, not the transcript. When the stream stops or the loop settles, it parks itself until the next growth.
 
 When the stream ends while following, the same controller glides the residual lag to the end and stops; user interaction during the glide cancels it at the painted position.
 
@@ -30,7 +30,23 @@ Expanding changes viewport size and preserves position and follow state. Wheel, 
 
 Assign reveal times from source positions before rendering Markdown. Only newly appended text receives opacity/blur motion; existing paragraphs, page surfaces and text color do not animate. The animated frontier is bounded: text whose reveal has finished renders as plain text, and only the live reveal window (roughly duration plus queue delay worth of words) exists as components, so a long single paragraph costs the same per frame as a short one. Unicode graphemes and punctuation keep their source order. Media and custom blocks do not enter the text queue.
 
-Busy labels use a 2-second glyph-only shimmer and a short state swap. Initial, busy and elapsed labels all use the native font at 14px/24px, weight 400. The disclosure arrow sits 6px from the current label; no longest-state spacer. Elapsed time and attention states do not shimmer.
+Busy labels and the active row use the native `TextShimmer`; the busy state dot is the native `StateDot`. The reader ships no shimmer of its own and no opacity pulse. Elapsed time and attention states do not shimmer. Timing and easing live in Motion tokens.
+
+## Process panel
+
+One turn's process lives in a single hairline panel: a status header (state dot or native spinner, status text, elapsed time, step / tool / failure counts) and step-grouped rows in the native 24px row grammar. Steps that hold a single tool row merge into one range label. While a turn is not successfully closed, earlier steps condense into one summary row and only the latest step is shown in full; six or more consecutive tool calls fold all but the last three. A successful close collapses the panel to its header and leaves the answer in place; failures, interruptions, approvals and unresolved windows stay open. Mid-turn human input appears inside the panel at its chronological position.
+
+The answer zone holds the closing reply. A successful slash-command result renders there as Markdown, while its lifecycle row stays in the panel. Mid-turn steering and command inputs keep their rewind seat inside the panel; in a collapsed finished turn the seat appears after the panel is expanded. A submitted plan is a record row with the plan title that unfolds to the plan Markdown; it carries no approval status.
+
+The closing row of a successful turn reads only public turn data: delivered-file cards, copy, fork, and clock, duration and usage. Fork is offered at the turn's end sequence like the native action and is hidden when turn-tail reports `branchUnavailable`. Nothing is injected into the DOM to compute it.
+
+A floating control appears only when the reader is scrolled away from the bottom: a status capsule while the turn runs, a round jump button otherwise. The reading position is remembered per session in memory only and is not persisted.
+
+A view request from another surface (for example the native conversation) waits while the session is loading and is dropped if its target is still absent afterwards. Tool calls inside a collapsed panel are not auto-expanded to reach a target.
+
+## Motion tokens
+
+Structural motion uses cubic-bezier(.2,.8,.2,1): 100ms hover, 200ms state swaps and floating surfaces, 260ms expand and collapse, 350ms word reveal with 1px blur. The only busy signals are the native TextShimmer on the panel status and the active row, and the native StateDot spinner. Heavy mode only enables off-screen turn optimization; visible motion is never degraded by content size. Reduced motion, motion off, forced colors and background tabs settle to the received content.
 
 ## Reading and accessibility
 
