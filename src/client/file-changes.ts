@@ -22,8 +22,10 @@
  * 已知边界（有意不做）：shell 间接创建/修改（`> file` 重定向、git checkout 回退等）
  * 与未声明变更渲染意图的插件工具（如技能库写入）不进入统计——它们无法可靠分类。
  */
-import type { ChatConversationViewNode, ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client';
+import type { ChatConversationViewNode } from '@deepseek-ai/dsh-client-ui-chat/client';
+import type { ToolCallBlock } from '@deepseek-ai/dsh-client-ui-conversation/client';
 import { executionFacts, inputFields, stringValue } from './tool-activity.js';
+import { diffCardModel } from './native017/tool-models.mjs';
 
 export type FileChangeKind = 'added' | 'modified' | 'deleted';
 export type FileOpKind = 'create' | 'modify' | 'delete';
@@ -196,7 +198,8 @@ export function fileOpsOf(block: ToolCallBlock): FileOp[] {
   if (!isSettled(block) || block.isError) return [];
   const normName = (block.call?.name ?? '').trim().toLowerCase();
   const args = inputFields(block.call?.argsRaw);
-  const view = viewOf(block.callView);
+  const nativeDiff = diffCardModel(block);
+  const view = nativeDiff ? { card: 'diff', diffs: nativeDiff.card.diffs } : viewOf(Reflect.get(block, 'callView'));
   if (view && view.card === 'diff') {
     const op = diffOpFor(normName, args, block);
     return viewPaths(view).map(path => ({ op, path }));

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { IconThinkOutline14 } from '@deepseek-ai/dsh-client-ui-primitives';
+import { IconThinkOutline14 } from './icons017.js';
 import { followAdvance } from './reasoning-follow.js';
 import css from './Reader.module.css';
 

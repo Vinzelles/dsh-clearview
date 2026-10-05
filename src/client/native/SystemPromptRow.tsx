@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { DisclosureRow, IconBrowseOutline16 } from '@deepseek-ai/dsh-client-ui-primitives';
+import { DisclosureRow } from '@deepseek-ai/dsh-client-ui-primitives';
+import { IconBrowseOutline16 } from '../icons017.js';
 import css from './SystemPromptRow.module.css';
 
 /** Model-facing prompt text stays bounded at the disclosure, like the context bodies. */

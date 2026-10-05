@@ -1,4 +1,4 @@
-import type { EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client';
+import type { EngineStoreHandle } from '@deepseek-ai/dsh-client-store';
 
 export interface ReaderState { expanded: Record<string, boolean>; motion: boolean; collapseThinking: boolean }
 type ReaderActions = {
@@ -23,7 +23,7 @@ const STORE_ENGINE_SPECIFIERS = [
 /** 懒 CJS 工厂作用域内的解析器签名（即构建器 banner 里的 `require`）。 */
 type ModuleRequire = (specifier: string) => unknown;
 
-type StoreEngine = typeof import('@deepseek-ai/dsh-client-runtime/client');
+type StoreEngine = typeof import('@deepseek-ai/dsh-client-store');
 
 // 插件 bundle 由 client-modules 以 `factory: (require) => {…}` 包裹执行，这个
 // `require` 就是内核模块表本身。构建期静态导入会被提升成一次不可捕获的 bundle

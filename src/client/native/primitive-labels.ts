@@ -48,6 +48,7 @@ export const JSON_TRUNCATED = (total: number): string => `… 已截断，共 ${
 
 /** 终端卡（terminal.* 词典；fold 文案含单位，与原生 expandRest 模板一致）。 */
 export const TERMINAL_LABELS = {
+  noExitCode: '无退出码',
   signal: (signal: string) => `信号 ${signal}`,
   exitCode: (code: number) => `退出码 ${code}`,
   running: '运行中',
@@ -64,6 +65,7 @@ export const TERMINAL_LABELS = {
 
 /** 读文件卡（read.* 词典）。 */
 export const READ_LABELS = {
+  codeLabel: '代码', wrapLabel: '自动换行', unwrapLabel: '取消换行',
   window: (shown: number, total: number) => `显示 ${shown} / ${total} 行`,
   copy: COPY,
   copied: COPIED,
@@ -75,6 +77,7 @@ export const READ_LABELS = {
 
 /** 差异卡（diff.* 词典；one/other 同形，单数复数一个函数）。 */
 export const DIFF_LABELS = {
+  codeLabel: '代码', wrapLabel: '自动换行', unwrapLabel: '取消换行',
   copy: COPY,
   copied: COPIED,
   collapseAria: '收起差异',

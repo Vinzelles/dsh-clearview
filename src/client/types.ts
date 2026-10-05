@@ -1,5 +1,9 @@
+import type { SessionPendingInteraction } from '@deepseek-ai/dsh-client-ui-session/client';
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment';
-import type { AssistantBlock, ChatSnapshot } from '@deepseek-ai/dsh-client-runtime/client';
+import type { AssistantBlock } from '@deepseek-ai/dsh-client-ui-conversation/client';
+import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client';
+import type { ChatViewSlotProps } from '@deepseek-ai/dsh-client-ui-chat/client';
+import type { IJobs } from '@deepseek-ai/dsh-api-job-controller/client';
 import type { MaybeSnapshotSelectorHook, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots';
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
 import type { createReaderStore } from './store.js';
@@ -18,6 +22,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 export interface ReaderInjected {
+  jobsSource: IJobs['state'];
+  watchJobs: () => () => void;
+  contextT: ChatViewSlotProps['t'];
   loadOlder: () => Promise<void>;
   loadImage: (attachment: ImageAttachmentRef) => Promise<{ data: Uint8Array; mediaType: string }>;
   /** 用 Host 默认程序打开文件（绝对或工作区相对路径均可）。 */
@@ -33,7 +40,7 @@ export interface ReaderCompatHooks {
   /** 0.1.2 的 ui-chat 'chat' 标准钩子（chat 快照）；0.1.1 内嵌于 useSession 快照。 */
   useChat?: MaybeSnapshotSelectorHook<ChatSnapshot>;
   /** 0.1.2 的待处理宿主交互钩子（按 sessionId 索引）；0.1.1 内嵌于 useSession 快照。 */
-  useSessionPendingInteraction?: MaybeSnapshotSelectorHook<ReadonlyMap<string, unknown>>;
+  useSessionPendingInteraction?: MaybeSnapshotSelectorHook<ReadonlyMap<string, SessionPendingInteraction>>;
 }
 export type ReaderProps = PropsRuntime<'conversation.view'>
   & PropsLocale<'conversation'>

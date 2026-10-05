@@ -1,5 +1,5 @@
-import type { AssistantChatData } from '@deepseek-ai/dsh-client-ui-conversation/client';
-import type { ChatConversationViewNode } from '@deepseek-ai/dsh-client-runtime/client';
+import type { AssistantChatData } from '@deepseek-ai/dsh-client-ui-chat/client';
+import type { ChatConversationViewNode } from '@deepseek-ai/dsh-client-ui-chat/client';
 
 export type ActivityPhase =
   | 'thinking' | 'output' | 'tool' | 'waiting' | 'processing' | 'idle';

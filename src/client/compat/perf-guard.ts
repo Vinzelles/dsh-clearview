@@ -2,7 +2,7 @@
  * 阅读视图负载守卫（原 patcher reader-perf-guard.js 内聚）。
  *
  * 度量阅读视图内容规模，超阈值时给根元素点亮 data-dshcp-heavy="on"，由
- * compat 样式降级最贵的逐词 blur / shimmer；回落到滞回下限以下自动恢复。
+ * compat 样式优化已关闭轮次的离屏布局（保留 blur / shimmer）；回落到滞回下限以下自动恢复。
  * 度量口径全部是插件自己暴露的 DOM 数据属性（零侵入）：
  *   - 字符量：Σ [data-reader-text][data-shown-length]
  *   - 轮次数：section[data-reader-turn] 个数
@@ -54,6 +54,7 @@ export function cvArmSize(measured: number, placeholder: number = CV_PLACEHOLDER
 function armRoot(root: HTMLElement): void {
   const sections = root.querySelectorAll<HTMLElement>('section[data-reader-turn]');
   const last = sections.length - 2;
+  const updates: { el: HTMLElement; h: number; size: string }[] = [];
   for (let i = 0; i < last; i++) {
     const el = sections[i];
     if (el.getAttribute('data-reader-turn-state') !== 'closed') continue;
@@ -62,6 +63,11 @@ function armRoot(root: HTMLElement): void {
     if (!size) continue;
     const stored = el.getAttribute('data-cv-armed-size');
     if (stored !== null && Math.abs(Number(stored) - h) <= 4) continue;
+    updates.push({ el, h, size });
+  }
+  // All size reads precede writes: arming one turn cannot invalidate layout
+  // before measuring the next. A large history pays at most one read phase.
+  for (const { el, h, size } of updates) {
     el.setAttribute('data-cv-armed', '1');
     el.setAttribute('data-cv-armed-size', String(Math.round(h)));
     el.style.containIntrinsicSize = size;
@@ -100,7 +106,7 @@ export function apply(_ctx: any): () => void {
     for (let i = 0; i < roots.length; i++) {
       // armRoot 必须每 tick 跑：轮次高度可以只由展开/折叠变化（字符量不变），
       // 跳过它会留下过期的 contain-intrinsic-size，向上滚动时占位跳变。
-      try { syncRoot(roots[i]); armRoot(roots[i]); } catch { /* 单根失败忽略 */ }
+      try { armRoot(roots[i]); syncRoot(roots[i]); } catch { /* 单根失败忽略 */ }
     }
   };
   work();

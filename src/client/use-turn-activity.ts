@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
-import type { UseConversationSession } from '@deepseek-ai/dsh-client-runtime/client';
+import { useEffect, useMemo, useState } from 'react';
+import { useChatSelector, usePendingSelector } from './compat/session-snapshot.js';
+import type { SessionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client';
+import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots';
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
 import {
   activityLabel, latestOpenTurn, phaseKeyOf, type ActivityPhase, type TurnSnapshot,
@@ -14,14 +16,15 @@ export interface ActivityView {
 
 const IDLE: ActivityView = { label: '', seconds: null, key: null, phase: 'idle' };
 
-export function useTurnActivity(useSession: UseConversationSession): ActivityView {
+export function useTurnActivity(useSession: SnapshotSelectorHook<SessionSnapshot>): ActivityView {
   const [now, setNow] = useState(() => Date.now());
   // 选择器只返回原始值：原来每次 store 更新都返回一个新对象（且为每个步骤重建
   // Map），Object.is 判定必然不相等，于是每个流式 chunk 都让整个阅读树重渲染一次。
   // 现在只有「阶段键 / 待处理数 / 是否有开放轮次」变化才触发重渲染。
-  const raw = useSession(snapshot => {
+  const pending = usePendingSelector(useSession, value => value.length);
+  const raw = useChatSelector(useSession, chat => {
     let latest: TurnSnapshot | undefined;
-    for (const turn of snapshot.chat.timeline.turns.values()) {
+    for (const turn of chat.timeline.turns.values()) {
       if (turn.status !== 'open') continue;
       // TurnSnapshot models step data as a Map, while the runtime hands a
       // keyed Location reader; copy the one business value turn-activity reads.
@@ -37,7 +40,6 @@ export function useTurnActivity(useSession: UseConversationSession): ActivityVie
     }
     return {
       turn: latest,
-      pending: snapshot.pending.length,
       hasOpenTurn: latest !== undefined,
       phaseKey: latest ? phaseKeyOf(latest, latestStep(latest), latestSince(latest)) : 'idle',
     };
@@ -55,12 +57,10 @@ export function useTurnActivity(useSession: UseConversationSession): ActivityVie
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [raw.hasOpenTurn]);
-  // The view is selected through the same equality the reader uses: a seconds
-  // tick produces the same key/phase/label and therefore the SAME object
-  // reference, so `now` updates the status-bar text without re-rendering the
-  // whole reading tree every second.
-  return useSession<ActivityView>(() => {
-    const result = latestOpenTurn(raw.turn, raw.pending, []);
+  // Derive the view locally: this does not need a second host subscription.
+  // Timer ticks still update the Reader; stable group props let history bail out.
+  return useMemo<ActivityView>(() => {
+    const result = latestOpenTurn(raw.turn, pending, []);
     if (!result) return IDLE;
     // Timer origin is the step's real event timestamp (`since`), never a
     // local first-seen estimate: a first-seen origin inflates after an idle
@@ -73,7 +73,7 @@ export function useTurnActivity(useSession: UseConversationSession): ActivityVie
       ? null
       : Math.max(0, Math.floor((now - result.since) / 1000));
     return { label: activityLabel(result.phase), seconds, key: result.key, phase: result.phase };
-  }, sameActivity);
+  }, [raw, pending, now]);
 }
 
 /** 阅读页重渲染判定：秒数每 tick 变化，但它只影响状态条自己的文案，不应带着
@@ -84,10 +84,10 @@ export function sameActivity(a: ActivityView, b: ActivityView): boolean {
 
 /** 只比较真正影响阅读页渲染的字段（`turn` 对象每 chunk 都换引用）。 */
 function turnActivityEqual(
-  a: { turn?: TurnSnapshot; pending: number; hasOpenTurn: boolean; phaseKey: string },
-  b: { turn?: TurnSnapshot; pending: number; hasOpenTurn: boolean; phaseKey: string },
+  a: { turn?: TurnSnapshot; hasOpenTurn: boolean; phaseKey: string },
+  b: { turn?: TurnSnapshot; hasOpenTurn: boolean; phaseKey: string },
 ): boolean {
-  return a.hasOpenTurn === b.hasOpenTurn && a.pending === b.pending && a.phaseKey === b.phaseKey;
+  return a.hasOpenTurn === b.hasOpenTurn && a.phaseKey === b.phaseKey;
 }
 
 function latestStep(turn: TurnSnapshot): number {

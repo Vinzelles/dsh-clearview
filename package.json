@@ -1,6 +1,6 @@
 {
   "name": "dsh-clearview",
-  "version": "0.1.15",
+  "version": "0.1.18",
   "description": "A calmer reading view for DeepSeek Harness: native process details, live reasoning, and clean final answers.",
   "type": "module",
   "license": "MIT",
@@ -47,6 +47,7 @@
     "@types/mdast": "^4.0.4",
     "@types/node": "^22.20.0",
     "@types/react": "~18.3.1",
+    "esbuild": "^0.28.2",
     "tsdown": "^0.22.2",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3"

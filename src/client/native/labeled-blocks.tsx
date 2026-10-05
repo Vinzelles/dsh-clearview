@@ -22,42 +22,43 @@ type WebBlockProps = ComponentProps<typeof WebBlock>;
 type TerminalBlockProps = ComponentProps<typeof TerminalBlock>;
 type MarkdownTextProps = ComponentProps<typeof MarkdownText>;
 type JsonBlockProps = ComponentProps<typeof JsonBlock>;
+type WithoutLabels<T> = T extends unknown ? Omit<T, 'labels'> : never;
 
 /**
  * 原始 JSON 记录块：绑定截断脚注。0.1.2 把 0.1.1 内置的 defaultTruncatedLabel
  * 删成了必传 `truncatedLabel`（>20k 字符展开即无守卫调用）；0.1.1 本就接受该
  * 可选 prop，直传两版安全。调用点不再各自记得传。
  */
-export function JsonBlockL({ truncatedLabel, ...props }: JsonBlockProps): ReactNode {
+export function JsonBlockL({ truncatedLabel, ...props }: Omit<JsonBlockProps, 'truncatedLabel'> & { truncatedLabel?: JsonBlockProps['truncatedLabel'] }): ReactNode {
   return <JsonBlock {...props} truncatedLabel={truncatedLabel ?? JSON_TRUNCATED} />;
 }
 
 /** 读文件卡：始终携带完整 READ_LABELS。 */
-export function ReadBlockL(props: ReadBlockProps): ReactNode {
-  return <ReadBlock {...props} {...({ labels: READ_LABELS } as object)} />;
+export function ReadBlockL(props: Omit<ReadBlockProps, 'labels'>): ReactNode {
+  return <ReadBlock {...props} labels={READ_LABELS} />;
 }
 
 /** 差异卡：始终携带完整 DIFF_LABELS。 */
-export function DiffBlockL(props: DiffBlockProps): ReactNode {
-  return <DiffBlock {...props} {...({ labels: DIFF_LABELS } as object)} />;
+export function DiffBlockL(props: Omit<DiffBlockProps, 'labels'>): ReactNode {
+  return <DiffBlock {...props} labels={DIFF_LABELS} />;
 }
 
 /** 搜索卡：始终携带完整 SEARCH_LABELS。 */
-export function SearchBlockL(props: SearchBlockProps): ReactNode {
-  return <SearchBlock {...props} {...({ labels: SEARCH_LABELS } as object)} />;
+export function SearchBlockL(props: WithoutLabels<SearchBlockProps>): ReactNode {
+  return <SearchBlock {...props} labels={SEARCH_LABELS} />;
 }
 
 /** Web 卡：始终携带完整 WEB_LABELS。 */
-export function WebBlockL(props: WebBlockProps): ReactNode {
-  return <WebBlock {...props} {...({ labels: WEB_LABELS } as object)} />;
+export function WebBlockL(props: WithoutLabels<WebBlockProps>): ReactNode {
+  return <WebBlock {...props} labels={WEB_LABELS} />;
 }
 
 /** 终端卡：默认完整 TERMINAL_LABELS，调用方可用 labels 覆盖个别字段（如失败态 done）。 */
-export function TerminalBlockL({ labels, ...props }: Omit<TerminalBlockProps, 'labels'> & { labels?: { [K in keyof typeof TERMINAL_LABELS]?: unknown } }): ReactNode {
-  return <TerminalBlock {...props} {...({ labels: { ...TERMINAL_LABELS, ...labels } } as object)} />;
+export function TerminalBlockL({ labels, ...props }: Omit<TerminalBlockProps, 'labels'> & { labels?: Partial<TerminalBlockProps['labels']> }): ReactNode {
+  return <TerminalBlock {...props} labels={{ ...TERMINAL_LABELS, ...labels }} />;
 }
 
 /** Markdown 正文（0.1.2 labels 必传；0.1.1 该 prop 不存在，运行时忽略）。 */
 export function MarkdownTextL(props: Omit<MarkdownTextProps, 'labels'>): ReactNode {
-  return <MarkdownText {...props} {...({ labels: MARKDOWN_LABELS } as object)} />;
+  return <MarkdownText {...props} labels={MARKDOWN_LABELS} />;
 }

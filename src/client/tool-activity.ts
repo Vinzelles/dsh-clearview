@@ -1,4 +1,6 @@
-import type { AssistantBlock, ChatConversationViewNode, ToolCallBlock, TurnLocation } from '@deepseek-ai/dsh-client-runtime/client';
+import type { AssistantBlock, ToolCallBlock, TurnLocation } from '@deepseek-ai/dsh-client-ui-conversation/client';
+import { terminalCardModel } from './native017/tool-models.mjs';
+import type { ChatConversationViewNode } from '@deepseek-ai/dsh-client-ui-chat/client';
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
 import type { ReaderGroup } from './projection.js';
 import type { RewindSpan } from './rewind-hidden.js';
@@ -117,10 +119,12 @@ export function toolIdentity(entry: Pick<ToolActivityEntry, 'block' | 'draft'>) 
 
 export function executionFacts(block: ToolCallBlock | undefined): { exitCode?: number; signal?: string } {
   if (!block || !('kind' in block)) return {};
-  const result = block.resultView?.card === 'terminal' ? block.resultView : null;
+  const derived = terminalCardModel(block);
+  const legacy = objectValue(Reflect.get(block, 'resultView'));
+  const result = legacy?.card === 'terminal' ? legacy : null;
   const meta = objectValue(block.meta);
-  const code = result?.exitCode ?? meta?.exitCode ?? meta?.exit_code;
-  return { exitCode: typeof code === 'number' && Number.isFinite(code) ? code : undefined, signal: result?.signal ?? stringValue(meta, 'signal') };
+  const code = result?.exitCode ?? meta?.exitCode ?? meta?.exit_code ?? derived?.card.exitCode;
+  return { exitCode: typeof code === 'number' && Number.isFinite(code) ? code : undefined, signal: derived?.card.signal ?? stringValue(result, 'signal') ?? stringValue(meta, 'signal') };
 }
 
 export function activityPhase(entry: Pick<ToolActivityEntry, 'block' | 'draft'>, turnClosed = false): ToolPhase {
@@ -136,10 +140,10 @@ export function activityPhase(entry: Pick<ToolActivityEntry, 'block' | 'draft'>,
 export function activitySummary(entry: Pick<ToolActivityEntry, 'block' | 'draft'>) {
   const { name, raw } = toolIdentity(entry);
   const args = inputFields(raw);
-  const view = entry.block?.callView;
+  const view = entry.block ? objectValue(Reflect.get(entry.block, 'callView')) : null;
   const target = stringValue(args, 'file_path', 'path', 'filename', 'filePath');
-  const command = view?.card === 'terminal' ? view.title : stringValue(args, 'command', 'cmd', 'script');
-  const description = view?.card === 'terminal' ? view.description : stringValue(args, 'description');
+  const command = (view?.card === 'terminal' ? stringValue(view, 'title') : undefined) ?? stringValue(args, 'command', 'cmd', 'script');
+  const description = (view?.card === 'terminal' ? stringValue(view, 'description') : undefined) ?? stringValue(args, 'description');
   const file = target?.split(/[/\\]/).at(-1);
   const editorCommand = stringValue(args, 'command');
   const isEditor = name === 'str_replace_editor';
@@ -157,7 +161,7 @@ export function activitySummary(entry: Pick<ToolActivityEntry, 'block' | 'draft'
     : category === 'web' ? name === 'web_search' ? '搜索网页' : '读取网页'
     : view?.title || name;
   return { name, raw, args, category, title, target: target ?? command ?? stringValue(args, 'query', 'pattern', 'url'), command,
-    cwd: view?.card === 'terminal' ? view.cwd : stringValue(args, 'workdir', 'cwd'), content: stringValue(args, 'content', 'new_string', 'newText') };
+    cwd: (view?.card === 'terminal' ? stringValue(view, 'cwd') : undefined) ?? stringValue(args, 'workdir', 'cwd'), content: stringValue(args, 'content', 'new_string', 'newText') };
 }
 
 export function preparingLabel(name: string): string {

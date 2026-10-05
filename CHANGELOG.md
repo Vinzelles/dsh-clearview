@@ -1,5 +1,62 @@
 # Changelog
 
+## 0.1.18
+
+- 阅读流按 chat/session/pending 域在宿主订阅边界选择数据，当前节点追加文字不再唤醒无关历史组件。分组保留稳定引用，本轮仅订阅自己的节点和轮次。
+- 显式提供只读快照供统计行和兼容模块使用，不依赖 React 私有 fiber 存放完整快照；覆盖源缺席及恢复、旧版内嵌快照与新版拆分快照。
+- 流式缓冲复用单个 rAF 循环；逐词动画完成后的包装回收合帧。保持原有词序、350ms 渐显、blur、缓冲时序和折叠曲线。
+- 外层跟随缓存 ResizeObserver 测量结果；离屏轮次尺寸先集中读取再写入。保留手动滚动暂停、选择保护和回到最新。
+- heavy 模式仅优化离屏布局，不再关闭 blur、shimmer 或状态模糊过渡。
+- 新增结构选择、收尾合帧、显式快照回归及完整 Reader 浏览器夹具：21 轮短对话与 20 个工具步骤，使用实际宿主 React/原生组件，校验工具详情、滚动与最终文本。浏览器夹具不等同于桌面 WebView2 实机帧率验收。
+
+## 0.1.17
+
+- **修复部分设备上用户消息整条变成「此内容暂时无法在阅读页显示」**。用户消息的文本叶子
+  原先直接渲染宿主 primitives 的 `MessageText`；阅读页对宿主展示组件的可用性与入参契约没有
+  任何约束力——0.1.13 修过的同类事故（0.1.2 起 primitives 由内置默认值改为必传 `labels`，
+  缺失即渲染期 TypeError）就是这样把整条座位吞成兜底文案的。用户消息**只**经过这一个宿主
+  组件（助手消息走插件自带 Markdown 栈），所以宿主侧的差异恰好表现为「只有用户消息消失」。
+  修复分四层：
+  1. **文本叶子自持**：新增 `UserText`（`white-space: pre-wrap` + `word-break: break-word`，
+     与原生 `.text` 等价，字号/行高继续继承气泡），用户消息路径不再引用任何宿主组件。
+  2. **形状容错**：`contentBlocks` 迁入 `src/client/user-content.ts` 并按 unknown 归一——
+     content 缺席/非数组/纯字符串、image 块缺 `attachment` 或 `attachmentId`、text 块无字符串
+     正文，一律降级为可见记录或文本而不是抛错；`Blocks` 的 key 改用 `blockKey()`，附件缺失
+     时给稳定占位，不再解引用 undefined。
+  3. **图片占位兜底**：`ImageBlock` 在附件引用不可用或宿主未注入 `loadImage` 时直接走既有的
+     「图片未能加载」占位分支（宁可显示占位，不再炸掉整条消息），且不再给出无意义的重试按钮。
+  4. **兜底文案自带证据**：`BlockBoundary` 补 `componentDidCatch`——错误与组件栈落
+     `console.error('[dsh-clearview] …')`，同一原因写到 `data-reader-block-error` 属性上。
+     此前边界静默吞错，设备侧只能看到兜底文案，报告因此不可诊断。
+  新增 `tests/user-content.test.ts` 7 项回归锁（归一化边界、key 占位、附件谓词、「用户文本
+  不得再用宿主 MessageText」静态守卫、边界证据通道、图片降级分支）。
+## 0.1.16
+
+- **锁定 WebKit（macOS 13.7 / Safari 16.5）兼容基线，防 ES2025 语法复发**。macOS 13.7
+  （Safari 16.5，JavaScriptCore 605.1.15）用户报告「ES2025 语法不支持」。排查结论：
+  0.1.15 产物本身**不含**任何 ES2023+ 语法、也不含 ES2024/25 运行期 API——ES2025 的
+  唯一新增语法 `using`/`await using` 声明（Safari 19 起支持，16.5 上解析期 SyntaxError，
+  整条插件条不加载）、正则 `v`/`d` 标志字面量（Safari 18.1/26 起）、`Object.groupBy`、
+  `Promise.withResolvers`、`Array.fromAsync`、Set 关系方法、`Float8Array`、iterator
+  helpers 等逐项扫描均为零。因此若报错在 0.1.15 上复现，该语法只能来自宿主内核
+  提供的种子/注入模块（内核侧构建目标问题，需携 console 原文与失败资源 URL 上报
+  内核）；本版本为插件自身加三道保险，保证此类缺陷永不复发：
+  1. **浏览器半边 target 钉死 es2022**（`tsdown.config.ts`）：devkit 适配器
+     `externalClientBundle` 的 browser 默认值是 es2024，而 Safari 16.5 的语法上限
+     是 ES2023（该版本未新增语法），钉 es2022 后未来任何 ES2023+ 语法（含 `using`）
+     都会在构建期由 bundler 降级（esbuild 会改写为 try/finally + `__using` 助手，
+     不依赖 `Symbol.dispose` 全局）；宿主半边（platform node，Node 22+）不受影响。
+  2. **产物门禁** `scripts/browser-syntax-gate.mjs`：esbuild 以 target es2022 重发
+     `lib/client.js`——输出出现 `__using`/`__callDispose`/`__knownSymbol` 助手即判定
+     源含 `using` 声明；`new RegExp(..., "v")`（bundler 把 `v` 标志字面量改写成的运行
+     期构造，Safari 16.5 上 TypeError）同样判败；并审计源中 ES2024/25 运行期 API
+     的**直接使用**——这类 API 任何 bundler 都不转译，只能源码层规避，门禁只负责
+     发现。`node scripts/browser-syntax-gate.mjs [lib/client.js]` 可独立运行。
+  3. **回归锁** `tests/browser-target.test.ts` 2 项：产物门禁必须通过（未构建时跳过，
+     与 client-store-resolution 产物锁同约定）+ `tsdown.config.ts` 必须保留
+     `config.target = 'es2022'` 覆盖（防 devkit 适配器默认值或配置重构导致漂移）。
+  另：`esbuild` 升为显式 devDependency（门禁依赖，此前仅经 tsx 间接可用）。
+
 ## 0.1.15
 
 - **未接入记录统一降级为「工具调用」默认卡片**。此前阅读页遇到本构建未接入的记录

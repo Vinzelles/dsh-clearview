@@ -60,10 +60,8 @@ export const COMPAT_CSS = `/* ==== reader-tool-state.css ==== */
  *    18 步上滚 0 跳变。只作用于「已关闭且不是最后两轮」的 section：进行中的轮次永远
  *    完整渲染；最后两轮保持渲染（tail-keep 需要点击最近一轮 Disclosure，rewind 桥
  *    与统计行集中在视口底部附近）。
- * 2) 重载降级（data-dshcp-heavy，由 perf-guard 按内容规模点亮）：逐词 WAAPI 动画去
- *    blur（!important 作者样式按 CSS Cascade 压过 WAAPI 关键帧，opacity 渐显保留）；
- *    忙碌态 shimmer 停掉（display:none 后基色文字仍可见）。思考卡片跟随与过程展开
- *    高度动画是核心体验，不降级。 */
+ * 2) heavy 只控制离屏布局优化；可见文字的 blur、shimmer、状态过渡和折叠效果
+ *    与轻负载完全相同，不按内容规模降级。 */
 
 /* Only armed turns opt into off-screen rendering: never-rendered turns keep
  * true geometry (no placeholder swap, no scroll-anchoring surprise), and armed
@@ -72,19 +70,6 @@ export const COMPAT_CSS = `/* ==== reader-tool-state.css ==== */
 [data-dsh-clearview][data-dshcp-heavy="on"] section[data-reader-turn][data-reader-turn-state="closed"][data-cv-armed="1"]:not(:last-of-type):not(:nth-last-of-type(2)) {
   content-visibility: auto;
   contain-intrinsic-size: auto 480px;
-}
-
-[data-dsh-clearview][data-dshcp-heavy="on"] [data-reader-word],
-[data-dsh-clearview][data-dshcp-heavy="on"] [data-reader-atom] {
-  filter: none !important;
-}
-
-[data-dsh-clearview][data-dshcp-heavy="on"] [data-ud-motion="reader-thinking-state"][data-active="true"] [data-reader-shimmer]::before {
-  display: none !important;
-}
-
-[data-dsh-clearview][data-dshcp-heavy="on"] [data-ud-motion="reader-thinking-state"] [data-reader-status-copy] {
-  filter: none !important;
 }
 
 /* ==== reader-reasoning-follow.css ==== */

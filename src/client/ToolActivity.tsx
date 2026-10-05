@@ -1,10 +1,12 @@
 import { memo, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { ToolCallBlock, ToolResultNode } from '@deepseek-ai/dsh-client-runtime/client';
-import { DisclosureRow, JsonTree,
-  IconApiOutline14, IconBrowseOutline16, IconEditOutline16, IconSearchOutline16, IconSkillOutline16, IconSparkle16 } from '@deepseek-ai/dsh-client-ui-primitives';
+import type { ToolCallBlock, ToolResultNode } from '@deepseek-ai/dsh-client-ui-conversation/client';
+import { readCardModel, diffCardModel, searchCardModel, terminalCardModel, webCardModel } from './native017/tool-models.mjs';
+import { DisclosureRow, JsonTree } from '@deepseek-ai/dsh-client-ui-primitives';
+import { IconApiOutline14, IconBrowseOutline16, IconEditOutline16, IconSearchOutline16, IconSkillOutline16, IconSparkle16 } from './icons017.js';
 import { DiffBlockL, ReadBlockL, SearchBlockL, TerminalBlockL, WebBlockL } from './native/labeled-blocks.js';
 import { JSON_TREE_LABELS } from './native/primitive-labels.js';
-import { Blocks, contentBlocks } from './Blocks.js';
+import { Blocks } from './Blocks.js';
+import { contentBlocks } from './user-content.js';
 import { CollapseBody, ProcessFragment } from './motion.js';
 import { StreamMotionContext } from './streaming.js';
 import { activityPhase, activitySummary, executionFacts, exitCodeFromOutput, toolIdentity } from './tool-activity.js';
@@ -51,34 +53,35 @@ function ResultView({ entry, model, phase, ...render }: BlockRenderProps & { ent
     <p className={css.toolDetailNote}>{phase === 'interrupted' ? '已中断，没有工具结果。已生成的输入仍可查看。' : phase === 'preparing' ? '模型正在生成工具输入，工具还未开始执行。' : '工具已开始执行，正在等待结果。'}</p>
     <InputView model={model} preparing={phase === 'preparing'} />
   </>;
-  const view = block.resultView;
+  const terminal = terminalCardModel(block, model.cwd);
   const text = block.content.filter(item => item.type === 'text').map(item => item.text).join('\n');
-  if (view?.card === 'terminal' || model.category === 'terminal') {
+  if (terminal || model.category === 'terminal') {
     const facts = executionFacts(block);
-    const output = view?.card === 'terminal' ? view.output ?? text : text;
+    const output = terminal?.card.output ?? text;
     // Failed executions can carry their exit code only inside the failure text
     // (meta/resultView empty in that case); recover it, and fall back to a
     // failure label rather than a clean-settle "已完成" indicator.
     const exitCode = facts.exitCode ?? (phase === 'failed' ? exitCodeFromOutput(output, true) : undefined);
-    return <div data-reader-tool-terminal><TerminalBlockL command={model.command ?? view?.title ?? model.name} cwd={model.cwd}
+    const command = terminal?.copy.kind === 'shell' ? terminal.copy.command : model.command ?? model.name;
+    return <div data-reader-tool-terminal><TerminalBlockL command={command} cwd={terminal?.card.cwd ?? model.cwd}
       output={output} exitCode={exitCode} signal={facts.signal}
       labels={phase === 'failed' && exitCode === undefined ? { done: '失败' } : undefined} maxLines={18} /></div>;
   }
-  if (view?.card === 'read') return <div data-reader-tool-file><ReadBlockL label={view.path} lang={view.lang} lines={view.lines} totalLines={view.totalLines} maxLines={18} /></div>;
-  if (view?.card === 'diff' && view.diffs.length) return <div data-reader-tool-diff><DiffBlockL diffs={view.diffs} maxLines={18} /></div>;
-  if (view?.card === 'search') return <div data-reader-tool-search>{view.shape === 'paths'
-    ? <SearchBlockL kind="paths" paths={view.paths} total={view.total} truncated={view.truncated} maxLines={18} />
-    : <SearchBlockL kind="matches" files={view.files} total={view.total} truncated={view.truncated} maxLines={18} />}</div>;
-  if (view?.card === 'web') return <div data-reader-tool-web>{view.kind === 'search'
-    ? <WebBlockL kind="search" sources={view.sources} answer={view.answer} truncated={view.truncated} />
-    : <WebBlockL kind="fetch" url={view.url} statusCode={view.statusCode} truncated={view.truncated} />}</div>;
+  const read = readCardModel(block);
+  if (read) return <div data-reader-tool-file><ReadBlockL {...read} maxLines={18} /></div>;
+  const diff = diffCardModel(block);
+  if (diff?.card.diffs.length) return <div data-reader-tool-diff><DiffBlockL {...diff.card} maxLines={18} /></div>;
+  const search = searchCardModel(block);
+  if (search) return <div data-reader-tool-search><SearchBlockL {...search.card} maxLines={18} />{search.recovery && <p className={css.toolDetailNote}>{search.recovery}</p>}</div>;
+  const web = webCardModel(block);
+  if (web) return <div data-reader-tool-web><WebBlockL {...web} /></div>;
   // A trace/export may omit wire presentation. Keep the generated input clearly
   // labelled; it is not proof of an applied diff or a successful file mutation.
   if (model.category === 'write' && model.content && !block.isError) return <>
     <p className={css.toolDetailNote}>文件工具已返回。以下为提交的内容；完整返回记录可在「原始数据」查看。</p>
     {generatedInput(model.content, model.target, false)}
   </>;
-  const content: ToolResultNode['content'] = view?.card === 'generic' && view.content ? view.content : block.content;
+  const content: ToolResultNode['content'] = block.content;
   if (content.some(item => item.type === 'text')) return <div className={css.toolDocument}><Blocks {...render} blocks={contentBlocks(content).filter(item => item.kind === 'text')} source="tool" /></div>;
   if (content.length) return <p className={css.toolDetailNote}>图片或扩展内容已在对话中单独展示。</p>;
   return <p className={css.toolDetailNote}>工具没有返回可展示的内容。</p>;
@@ -110,7 +113,7 @@ function ToolDetails({ entry, model, phase, ...render }: BlockRenderProps & {
   const elapsed = entry.block && 'kind' in entry.block && entry.block.callTime != null ? Math.max(0, entry.block.time - entry.block.callTime) : null;
   const rawResult = useMemo(() => {
     const block = preview.entry.block;
-    return block && 'kind' in block ? JSON.stringify({ content: block.content, isError: block.isError, meta: block.meta, resultView: block.resultView }, null, 2) : '';
+    return block && 'kind' in block ? JSON.stringify({ content: block.content, isError: block.isError, meta: block.meta, resultView: Reflect.get(block, 'resultView') }, null, 2) : '';
   }, [preview.entry.block]);
   const tabs = [['result', phase === 'preparing' ? '生成预览' : '结果'], ['input', '输入'], ['raw', '原始数据']] as const;
   const activate = (index: number) => { const item = tabs[(index + tabs.length) % tabs.length]!; setTab(item[0]); tabRefs.current[(index + tabs.length) % tabs.length]?.focus(); };

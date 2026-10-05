@@ -50,7 +50,7 @@ function seatText(seat: HTMLElement): string {
   const clone = seat.cloneNode(true) as HTMLElement;
   const ours = clone.querySelector('[data-dshcp-rewind-root]');
   if (ours) ours.remove();
-  return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+  return clone.textContent || '';
 }
 
 function fallbackCopy(text: string): boolean {

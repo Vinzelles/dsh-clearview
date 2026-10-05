@@ -2,6 +2,7 @@ import { createContext, memo, useCallback, useContext, useLayoutEffect, useMemo,
 import type { ReactNode, RefObject } from 'react';
 import { MarkdownText } from './markdown/MarkdownText.js';
 import { WORD_MOTION, WordTimeline } from './word-timeline.js';
+import { settleOnFrame } from './settlement-batch.js';
 import css from './Reader.module.css';
 
 const WordScope = createContext({ enabled: false, generation: 0 });
@@ -34,15 +35,22 @@ function useSourceReveal(element: RefObject<HTMLElement>, born: number | null, g
     // a fresh delay or running ahead because their layout effects ran later.
     animation.startTime = born;
     target.dataset.wordState = 'resolving';
-    const finish = () => { animation.cancel(); target.dataset.wordState = 'settled'; document.removeEventListener('visibilitychange', hidden); onSettled?.(); };
+    let cancelSettlement: (() => void) | undefined;
+    const finish = () => {
+      animation.cancel(); target.dataset.wordState = 'settled'; document.removeEventListener('visibilitychange', hidden);
+      if (onSettled) {
+        if (document.hidden) onSettled();
+        else cancelSettlement = settleOnFrame(onSettled);
+      }
+    };
     animation.onfinish = finish;
     const hidden = () => { if (document.hidden) { cancelled.current = true; finish(); } };
     document.addEventListener('visibilitychange', hidden);
-    return () => { animation.cancel(); document.removeEventListener('visibilitychange', hidden); target.dataset.wordState = 'settled'; };
+    return () => { animation.cancel(); cancelSettlement?.(); document.removeEventListener('visibilitychange', hidden); target.dataset.wordState = 'settled'; };
   }, [element, born, generation, scope.enabled, scope.generation, onSettled]);
 }
 
-function Word({ children, born, generation, offset, inline }: { children: string; born: number | null; generation: number; offset: number; inline: boolean }) {
+const Word = memo(function Word({ children, born, generation, offset, inline }: { children: string; born: number | null; generation: number; offset: number; inline: boolean }) {
   const element = useRef<HTMLSpanElement>(null);
   // A reveal leaf only needs its wrapper while it animates. Once settled it is
   // dropped to a plain text node: a long turn streams tens of thousands of words
@@ -57,7 +65,7 @@ function Word({ children, born, generation, offset, inline }: { children: string
   useSourceReveal(element, born, generation, onSettled);
   if (settled) return <>{children}</>;
   return <span ref={element} className={inline ? css.streamInlineWord : css.streamWord} data-reader-word data-source-start={offset} data-source-birth={born ?? undefined}>{children}</span>;
-}
+});
 
 /** A native code block enters on the same clock, without rebuilding its text. */
 function MotionAtom({ children, born, generation, offset }: { children: ReactNode; born: number | null; generation: number; offset: number }) {
@@ -103,6 +111,7 @@ interface ParagraphChunk { start: number; end: number; part: string }
  */
 function paragraphChunks(cache: { current: { text: string; chunks: ParagraphChunk[] } }, text: string): ParagraphChunk[] {
   const previous = cache.current;
+  if (previous.text === text) return previous.chunks;
   let chunks: ParagraphChunk[];
   if (previous.chunks.length > 0 && text.startsWith(previous.text)) {
     chunks = previous.chunks.map(chunk => ({ ...chunk }));
@@ -142,8 +151,8 @@ export function MotionPlainText({ text, enabled, revision }: { text: string; ena
   const current = timeline.current;
   const generation = current.generation;
   const scope = useMemo(() => ({ enabled, generation }), [enabled, generation]);
-  const chunks = paragraphChunks(chunkCache, text);
   if (!current.hasLiveText) return <WordScope.Provider value={scope}><div className={css.reasonPlain}>{text}</div></WordScope.Provider>;
+  const chunks = paragraphChunks(chunkCache, text);
   // Paragraph-chunk the reasoning text so memoized earlier paragraphs
   // re-render zero times; inside the live paragraph only the reveal frontier
   // becomes components (see ReasonSegment). Word keys stay global source

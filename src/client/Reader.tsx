@@ -1,12 +1,13 @@
 import { Fragment, memo, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
-import type { ChatConversationViewNode } from '@deepseek-ai/dsh-client-runtime/client';
-import type { ChatNode, ChatNodeKind } from '@deepseek-ai/dsh-client-ui-conversation/client';
+import type { ChatConversationViewNode } from '@deepseek-ai/dsh-client-ui-chat/client';
+import type { ChatNode, ChatNodeKind } from '@deepseek-ai/dsh-client-ui-chat/client';
 import { JsonTree } from '@deepseek-ai/dsh-client-ui-primitives';
 import { MarkdownTextL } from './native/labeled-blocks.js';
 import { JSON_TREE_LABELS } from './native/primitive-labels.js';
 import { FileChangesPanel } from './FileChanges.js';
-import { BlockBoundary, Blocks, contentBlocks, CopyAnswer } from './Blocks.js';
+import { BlockBoundary, Blocks, CopyAnswer } from './Blocks.js';
+import { contentBlocks } from './user-content.js';
 import { ReasoningCard } from './ReasoningCard.js';
 import { ToolActivity, ToolMedia } from './ToolActivity.js';
 import { formatOperationClusterSummary, groupOperationalFlow, isMergedExecutionFailure, preparingLabel, readerFlow } from './tool-activity.js';
@@ -15,13 +16,13 @@ import { formatSeconds } from './turn-activity.js';
 import { useTurnActivity } from './use-turn-activity.js';
 import { CollapseBody, Disclosure, MountFade, ProcessFragment, RetiringContent, StatusText, useContentWidth, useMotionAllowed, usePinnedSelection, useReadingScroll } from './motion.js';
 import { StreamMotionContext } from './streaming.js';
-import { useCompatReaderProps } from './compat/session-snapshot.js';
-import { READER_COMPAT_MOUNT_EVENT, READER_COMPAT_UNMOUNT_EVENT } from './compat/reader-root.js';
+import { useCompatReaderProps, useChatSelector, usePendingSelector, useSessionSelector, readerSnapshot } from './compat/session-snapshot.js';
+import { READER_COMPAT_MOUNT_EVENT, READER_COMPAT_UNMOUNT_EVENT, registerReaderSnapshot } from './compat/reader-root.js';
 import { nodeText, workflowRunSummary, workflowStatusLabel } from './node-payloads.js';
 import { SystemPromptRow } from './native/SystemPromptRow.js';
-import { assistantSegments, boundaryOf, groupNodes, hasProcessContent, hasVisibleBody, isEarlierNarration, processChoiceKey, processExpanded, terminalLabel } from './projection.js';
+import { assistantSegments, boundaryOf, hasProcessContent, hasVisibleBody, isEarlierNarration, processChoiceKey, processExpanded, terminalLabel } from './projection.js';
 import { ContextInjectionRow } from './native/ContextInjectionRow.js';
-import { hiddenSeqsOf, rewindSpansOf } from './rewind-hidden.js';
+import { createReaderStructureSelector, createGroupSelector } from './reader-selection.js';
 import type { RewindSpan } from './rewind-hidden.js';
 import type { ReaderGroup, TurnBoundary } from './projection.js';
 import type { BlockRenderProps, ReaderProps } from './types.js';
@@ -143,10 +144,10 @@ type SeatProps = BlockRenderProps & Pick<ReaderProps, 'useSession'> & {
   nodeKey: string; boundary: TurnBoundary; pinned?: boolean; processOpen?: boolean;
 };
 
-const ProcessNode = memo(function ProcessNode({ useSession, t, nodeKey, open, motion, onRead, returnFocusTo }: Pick<ReaderProps, 'useSession' | 't'> & {
+const ProcessNode = memo(function ProcessNode({ useSession, t, nodeKey, open, motion, onRead, returnFocusTo }: Pick<ReaderProps, 'useSession'> & { t: ReaderProps['contextT'];
   nodeKey: string; open: boolean; motion: boolean; onRead: () => void; returnFocusTo: RefObject<HTMLButtonElement>;
 }) {
-  const node = useSession(snapshot => snapshot.chat.nodes.get(nodeKey));
+  const node = useChatSelector(useSession, chat => chat.nodes.get(nodeKey));
   if (!node || node.visibility === 'hidden') return null;
   let content: ReactNode = null;
   if (isNode(node, 'context')) content = <ContextInjectionRow {...node.data} t={t} />;
@@ -171,7 +172,7 @@ const ProcessNode = memo(function ProcessNode({ useSession, t, nodeKey, open, mo
 const AssistantNode = memo(function AssistantNode({ useSession, nodeKey, boundary, processOpen = false, pinned = false, motion, collapseThinking = false, onRead, returnFocusTo, ...render }: SeatProps & {
   motion: boolean; collapseThinking?: boolean; onRead: () => void; returnFocusTo: RefObject<HTMLButtonElement>;
 }) {
-  const node = useSession(snapshot => snapshot.chat.nodes.get(nodeKey));
+  const node = useChatSelector(useSession, chat => chat.nodes.get(nodeKey));
   if (!node || node.visibility === 'hidden' || !isNode(node, 'assistant-step')) return null;
   const data = node.data;
   const thinkingMs = useMemo(() => {
@@ -225,7 +226,7 @@ const AssistantNode = memo(function AssistantNode({ useSession, nodeKey, boundar
 });
 
 const MainNode = memo(function MainNode({ useSession, nodeKey, boundary, pinned, processOpen = false, ...render }: SeatProps) {
-  const node = useSession(snapshot => snapshot.chat.nodes.get(nodeKey));
+  const node = useChatSelector(useSession, chat => chat.nodes.get(nodeKey));
   if (!node || node.visibility === 'hidden') return null;
   if (isNode(node, 'user') || isNode(node, 'steering')) return <div className={css.user} data-reader-anchor data-reader-key={nodeKey}>
     {node.kind === 'steering' && <p className={css.meta}>补充消息</p>}
@@ -330,20 +331,21 @@ function GenericCallCard({ node }: { node: ChatConversationViewNode }) {
 }
 
 function GroupStatus({ group, useSession, motion }: Pick<ReaderProps, 'useSession'> & { group: ReaderGroup; motion: boolean }) {
-  const text = useSession(snapshot => {
-    const turn = group.turn === null ? undefined : snapshot.chat.timeline.turns.get(group.turn);
+  const pendingCount = usePendingSelector(useSession, pending => pending.length);
+  const text = useChatSelector(useSession, chat => {
+    const turn = group.turn === null ? undefined : chat.timeline.turns.get(group.turn);
     if (turn?.status === 'closed') {
       if (turn.end?.data.reason.kind !== 'completed') return '执行过程';
       const elapsed = turn.start && turn.end ? Math.max(0, Math.round((turn.end.time - turn.start.time) / 1000)) : null;
       return elapsed === null ? '执行过程' : elapsed < 60 ? `用时 ${elapsed} 秒` : `用时 ${Math.floor(elapsed / 60)} 分 ${elapsed % 60} 秒`;
     }
     if (turn?.status !== 'open') return '执行过程';
-    if (snapshot.pending.length) return '等待你的操作';
+    if (pendingCount) return '等待你的操作';
     const current = turn.steps.at(-1)?.data.get('assistant-step');
     const last = current?.blocks.at(-1);
     if (current?.status === 'running' && last?.kind === 'tool-call') return preparingLabel(last.name);
     for (let index = group.keys.length - 1; index >= 0; index--) {
-      const node = snapshot.chat.nodes.get(group.keys[index]);
+      const node = chat.nodes.get(group.keys[index]);
       if (!node) continue;
       if (isNode(node, 'tool-call') && !('kind' in node.data.root)) return '正在使用工具';
       if (isNode(node, 'assistant-step') && node.data.status === 'running') {
@@ -353,7 +355,7 @@ function GroupStatus({ group, useSession, motion }: Pick<ReaderProps, 'useSessio
     }
     return '正在处理';
   });
-  const busy = useSession(snapshot => group.turn !== null && snapshot.chat.timeline.turns.get(group.turn)?.status === 'open' && snapshot.pending.length === 0);
+  const busy = useChatSelector(useSession, chat => group.turn !== null && chat.timeline.turns.get(group.turn)?.status === 'open') && pendingCount === 0;
   return <StatusText text={text} motion={motion} shimmer={busy} />;
 }
 
@@ -374,7 +376,7 @@ function OperationalClusterBlock({
   expanded: boolean;
   onToggle: () => void;
   shared: BlockRenderProps & Pick<ReaderProps, 'useSession'>;
-  t: ReaderProps['t'];
+  t: ReaderProps['contextT'];
   boundary: TurnBoundary;
   pinnedKeys: readonly string[];
   motion: boolean;
@@ -487,9 +489,11 @@ function OperationalClusterBlock({
 }
 
 const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedProcessKeys, rewindHidden, rewindSpans, flowTail, ...props }: ReaderProps & { group: ReaderGroup; motion: boolean; pinnedKeys: readonly string[]; selectedProcessKeys: readonly string[]; rewindHidden: ReadonlySet<number>; rewindSpans: readonly RewindSpan[]; flowTail?: ReactNode }) {
-  const chat = props.useSession(snapshot => snapshot.chat);
-  const turn = props.useSession(snapshot => group.turn === null ? undefined : snapshot.chat.timeline.turns.get(group.turn));
-  const boundary = useMemo(() => boundaryOf(turn), [turn]);
+  const selectGroup = useMemo(() => createGroupSelector(group), [group]);
+  const chat = useChatSelector(props.useSession, selectGroup);
+  const turn = chat.turn;
+  const nextBoundary = boundaryOf(turn);
+  const boundary = useMemo(() => nextBoundary, [nextBoundary.status, nextBoundary.reason, nextBoundary.latestStep, nextBoundary.closingStep]);
   const choiceKey = processChoiceKey(group.key, boundary);
   const expansionChoice = props.useStore(state => state.expanded[choiceKey]);
   const collapseThinking = props.useStore(state => state.collapseThinking ?? false);
@@ -515,8 +519,8 @@ const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedP
     return { systemPrompts, seenUser };
   }, [chat, group.keys]);
   const startsWithUser = leading.seenUser;
-  const preambleKeys = startsWithUser ? group.keys.slice(0, leading.systemPrompts) : [];
-  const mainKeys = startsWithUser ? group.keys.slice(leading.systemPrompts + 1) : group.keys;
+  const preambleKeys = useMemo(() => startsWithUser ? group.keys.slice(0, leading.systemPrompts) : [], [startsWithUser, group.keys, leading.systemPrompts]);
+  const mainKeys = useMemo(() => startsWithUser ? group.keys.slice(leading.systemPrompts + 1) : group.keys, [startsWithUser, group.keys, leading.systemPrompts]);
   const flow = useMemo(() => readerFlow({ ...group, keys: mainKeys }, turn, key => chat.nodes.get(key), { hidden: rewindHidden, spans: rewindSpans }), [chat, group, mainKeys, turn, rewindHidden, rewindSpans]);
   const groupedFlow = useMemo(() => groupOperationalFlow(flow, key => chat.nodes.get(key)), [flow, chat]);
   const [clusterExpanded, setClusterExpanded] = useState<Record<string, boolean>>({});
@@ -558,7 +562,7 @@ const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedP
                 expanded={isClusterOpen}
                 onToggle={() => toggleCluster(entry.key)}
                 shared={shared}
-                t={props.t}
+                t={props.contextT}
                 boundary={boundary}
                 pinnedKeys={pinnedKeys}
                 motion={motion}
@@ -572,7 +576,7 @@ const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedP
         const item = entry.item;
         return item.kind === 'node' ? (
           <Fragment key={item.key}>
-            <BlockBoundary><ProcessNode useSession={props.useSession} t={props.t} nodeKey={item.nodeKey} open={expanded} motion={motion} onRead={pinProcess} returnFocusTo={processButton} /></BlockBoundary>
+            <BlockBoundary><ProcessNode useSession={props.useSession} t={props.contextT} nodeKey={item.nodeKey} open={expanded} motion={motion} onRead={pinProcess} returnFocusTo={processButton} /></BlockBoundary>
             <BlockBoundary><AssistantNode {...shared} boundary={boundary} nodeKey={item.nodeKey} pinned={pinnedKeys.includes(item.nodeKey)} processOpen={expanded} motion={motion} collapseThinking={collapseThinking} onRead={pinProcess} returnFocusTo={processButton} /></BlockBoundary>
             <BlockBoundary><MainNode {...shared} boundary={boundary} nodeKey={item.nodeKey} pinned={pinnedKeys.includes(item.nodeKey)} processOpen={expanded} /></BlockBoundary>
           </Fragment>
@@ -593,38 +597,17 @@ const TurnGroup = memo(function TurnGroup({ group, motion, pinnedKeys, selectedP
 
 export function Reader(rawProps: ReaderProps) {
   // 0.1.2 把 chat / pending 拆成了独立标准钩子；这里合成回 0.1.1 形状并替换
-  // props.useSession，全部下游代码继续读 snapshot.chat / snapshot.pending。
+  // props.useSession；热路径按 chat/session/pending 域直接在宿主选择，避免全量订阅。
   const props = useCompatReaderProps(rawProps);
   const root = useRef<HTMLDivElement>(null);
   const activatedAt = useRef(Date.now());
-  const order = props.useSession(snapshot => snapshot.chat.order);
-  const nodes = props.useSession(snapshot => snapshot.chat.nodes);
-  const timeline = props.useSession(snapshot => snapshot.chat.timeline);
-  /** Last computed rewind token, keyed on the inputs it was derived from. */
-  const rewindMemo = useRef<{ order: unknown; nodes: unknown; token: string }>({ order: null, nodes: null, token: '' });
-  const rewindToken = props.useSession(snapshot => {
-    const chat = snapshot.chat;
-    // 这个选择器在每次 store 更新（流式期间每 chunk）都会重跑；会话对象与节点表
-    // 引用不变时结果必然相同，直接用上一次的 token，避免每 chunk 全量扫命令节点。
-    if (chat.order === rewindMemo.current.order && chat.nodes === rewindMemo.current.nodes) {
-      return rewindMemo.current.token;
-    }
-    let token = '';
-    for (const key of chat.order) {
-      const node = chat.nodes.get(key);
-      if (!node || node.kind !== 'command') continue;
-      const command = node.data as { name?: string; seq?: number; args?: string | null; outcome?: { kind?: string; sourceEventSeq?: number } | null };
-      if (command.name !== 'rewind') continue;
-      token += `${command.seq}:${command.args ?? ''}:${command.outcome?.kind ?? ''}:${command.outcome?.sourceEventSeq ?? ''};`;
-    }
-    rewindMemo.current = { order: chat.order, nodes: chat.nodes, token };
-    return token;
-  });
-  const pending = props.useSession(snapshot => snapshot.pending);
-  const openError = props.useSession(snapshot => snapshot.openError);
-  const loading = props.useSession(snapshot => snapshot.openState === 'loading');
-  const hasMore = props.useSession(snapshot => snapshot.hasMore);
-  const loadingOlder = props.useSession(snapshot => snapshot.loadingOlder);
+  const selectStructure = useMemo(createReaderStructureSelector, [props.sessionId]);
+  const { visibleOrder, groups, hidden: rewindHidden, spans: rewindSpans, latestUserKey } = useChatSelector(props.useSession, selectStructure);
+  const pending = usePendingSelector(props.useSession, pending => pending, (a, b) => a.length === b.length && a.every((item, index) => item === b[index]));
+  const openError = useSessionSelector(props.useSession, snapshot => snapshot.openError);
+  const loading = useSessionSelector(props.useSession, snapshot => snapshot.openState === 'loading');
+  const hasMore = useSessionSelector(props.useSession, snapshot => snapshot.hasMore);
+  const loadingOlder = useSessionSelector(props.useSession, snapshot => snapshot.loadingOlder);
   const motionPreference = props.useStore(state => state.motion);
   const collapseThinking = props.useStore(state => state.collapseThinking ?? false);
   const motion = useMotionAllowed(motionPreference);
@@ -632,17 +615,6 @@ export function Reader(rawProps: ReaderProps) {
   // 阅读流空闲判定（文件改动展示区的可见条件之一）：无开放轮次活动、无待处理交互、窗口已加载。
   const conversationIdle = !activity.key && pending.length === 0 && !loading;
   const streamMotion = useMemo(() => ({ enabled: motion, activatedAt: activatedAt.current }), [motion]);
-  const rewindHidden = useMemo(() => {
-    return rewindToken ? hiddenSeqsOf({ order, nodes }) : new Set<number>();
-  }, [rewindToken, order, nodes]);
-  const rewindSpans = useMemo(() => {
-    return rewindToken ? rewindSpansOf({ order, nodes }) : [];
-  }, [rewindToken, order, nodes]);
-  const visibleOrder = useMemo(() => order.filter(key => {
-    const node = nodes.get(key);
-    return !!node && !rewindHidden.has(node.anchorSeq);
-  }), [order, nodes, rewindHidden]);
-  const groups = useMemo(() => groupNodes(visibleOrder, key => nodes.get(key)), [visibleOrder, nodes, timeline]);
   const scroll = useReadingScroll(root, motion);
   // 兼容层根发现：阅读根是运行中在深层会话容器里挂载/卸载的，body 级观察器看不到
   // 它；由本组件在根挂载/卸载时广播事件，rewind 桥 / 轮统计行 / 收尾防吞只监听
@@ -650,9 +622,10 @@ export function Reader(rawProps: ReaderProps) {
   useEffect(() => {
     const node = root.current;
     if (!node) return;
+    const unregister = registerReaderSnapshot(node, () => readerSnapshot(props.useSession));
     document.dispatchEvent(new CustomEvent<HTMLElement>(READER_COMPAT_MOUNT_EVENT, { detail: node }));
-    return () => { document.dispatchEvent(new CustomEvent<HTMLElement>(READER_COMPAT_UNMOUNT_EVENT, { detail: node })); };
-  }, []);
+    return () => { document.dispatchEvent(new CustomEvent<HTMLElement>(READER_COMPAT_UNMOUNT_EVENT, { detail: node })); unregister(); };
+  }, [props.useSession]);
   // The activity bar animates its width between label changes: `transition:
   // width` needs an explicit pixel value, so the content row's natural width
   // is tracked and pinned back onto the bar.
@@ -682,13 +655,6 @@ export function Reader(rawProps: ReaderProps) {
     attributes.observe(host, { attributes: true, attributeFilter: ['style'] });
     return () => { observer.disconnect(); attributes.disconnect(); };
   }, []);
-  const latestUserKey = useMemo(() => {
-    for (let index = visibleOrder.length - 1; index >= 0; index--) {
-      const node = nodes.get(visibleOrder[index]);
-      if (node && (node.kind === 'user' || node.kind === 'steering')) return visibleOrder[index];
-    }
-    return null;
-  }, [visibleOrder, nodes]);
   const seenUserKeys = useRef(new Set<string>());
   const previousLatestUserKey = useRef<string | null>(null);
   useEffect(() => {
@@ -709,21 +675,23 @@ export function Reader(rawProps: ReaderProps) {
   const selectedProcessKeys = usePinnedSelection(root, '[data-reader-process]');
   const [historyError, setHistoryError] = useState(false);
   // 「本会话文件改动」作为最后一个轮次 mainFlow 的收尾插槽（见 groups.map）。
-  const fileChanges = (
+  const fileChanges = useMemo(() => (
     <FileChangesPanel
+      useProjection={props.useProjection}
+      jobsSource={props.jobsSource}
+      watchJobs={props.watchJobs}
       useSession={props.useSession}
       useSessions={props.useSessions}
       sessionId={props.sessionId}
       order={visibleOrder}
-      nodes={nodes}
       motion={motion}
       hasMore={hasMore}
       conversationIdle={conversationIdle}
       openFile={props.openFile}
       listDirNames={props.listDirNames}
     />
-  );
-  return <StreamMotionContext.Provider value={streamMotion}><div ref={root} className={css.root} data-dsh-clearview="0.1.15" data-motion={motion ? 'on' : 'off'}>
+  ), [props.useProjection, props.jobsSource, props.watchJobs, props.useSession, props.useSessions, props.sessionId, visibleOrder, motion, hasMore, conversationIdle, props.openFile, props.listDirNames]);
+  return <StreamMotionContext.Provider value={streamMotion}><div ref={root} className={css.root} data-dsh-clearview="0.1.18" data-motion={motion ? 'on' : 'off'}>
     <div className={css.column}>
       <div className={css.toolbar} data-ud-check="reader-toolbar">
         <Switch label={`折叠思考${collapseThinking ? '开' : '关'}`} checked={collapseThinking} onChange={() => props.actions.setCollapseThinking(!collapseThinking)}

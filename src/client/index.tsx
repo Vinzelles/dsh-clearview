@@ -1,7 +1,10 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { resolveWorkspacePath } from './path-utils.js';
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client';
+import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client';
+import type {} from '@deepseek-ai/dsh-client-locale/client';
+import type {} from '@deepseek-ai/dsh-api-job-controller/client';
 import { Reader } from './Reader.js';
 import { createReaderStore } from './store.js';
 import { installReaderEntry } from './entry.js';
@@ -12,7 +15,7 @@ export type { ReaderBlockOwner } from './types.js';
 export const name = 'dsh-clearview-client';
 // 'remote' 是 0.1.2 打开文件 / 列目录的通道（0.1.1 走 workspaces 服务，用不到但
 // 两版都提供该服务，注入无害）。
-export const inject = ['slots', 'sessions', 'workspaces', 'remote'];
+export const inject = ['slots', 'sessions', 'workspaces', 'remote', 'locale', 'jobs'];
 
 export function apply(ctx: Context): void {
   startCompat(ctx);
@@ -37,6 +40,9 @@ export function apply(ctx: Context): void {
         return current;
       };
       const face: ReaderInjected = {
+        jobsSource: ctx.jobs.state,
+        watchJobs: () => ctx.jobs.watchRows(sessionId),
+        contextT: ctx.locale.bind('chat'),
         loadOlder: async () => { await session().loadOlder(); },
         loadImage: async attachment => {
           const receipt = await session().readAttachment(attachment.attachmentId);

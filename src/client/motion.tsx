@@ -312,6 +312,11 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean):
     let followFrame = 0;
     let lastFrameAt = 0;
     let lastWrittenTop: number | null = null;
+    // ResizeObserver runs after layout. Cache geometry there rather than
+    // asking for scrollHeight/clientHeight again in every animation frame.
+    let maxTop = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+    let currentTop = scroll.scrollTop;
+    const measure = () => { maxTop = Math.max(0, scroll.scrollHeight - scroll.clientHeight); currentTop = scroll.scrollTop; };
     // A downward reader gesture (wheel / key / touch / scrollbar drag) that
     // is still pending. It survives scroll events that land outside the
     // bottom surface — a smooth scroll, fling or long drag emits a run of
@@ -345,9 +350,10 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean):
       if (following.current) { following.current = false; setDetached(true); }
     };
     const onScroll = () => {
+      currentTop = scroll.scrollTop;
       // Our easing frames must not be mistaken for a reader leaving the bottom.
-      if (lastWrittenTop !== null && Math.abs(scroll.scrollTop - lastWrittenTop) < 1) return;
-      const atSurface = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < READING_SURFACE_GAP;
+      if (lastWrittenTop !== null && Math.abs(currentTop - lastWrittenTop) < 1) return;
+      const atSurface = maxTop - currentTop < READING_SURFACE_GAP;
       const next = readingScrollAction(following.current, wantDown, atSurface);
       wantDown = next.wantDown;
       if (next.following !== following.current) {
@@ -405,28 +411,33 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean):
       pointerY = event.clientY;
     };
     const onPointerEnd = () => { pointerY = null; };
-    const writeTop = (top: number) => { scroll.scrollTop = top; lastWrittenTop = scroll.scrollTop; };
+    const writeTop = (top: number) => {
+      scroll.scrollTop = Math.max(0, Math.min(maxTop, top));
+      currentTop = scroll.scrollTop; lastWrittenTop = currentTop;
+    };
     const follow = (now: number) => {
       followFrame = 0;
       if (!following.current || selected() || focused()) return;
-      const gap = scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop;
+      const gap = maxTop - currentTop;
       const delta = Math.min(48, Math.max(1, now - lastFrameAt));
       lastFrameAt = now;
-      if (!motion || Math.abs(gap) < 1.5) { writeTop(scroll.scrollHeight); setDetached(false); return; }
-      writeTop(scroll.scrollTop + gap * (1 - Math.exp(-delta / 52)));
+      if (!motion || Math.abs(gap) < 1.5) { writeTop(maxTop); setDetached(false); return; }
+      writeTop(currentTop + gap * (1 - Math.exp(-delta / 52)));
       followFrame = requestAnimationFrame(follow);
     };
     const firstFrame = requestAnimationFrame(() => {
-      if (following.current && !selected()) writeTop(scroll.scrollHeight);
+      measure();
+      if (following.current && !selected()) writeTop(maxTop);
     });
     const observer = new ResizeObserver(() => {
+      measure();
       const action = readingFollowAction(
         { selected: !!selected(), focused: focused() },
         following.current,
-        scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight,
+        maxTop - currentTop,
       );
       if (action === 'follow') {
-        if (!motion) writeTop(scroll.scrollHeight);
+        if (!motion) writeTop(maxTop);
         else if (!followFrame) { lastFrameAt = performance.now(); followFrame = requestAnimationFrame(follow); }
       } else if (action === 'surface') {
         // A reading guard is holding follow while the reader still claims the

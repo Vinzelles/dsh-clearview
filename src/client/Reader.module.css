@@ -42,6 +42,9 @@
 .turn + .turn { margin-top: 12px; }
 .user { align-self: flex-end; max-width: min(525px, 82%); padding: 10px 16px; border-radius: 22px; background: var(--dsw-specific-bubble); color: var(--dsw-alias-label-primary); line-height: 24px; margin-bottom: 4px; overflow-wrap: anywhere; }
 .user .blocks { gap: 10px; }
+/* 用户消息文本叶子（替代宿主 primitives 的 MessageText）：与原生 .text 等价，
+   字号/行高继续继承气泡，只补换行与断词两条。 */
+.userText { white-space: pre-wrap; word-break: break-word; }
 .answer { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
 .readingText { min-width: 0; }
 .reasonPlain {

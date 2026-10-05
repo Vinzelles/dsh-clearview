@@ -88,6 +88,12 @@ function resolveSnapshot(root: HTMLElement): SnapshotView | null {
 }
 
 const snapCache = new WeakMap<HTMLElement, { snap: SnapshotView | null; at: number }>();
+const snapshotReaders = new WeakMap<HTMLElement, () => unknown>();
+
+export function registerReaderSnapshot(root: HTMLElement, read: () => unknown): () => void {
+  snapshotReaders.set(root, read);
+  return () => { if (snapshotReaders.get(root) === read) snapshotReaders.delete(root); snapCache.delete(root); };
+}
 const SNAP_TTL = 5000;
 
 /**
@@ -98,6 +104,8 @@ const SNAP_TTL = 5000;
  * 一并失效）。
  */
 export function cachedSnapshot(root: HTMLElement): SnapshotView | null {
+  const read = snapshotReaders.get(root);
+  if (read) return normalizeSnapshot(read());
   const cached = snapCache.get(root);
   const now = Date.now();
   if (cached && now - cached.at < SNAP_TTL) return cached.snap;

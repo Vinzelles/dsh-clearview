@@ -4,7 +4,7 @@
  *   - styles.ts               7 个 CSS → 运行时注入 <style id="dsh-clearview-compat">
  *   - composer-readability.ts 画布色变量 + 统计行毛玻璃标记
  *   - memory-tail-keep.ts     收尾总结被折叠吞掉时自动展开执行过程
- *   - perf-guard.ts           内容规模超阈值点亮 data-dshcp-heavy 降级动效
+ *   - perf-guard.ts           内容规模超阈值点亮 data-dshcp-heavy 优化离屏布局
  *   - rewind-bridge.ts        dsh-rewind 撤回/复制按钮兼容桥
  *   - turn-metrics-footer.ts  补回轮次统计行
  *

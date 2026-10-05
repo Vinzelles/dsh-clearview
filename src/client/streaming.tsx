@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { STREAM_TIMING, StreamBuffer } from './stream-buffer.js';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { StreamBuffer } from './stream-buffer.js';
 import { WORD_MOTION } from './word-timeline.js';
 
 export const StreamMotionContext = createContext({ enabled: false, activatedAt: 0 });
@@ -13,28 +13,36 @@ export function useStreamingText(source: string, streaming: boolean, options: { 
   const [finalizing, setFinalizing] = useState(streaming);
   const frame = useRef(0);
   const immediate = !enabled || options.interrupted || options.selected;
-  const publish = () => {
+  const published = useRef(display);
+  const publish = useCallback(() => {
     const current = buffer.current!;
-    setDisplay(previous => previous.text === current.visible && previous.revision === current.revision ? previous : { text: current.visible, revision: current.revision });
-  };
+    if (published.current.text === current.visible && published.current.revision === current.revision) return;
+    published.current = { text: current.visible, revision: current.revision };
+    setDisplay(published.current);
+  }, []);
+  const tick = useCallback((now: number) => {
+    frame.current = 0;
+    const current = buffer.current!;
+    if (document.hidden) current.flush();
+    else current.advance(now);
+    publish();
+    if (current.pending) frame.current = requestAnimationFrame(tick);
+  }, [publish]);
   useLayoutEffect(() => {
     const current = buffer.current!;
     current.update(source, performance.now(), { immediate: immediate || document.hidden, finished: !streaming });
+    // Only resets/flushes change visible text here. Appends join the existing
+    // frame instead of cancelling and restarting its loop for every token.
     publish();
-    cancelAnimationFrame(frame.current);
-    const tick = (now: number) => {
-      if (document.hidden) current.flush();
-      else current.advance(now);
-      publish();
-      if (current.pending) frame.current = requestAnimationFrame(tick);
-    };
-    if (current.pending) frame.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame.current);
-  }, [source, streaming, immediate]);
+    if (current.pending && !frame.current) frame.current = requestAnimationFrame(tick);
+    else if (!current.pending) { cancelAnimationFrame(frame.current); frame.current = 0; }
+  }, [source, streaming, immediate, publish, tick]);
+  useLayoutEffect(() => () => { cancelAnimationFrame(frame.current); frame.current = 0; }, []);
   useEffect(() => {
     const hidden = () => {
       if (!document.hidden) return;
       cancelAnimationFrame(frame.current);
+      frame.current = 0;
       buffer.current!.flush(); publish(); setFinalizing(false);
     };
     document.addEventListener('visibilitychange', hidden);

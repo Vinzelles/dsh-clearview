@@ -9,9 +9,9 @@
 // The block union's defining home is runtime (fold-product types); this
 // contract only forwards it (type-definition authority stays with the layer
 import { abbreviateHomePath } from '../path-utils.js'
-import type { ToolCallBlock, ToolResultNode } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ToolCallBlock, ToolResultNode } from '@deepseek-ai/dsh-client-ui-conversation/client';
 
-export type { ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
+export type { ToolCallBlock } from '@deepseek-ai/dsh-client-ui-conversation/client';
 
 /** Tool-call row variants selected by the generic atomic renderer. */
 export type ToolRowVariant = 'search' | 'read' | 'bash' | 'write' | 'edit' | 'code' | 'others'

@@ -27,8 +27,8 @@
  *   小标题 + 文件 chip 标签流（每文件一枚，可点击打开；非列表）。
  *   chip 自动换行，超过 CHIP_LIMIT 收起为「展开 N 个」。
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ChatNodeStore } from '@deepseek-ai/dsh-client-runtime/client';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useChatSelector, useSessionSelector } from './compat/session-snapshot.js';
 import { EMPTY_FILE_CHANGES, collectFileChanges, reconcileFileChanges } from './file-changes.js';
 import type { FileChangeEntry, FileChangeKind, FileChangeSummary } from './file-changes.js';
 import { MountFade } from './motion.js';
@@ -38,9 +38,8 @@ import css from './Reader.module.css';
 /** 展开后每条道默认显示的 chip 数上限（超出折叠为「展开 N 个」）。 */
 const CHIP_LIMIT = 12;
 
-export interface FileChangesPanelProps extends Pick<ReaderProps, 'useSession' | 'useSessions' | 'sessionId'> {
+export interface FileChangesPanelProps extends Pick<ReaderProps, 'useSession' | 'useSessions' | 'sessionId' | 'useProjection' | 'jobsSource' | 'watchJobs'> {
   order: readonly string[];
-  nodes: ChatNodeStore;
   motion: boolean;
   /** 窗口未加载完整（更早历史未拉取）。 */
   hasMore: boolean;
@@ -52,20 +51,23 @@ export interface FileChangesPanelProps extends Pick<ReaderProps, 'useSession' | 
 }
 
 export function FileChangesPanel({
-  useSession, useSessions, sessionId, order, nodes, motion, hasMore, conversationIdle, openFile, listDirNames,
+  useSession, useSessions, sessionId, useProjection, jobsSource, watchJobs, order, motion, hasMore, conversationIdle, openFile, listDirNames,
 }: FileChangesPanelProps) {
-  const running = useSession(snapshot => snapshot.running);
-  const queueBusy = useSession(snapshot => snapshot.queue.length > 0);
-  const turnCount = useSession(snapshot => snapshot.chat.timeline.turnOrder.length);
+  const running = useSessionSelector(useSession, snapshot => snapshot.running);
+  const inbox = useProjection('inbox');
+  const localQueued = useSessionSelector(useSession, snapshot => snapshot.pendingSubmissions.some(item => item.placement === 'queued'));
+  const queueBusy = localQueued || (inbox?.['next-turn'].length ?? 0) > 0;
+  const turnCount = useChatSelector(useSession, chat => chat.timeline.turnOrder.length);
   const cwd = useSessions(list => list.byId[sessionId]?.cwd);
-  const liveJobs = useSessions(list => {
-    const jobs = list.jobsBySession[sessionId];
-    return jobs ? jobs.some(job => job.status === 'running' || job.status === 'stopping') : false;
-  });
+  useEffect(() => watchJobs(), [watchJobs]);
+  const subscribeJobs = useMemo(() => (listener: () => void) => jobsSource.subscribe(listener), [jobsSource]);
+  const liveJobs = useSyncExternalStore(subscribeJobs, () =>
+    jobsSource.getSnapshot().rows[sessionId]?.some(job => job.status === 'running' || job.status === 'stopping') ?? false);
   const hidden = running || !conversationIdle || queueBusy || liveJobs || turnCount === 0;
+  const nodes = useChatSelector(useSession, chat => hidden ? null : chat.nodes);
   // 忙时短路：流式期间窗口每个 chunk 都在变，避免白算。
   const summary = useMemo(
-    () => (hidden ? EMPTY_FILE_CHANGES : collectFileChanges(order, key => nodes.get(key), cwd)),
+    () => (hidden || !nodes ? EMPTY_FILE_CHANGES : collectFileChanges(order, key => nodes.get(key), cwd)),
     [hidden, order, nodes, cwd],
   );
   // 存在性校准：shell 删除（尤其管道式命令）解析不到时，用目录条目集合把
