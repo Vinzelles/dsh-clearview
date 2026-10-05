@@ -48,6 +48,10 @@ test('a scheduled trigger opens the turn as a trigger row, not a generic card', 
   assert.match(html, /data-reader-trigger="schedule"/);
   assert.match(html, /自动化任务/);
   assert.doesNotMatch(html, /工具调用/);
+  // A 24px row with an expand-original action; never a rewind seat.
+  assert.match(html, /展开原文/);
+  assert.match(html, /<button[^>]*aria-expanded="false"/);
+  assert.doesNotMatch(html, /data-reader-anchor/);
 });
 
 test('a user opening keeps the rewind seat contract and shows its labels', () => {
@@ -119,4 +123,36 @@ test('a steering input keeps the seat the rewind bridge reads', () => {
   const html = render(InputBubble, { useSession: sessionHook(chatOf([steering], [turn])), nodeKey: steering.key, ...blocks });
   // The bridge matches div[data-reader-anchor][data-reader-key] (not article) and reads a first-child <p> whose class contains "meta".
   assert.match(html, new RegExp(`^<div class="input" data-reader-input="steering" data-reader-anchor="true" data-reader-key="${steering.key}"><p class="meta">补充消息</p>`));
+});
+
+test('once the turn is closed an in-flight lifecycle record settles to idle with neutral wording', () => {
+  const started = { kind: 'model-retry', data: { current: { retryState: 'started', retry: 1 } } };
+  const scheduled = { kind: 'model-retry', data: { current: { retryState: 'scheduled', retry: 1 } } };
+  assert.equal(recordView(started).tone, 'active');
+  assert.equal(recordView(started).title, '模型请求正在重试');
+  for (const node of [started, scheduled]) {
+    assert.deepEqual([recordView(node, true).tone, recordView(node, true).title], ['idle', '模型请求重试记录']);
+  }
+  assert.equal(recordView(started, true).summary, '第 1 次');
+  assert.deepEqual([recordView({ kind: 'command', data: { name: 'x', outcome: null } }, true).tone, recordView({ kind: 'command', data: { name: 'x', outcome: null } }, true).title], ['idle', '命令记录']);
+  assert.equal(recordView({ kind: 'manual-compaction', data: { command: { outcome: null }, compaction: null } }, true).tone, 'idle');
+  assert.equal(recordView({ kind: 'workflow-run', data: { name: '发布', status: 'running', phases: [] } }, true).tone, 'idle');
+  // Settled outcomes are untouched.
+  assert.equal(recordView({ kind: 'command', data: { name: 'x', outcome: { kind: 'error' } } }, true).tone, 'failed');
+  assert.equal(recordView({ kind: 'compaction', data: {} }, true).tone, 'done');
+});
+
+test('a retry record in a closed turn renders without an ongoing dot; in an open turn it stays active', () => {
+  const closed = turnLocation({ status: 'closed', reason: 'error', steps: [1] });
+  const open = turnLocation({ status: 'open', steps: [1] });
+  const retry = chatNode('model-retry', { current: { retryState: 'started', retry: 1 }, attempts: [] }, closed, 1);
+  const props = { nodeKey: retry.key, t: ((key: string) => key) as never, onRead: () => {}, ...blocks };
+  const settled = render(RecordRow, { useSession: sessionHook(chatOf([retry], [closed])), ...props, turnClosed: true });
+  assert.match(settled, /data-record-tone="idle"/);
+  assert.match(settled, /模型请求重试记录/);
+  assert.doesNotMatch(settled, /data-state="ongoing"|正在重试/);
+  const live = render(RecordRow, { useSession: sessionHook(chatOf([retry], [open])), ...props, turnClosed: false });
+  assert.match(live, /data-record-tone="active"/);
+  assert.match(live, /data-stub="StateDot" data-state="ongoing"/);
+  assert.match(live, /模型请求正在重试/);
 });

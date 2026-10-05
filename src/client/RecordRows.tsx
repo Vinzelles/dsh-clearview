@@ -26,8 +26,25 @@ function record(value: unknown): Record<string, unknown> | null {
 export type RecordTone = 'idle' | 'active' | 'done' | 'failed';
 export interface RecordView { title: string; summary: string; tone: RecordTone; showInChat: boolean }
 
-/** Title, one-line summary and tone of a process record; every payload is read defensively. */
-export function recordView(node: { kind: string; data: unknown }): RecordView {
+/** Neutral titles for a lifecycle record that was still in flight when its turn closed. */
+const SETTLED_TITLES: Record<string, string> = {
+  'model-retry': '模型请求重试记录',
+  command: '命令记录',
+  'manual-compaction': '上下文整理记录',
+};
+
+/**
+ * Title, one-line summary and tone of a process record; every payload is read defensively. Once the owning
+ * turn is closed nothing is in flight any more, so an active record settles to idle (no spinner, no
+ * present-tense wording) whatever result the turn ended with.
+ */
+export function recordView(node: { kind: string; data: unknown }, turnClosed = false): RecordView {
+  const view = liveRecordView(node);
+  if (!turnClosed || view.tone !== 'active') return view;
+  return { ...view, title: SETTLED_TITLES[node.kind] ?? view.title, tone: 'idle' };
+}
+
+function liveRecordView(node: { kind: string; data: unknown }): RecordView {
   const data = record(node.data);
   switch (node.kind) {
     case 'model-retry': {
@@ -144,8 +161,8 @@ export function RecordBody({ kind, data, view, nodeKey, ...render }: BlockRender
 }
 
 /** One process record in the native row grammar; context and prompt rows keep their native presentation. */
-export const RecordRow = memo(function RecordRow({ useSession, nodeKey, t, onRead, ...render }: BlockRenderProps & Pick<ReaderProps, 'useSession'> & {
-  nodeKey: string; t: ReaderProps['contextT']; onRead: () => void;
+export const RecordRow = memo(function RecordRow({ useSession, nodeKey, t, onRead, turnClosed = false, ...render }: BlockRenderProps & Pick<ReaderProps, 'useSession'> & {
+  nodeKey: string; t: ReaderProps['contextT']; onRead: () => void; turnClosed?: boolean;
 }) {
   const node = useChatSelector(useSession, chat => chat.nodes.get(nodeKey));
   const { motion } = useReaderActions();
@@ -157,7 +174,7 @@ export const RecordRow = memo(function RecordRow({ useSession, nodeKey, t, onRea
     const text = nodeText(node.data);
     return text ? <SystemPromptRow text={text} /> : null;
   }
-  const view = recordView(node);
+  const view = recordView(node, turnClosed);
   const Icon = ICONS[node.kind] ?? IconSparkleRegular;
   return <div className={css.record} data-reader-record-kind={node.kind} data-record-tone={view.tone}>
     <DisclosureRow icon={<RowGlyph tone={view.tone === 'active' ? 'active' : view.tone === 'failed' ? 'failed' : 'idle'} icon={<Icon size={14} />} />}

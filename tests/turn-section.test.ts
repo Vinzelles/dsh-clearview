@@ -205,3 +205,16 @@ test('the process panel and the footer each sit inside their own BlockBoundary, 
   assert.doesNotMatch(source, /<BlockBoundary>\s*<section/);
   assert.match(source, /<section className=\{css\.turn\} data-reader-turn=/);
 });
+
+test('a closed turn shows an unfinished retry record as settled, an open turn keeps it active', () => {
+  const retryData = { current: { retryState: 'started', retry: 1 }, attempts: [] };
+  const closedTurn = turnLocation({ status: 'closed', reason: 'error', steps: [1] });
+  const closedRetry = chatNode('model-retry', retryData, closedTurn, 1);
+  const closed = renderTurn([chatNode('user', { content: [{ type: 'text', text: '跑' }] }, closedTurn), closedRetry], closedTurn);
+  assert.match(closed, /data-record-tone="idle"/);
+  assert.doesNotMatch(closed, /data-record-tone="active"|正在重试/);
+  const openTurn = turnLocation({ status: 'open', steps: [1] });
+  const openRetry = chatNode('model-retry', retryData, openTurn, 1);
+  const open = renderTurn([chatNode('user', { content: [{ type: 'text', text: '跑' }] }, openTurn), openRetry], openTurn);
+  assert.match(open, /data-record-tone="active"/);
+});

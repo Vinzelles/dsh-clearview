@@ -169,7 +169,7 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, select
       case 'reasoning': return <BlockBoundary><ReasoningSegment {...shared} useSession={props.useSession} nodeKey={item.nodeKey} start={item.start} pinned={panelPinned} boundary={boundary} panelOpen={open} compact={compact} onRead={pinPanel} /></BlockBoundary>;
       case 'narration': return <BlockBoundary><NarrationSegment {...shared} useSession={props.useSession} nodeKey={item.nodeKey} start={item.start} pinned={panelPinned} /></BlockBoundary>;
       case 'tool': return <BlockBoundary><ToolRow {...shared} entry={item.entry} turnClosed={closed} onRead={pinPanel} /></BlockBoundary>;
-      case 'record': return <BlockBoundary><RecordRow {...shared} useSession={props.useSession} nodeKey={item.nodeKey} t={props.contextT} onRead={pinPanel} /></BlockBoundary>;
+      case 'record': return <BlockBoundary><RecordRow {...shared} useSession={props.useSession} nodeKey={item.nodeKey} t={props.contextT} onRead={pinPanel} turnClosed={closed} /></BlockBoundary>;
       case 'input': return <BlockBoundary><InputBubble {...shared} useSession={props.useSession} nodeKey={item.nodeKey} /></BlockBoundary>;
     }
   }, [shared, props.useSession, props.contextT, panelPinned, boundary, open, compact, pinPanel, closed]);
