@@ -154,3 +154,46 @@ test('running label names the current activity', () => {
   const waitingTool = chatNode('tool-call', { root: { callId: 'c2', name: 'bash', phase: 'start', argsRaw: '{}', subCalls: [] } }, thinking, 1);
   assert.equal(runningLabel(thinking, [node.key, waitingTool.key], getter(node, waitingTool)), '正在使用工具');
 });
+
+test('a group whose rows have no known step has an empty label', () => {
+  const noStep = (callId: string): PanelItem => ({ kind: 'tool', key: `reader-tool:${callId}`, entry: toolEntry(callId, 0, undefined, toolCall(callId, 'bash')), step: null });
+  const layout = groupSteps([noStep('a'), noStep('b')], { condense: false });
+  assert.equal(layout.groups.length, 1);
+  assert.equal(layout.groups[0]!.label, '');
+  assert.equal(layout.earlier, null);
+});
+
+test('a mid-turn window with unknown status keeps earlier text as narration and trailing text as the answer', () => {
+  const turn = turnLocation({ status: 'unknown', steps: [4, 5] });
+  const first = assistantNode(turn, 4, [text('先看一下'), toolCall('c1', 'bash')]);
+  const second = assistantNode(turn, 5, [text('结论')]);
+  const layout = layoutTurn([nodeEntry(first), toolEntry('c1', 4), nodeEntry(second)], getter(first, second), boundaryOf(turn));
+  assert.equal(boundaryOf(turn).status, 'unknown');
+  assert.deepEqual(kinds(layout.panel), ['narration', 'tool']);
+  assert.deepEqual(layout.answer.map(segment => segment.nodeKey), [second.key]);
+  assert.equal(layout.panel.length + layout.answer.length, 3);
+});
+
+test('panel status is unknown for a turn whose status is unknown', () => {
+  assert.equal(panelStatus(boundaryOf(turnLocation({ status: 'unknown' })), 0), 'unknown');
+  assert.equal(panelStatus(boundaryOf(turnLocation({ status: 'unknown' })), 2), 'unknown');
+});
+
+test('five consecutive tool calls stay listed; six fold all but the last three', () => {
+  const five = groupSteps(['a', 'b', 'c', 'd', 'e'].map(id => tool(id, 1)), { condense: false }).groups[0]!;
+  assert.equal(five.entries.length, 5);
+  assert.ok(five.entries.every(entry => entry.kind === 'item'));
+  const six = groupSteps(['a', 'b', 'c', 'd', 'e', 'f'].map(id => tool(id, 1)), { condense: false }).groups[0]!;
+  assert.deepEqual(six.entries.map(entry => entry.kind), ['fold', 'item', 'item', 'item']);
+  assert.equal((six.entries[0] as { items: PanelItem[] }).items.length, 3);
+});
+
+test('eight single-tool steps merge into one range group with one fold row and the last three tools', () => {
+  const items = Array.from({ length: 8 }, (_, index) => tool(`t${index + 1}`, index + 1));
+  const layout = groupSteps(items, { condense: true });
+  assert.equal(layout.earlier, null);
+  assert.deepEqual(layout.groups.map(group => group.label), ['步骤 1–8']);
+  const { entries } = layout.groups[0]!;
+  assert.deepEqual(entries.map(entry => entry.kind), ['fold', 'item', 'item', 'item']);
+  assert.equal((entries[0] as { items: PanelItem[] }).items.length, 5);
+});

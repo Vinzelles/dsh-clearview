@@ -91,6 +91,8 @@ const FOLD_MIN = 6;
 const FOLD_KEEP = 3;
 
 export function stepLabel(first: number, last: number): string {
+  // Step 0 means no row of the group knows its step (mid-turn window): no label.
+  if (last === 0) return '';
   return first === last ? `步骤 ${first}` : `步骤 ${first}–${last}`;
 }
 
