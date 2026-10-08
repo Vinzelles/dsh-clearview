@@ -339,14 +339,18 @@ try {
     })()`);
     item.narration = await evaluate(`(() => {
       const root = document.querySelector('[data-dsh-clearview]');
-      const probe = document.createElement('span'); probe.style.color = 'var(--dsw-alias-label-secondary)'; root.appendChild(probe); const secondary = getComputedStyle(probe).color; probe.style.color = 'var(--dsw-alias-label-primary)'; const primary = getComputedStyle(probe).color; probe.remove();
+      const probe = document.createElement('span'); probe.style.color = 'var(--dsw-alias-label-secondary)'; root.appendChild(probe); const secondary = getComputedStyle(probe).color; probe.style.color = 'var(--dsw-alias-label-primary)'; const primary = getComputedStyle(probe).color; probe.style.color = 'var(--dsw-alias-label-tertiary)'; const tertiary = getComputedStyle(probe).color; probe.remove();
       const paragraph = scope => [...root.querySelectorAll(scope + ' [data-reader-text] > *')].find(node => node.textContent.trim().length > 12 && !/^(PRE|UL|OL|TABLE|H[1-6])$/.test(node.tagName));
-      const describe = node => node ? { tag: node.tagName, cls: String(node.className).slice(0, 30), color: getComputedStyle(node).color, weight: getComputedStyle(node).fontWeight, size: getComputedStyle(node).fontSize, text: node.textContent.slice(0, 30) } : null;
+      const describe = node => node ? { tag: node.tagName, cls: String(node.className).slice(0, 30), color: getComputedStyle(node).color, weight: getComputedStyle(node).fontWeight, size: getComputedStyle(node).fontSize, line: getComputedStyle(node).lineHeight, text: node.textContent.slice(0, 30) } : null;
       const inline = (scope, tag) => { const node = root.querySelector(scope + ' [data-reader-text] ' + tag); return node ? { color: getComputedStyle(node).color, weight: getComputedStyle(node).fontWeight, parentColor: getComputedStyle(node.parentElement).color } : null; };
-      return { secondary, primary, narration: describe(paragraph('[data-reader-narration]')), answer: describe(paragraph('[data-reader-answer]')), narrationInner: describe(paragraph('[data-reader-narration]')?.querySelector('p, li')), answerInner: describe(paragraph('[data-reader-answer]')?.querySelector('p, li')),
+      return { secondary, primary, tertiary, narration: describe(paragraph('[data-reader-narration]')), answer: describe(paragraph('[data-reader-answer]')), narrationInner: describe(paragraph('[data-reader-narration]')?.querySelector('p, li')), answerInner: describe(paragraph('[data-reader-answer]')?.querySelector('p, li')),
         narrationInline: { code: inline('[data-reader-narration]', 'code'), strong: inline('[data-reader-narration]', 'strong'), link: inline('[data-reader-narration]', 'a') },
         answerInline: { code: inline('[data-reader-answer]', 'code'), strong: inline('[data-reader-answer]', 'strong'), link: inline('[data-reader-answer]', 'a') } };
     })()`);
+    for (const [label, scope] of [['narration', '[data-reader-narration]'], ['answer', '[data-reader-answer]']]) {
+      const box = await evaluate(`(() => { const node = [...document.querySelectorAll('[data-dsh-clearview] ${scope} [data-reader-text] > *')].find(item => item.textContent.trim().length > 12 && !/^(PRE|UL|OL|TABLE|H[1-6])$/.test(item.tagName)); if (!node) return null; node.scrollIntoView({ block: 'center' }); const r = node.getBoundingClientRect(); return { x: Math.max(0, r.left - 24), y: Math.max(0, r.top - 12), width: r.width + 48, height: Math.min(r.height + 24, 160) }; })()`);
+      if (box) { await delay(400); const { data } = await send('Page.captureScreenshot', { format: 'png', clip: { ...box, scale: 2 } }); writeFileSync(join(out, `${name}-${label}-crop.png`), Buffer.from(data, 'base64')); }
+    }
     item.merged = null;
     if (await evaluate(`!!document.querySelector(${JSON.stringify(mergedScope)})`)) {
       await evaluate(`document.querySelector(${JSON.stringify(mergedScope)}).setAttribute('data-live-anim', 'merged')`);
