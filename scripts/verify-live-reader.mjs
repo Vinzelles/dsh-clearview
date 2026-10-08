@@ -317,6 +317,53 @@ try {
         panels: panelStyle, failedHeaderColor: failedHeader ? getComputedStyle(failedHeader.querySelector('span:nth-of-type(2)') ?? failedHeader).color : null, metas,
       };
     })()`);
+    // Collapse-body animation: sampled every frame inside the page. data-clip must be present while the height
+    // animates (computed overflow hidden), gone afterwards (overflow visible), with no height jump at the end.
+    const animationProbe = (containerSelector, triggerSelector, direction) => evaluate(`new Promise(resolve => {
+      const container = document.querySelector(${JSON.stringify(containerSelector)});
+      if (!container) { resolve(null); return; }
+      const bodyOf = () => container.querySelector(':scope > [data-ud-motion="reader-collapse-size"]');
+      const trigger = container.querySelector(${JSON.stringify(triggerSelector)});
+      const frames = []; const start = performance.now();
+      trigger.click();
+      const tick = () => {
+        const body = bodyOf(); const now = Math.round(performance.now() - start);
+        if (body) { const box = body.getBoundingClientRect(); const style = getComputedStyle(body); frames.push({ t: now, clip: body.hasAttribute('data-clip'), h: Math.round(box.height * 10) / 10, scrollHeight: body.scrollHeight, overflow: style.overflowX + '/' + style.overflowY, opacity: Math.round(Number(style.opacity) * 100) / 100, display: style.display }); }
+        else frames.push({ t: now, gone: true });
+        if (now < 800) requestAnimationFrame(tick); else finish();
+      };
+      const finish = () => {
+        const withBody = frames.filter(frame => !frame.gone);
+        const clipFrames = withBody.filter(frame => frame.clip);
+        const lastClipIndex = frames.map(frame => !!frame.clip).lastIndexOf(true);
+        const next = lastClipIndex >= 0 ? frames[lastClipIndex + 1] : null;
+        const jump = next && !next.gone ? Math.abs(next.h - frames[lastClipIndex].h) : null;
+        const settled = withBody.filter(frame => !frame.clip).slice(-1)[0] ?? null;
+        resolve({ direction: ${JSON.stringify(direction)}, frameCount: frames.length, clipFrames: clipFrames.length, clipDurationMs: clipFrames.length ? clipFrames.at(-1).t - clipFrames[0].t : 0,
+          clipOverflowAllHidden: clipFrames.every(frame => frame.overflow === 'hidden/hidden'), settledOverflow: settled ? settled.overflow : null, settledClipLeft: withBody.slice(-1)[0] ? withBody.slice(-1)[0].clip : null,
+          jump, lastClipHeight: lastClipIndex >= 0 ? frames[lastClipIndex].h : null, nextHeight: next && !next.gone ? next.h : null,
+          settledHeightVsContent: settled ? Math.abs(settled.h - settled.scrollHeight) : null, bodyGoneAtEnd: frames.at(-1).gone === true, heights: frames.filter((frame, index) => index % 3 === 0).map(frame => frame.gone ? 'gone' : frame.h + (frame.clip ? 'c' : '')) });
+      };
+      requestAnimationFrame(tick);
+    })`);
+    item.animations = {};
+    const panelSelector = '[data-dsh-clearview] [data-reader-panel]';
+    item.animations.panel = [await animationProbe(panelSelector, ':scope > [data-reader-disclosure] > button', 'collapse'), null];
+    await delay(300);
+    item.animations.panel[1] = await animationProbe(panelSelector, ':scope > [data-reader-disclosure] > button', 'expand');
+    await delay(300);
+    await evaluate("(() => { const cluster = document.querySelector('[data-dsh-clearview] [data-reader-cluster][data-expanded=\"false\"]'); if (cluster) cluster.setAttribute('data-live-anim', 'cluster'); })()");
+    item.animations.cluster = await evaluate("!!document.querySelector('[data-live-anim=cluster]')") ? [await animationProbe('[data-live-anim=cluster]', '[data-disclosure-row]', 'expand'), null] : null;
+    if (item.animations.cluster) { await delay(300); item.animations.cluster[1] = await animationProbe('[data-live-anim=cluster]', '[data-disclosure-row]', 'collapse'); await delay(300); }
+    await evaluate("(() => { const row = document.querySelector('[data-dsh-clearview] [data-reader-reasoning-row][aria-expanded=\"false\"]'); row?.closest('[data-reader-reasoning]')?.setAttribute('data-live-anim', 'reasoning'); })()");
+    item.animations.reasoning = await evaluate("!!document.querySelector('[data-live-anim=reasoning]')") ? [await animationProbe('[data-live-anim=reasoning]', '[data-reader-reasoning-row]', 'expand'), null] : null;
+    if (item.animations.reasoning) { await delay(300); item.animations.reasoning[1] = await animationProbe('[data-live-anim=reasoning]', '[data-reader-reasoning-row]', 'collapse'); await delay(300); }
+    // 前 N 步 inserts rows into the (already open) panel body: it must not turn the body's clip on or leave it on.
+    if (await evaluate("!!document.querySelector('[data-dsh-clearview] [data-reader-earlier]')")) {
+      await evaluate("document.querySelector('[data-dsh-clearview] [data-reader-earlier]').closest('[data-reader-panel]').setAttribute('data-live-anim', 'earlier')");
+      item.animations.earlier = await animationProbe('[data-live-anim=earlier]', '[data-reader-earlier]', 'earlier');
+      await delay(300);
+    }
     // Narrow-width overflow in each disclosure state, then hover bleed at full width (side shadows, not clipped).
     const overflowProbe = async label => { const measured = await evaluate(measure); return { label, ...measured?.overflowX, overflowing: measured?.overflowing ?? null }; };
     const setWidth = width => send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
