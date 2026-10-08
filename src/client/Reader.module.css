@@ -72,7 +72,10 @@
 }
 
 .disclosureBody { overflow: hidden; height: 0; }
-.collapseBody { overflow: hidden; }
+/* Clipped only while closed or while the height animation runs (data-clip, set in CollapseBody): a settled-open body must not
+   cut off the 6px side-shadow hover bleed of the rows inside. flow-root keeps child margins inside the measured height. */
+.collapseBody { display: flow-root; }
+.collapseBody[data-open=false], .collapseBody[data-clip] { overflow: hidden; }
 .processFrame { min-width: 0; }
 .processContents { display: flow-root; min-width: 0; }
 

@@ -155,9 +155,12 @@ export function CollapseBody({ open, motion, children, className }: {
     element.style.height = open ? 'auto' : '0px';
     const target = open ? element.scrollHeight : 0;
     if (!motion || !changed || Math.abs(from - target) < 1) {
+      delete element.dataset.clip;
       setPresent(open);
       return;
     }
+    // Clip only while the height animates: a settled-open body must not cut off the rows' side-shadow hover bleed.
+    element.dataset.clip = '';
     const animation = element.animate(
       [{ height: `${from}px`, opacity: from < 1 ? 0 : 1 }, { height: `${target}px`, opacity: open ? 1 : 0 }],
       { duration: MOTION.size, easing: EASING, fill: 'both' },
@@ -167,12 +170,13 @@ export function CollapseBody({ open, motion, children, className }: {
       if (running.current !== animation) return;
       running.current = null;
       animation.cancel();
+      delete element.dataset.clip;
       setPresent(open);
     };
   }, [open, motion]);
   useEffect(() => () => { running.current?.cancel(); }, []);
   if (!open && !present) return null;
-  return <div ref={body} className={clsx(className, css.collapseBody)} data-ud-motion="reader-collapse-size"
+  return <div ref={body} className={clsx(className, css.collapseBody)} data-open={open} data-ud-motion="reader-collapse-size"
     aria-hidden={!open} {...(!open ? { inert: '' } : {})}>
     {children}
   </div>;

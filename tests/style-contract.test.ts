@@ -140,3 +140,16 @@ test('hover bleed on process rows is drawn with side shadows in the hover colour
     assert.match(hover, /box-shadow: 6px 0 0 var\(--dsw-alias-interactive-bg-hover\), -6px 0 0 var\(--dsw-alias-interactive-bg-hover\)/, `${file} ${selector}`);
   }
 });
+
+test('a settled-open collapse body does not clip; it clips only while closed or animating', async () => {
+  const reader = sheet('Reader');
+  assert.doesNotMatch(/\.collapseBody \{([^}]*)\}/.exec(reader)?.[1] ?? '', /overflow/);
+  assert.match(reader, /\.collapseBody\[data-open=false\], \.collapseBody\[data-clip\] \{ overflow: hidden; \}/);
+  const { createElement } = await import('react');
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const { CollapseBody } = await import('../src/client/motion.tsx');
+  const open = renderToStaticMarkup(createElement(CollapseBody, { open: true, motion: true }, createElement('span', null, 'x')));
+  assert.match(open, /class="collapseBody"[^>]*data-open="true"/);
+  assert.doesNotMatch(open, /data-clip/);
+  assert.equal(renderToStaticMarkup(createElement(CollapseBody, { open: false, motion: true }, createElement('span', null, 'x'))), '');
+});
