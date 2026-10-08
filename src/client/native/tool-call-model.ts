@@ -19,10 +19,13 @@ export type ToolRowVariant = 'search' | 'read' | 'bash' | 'write' | 'edit' | 'co
 /** Row state semantic; colors self-supplied via StateDot (design gives none). */
 export type ToolRowState = 'running' | 'ok' | 'error' | 'stopped'
 
-/** Figma row titles per variant (design literals, not translatable copy). */
+/**
+ * Row titles per variant. Reader copy is Chinese; `Bash` stays because it is the tool's own name (data), and an
+ * unclassified tool shows the generic Chinese title while its real name rides the summary.
+ */
 export const VARIANT_TITLES: Record<ToolRowVariant, string> = {
-  search: 'Search', read: 'Read', bash: 'Bash',
-  write: 'Write', edit: 'Edit', code: 'Code', others: 'Tool call',
+  search: '搜索', read: '读取', bash: 'Bash',
+  write: '写入', edit: '编辑', code: '代码', others: '工具调用',
 }
 
 /**
@@ -60,11 +63,11 @@ const TOOL_VARIANTS: Record<string, ToolRowVariant> = {
 
 /** Tool-owned titles that refine a generic row variant without replacing it. */
 const TOOL_TITLES: Record<string, string> = {
-  cordis_package_inspect: 'Inspect',
-  cordis_runtime_inspect: 'Inspect',
-  cordis_run: 'Run Cordis Plugin',
-  cordis_stop: 'Stop Cordis Plugin',
-  cordis_undefine: 'Remove Cordis Plugin',
+  cordis_package_inspect: '查看',
+  cordis_runtime_inspect: '查看',
+  cordis_run: '运行 Cordis 插件',
+  cordis_stop: '停止 Cordis 插件',
+  cordis_undefine: '移除 Cordis 插件',
   pwsh: 'Pwsh',
 }
 
@@ -225,7 +228,7 @@ export function toolRowModel(toolName: string, block: ToolCallBlock, cwd?: strin
     ? block.callId
     : abbreviateHomePath(relativizeToCwd(deriveSummary(variant, argsRaw), cwd), home)
   const toolTitle = TOOL_TITLES[toolName]
-  // Others keeps the static "Tool call" title (figma literal); the real tool
+  // Others keeps the static 「工具调用」 title; the real tool
   // name rides the mutable summary slot unless the tool owns a specific title.
   const summary = variant === 'others' && toolName !== '' && toolTitle === undefined
     ? `${toolName} · ${base}`

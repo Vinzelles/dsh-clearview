@@ -59,7 +59,7 @@ export const ToolRow = memo(function ToolRow({ entry, turnClosed, onRead, depth 
   const native = block ? toolRowModel(model.name, block) : null;
   const skill = model.name === 'skill';
   const Icon = skill ? IconSkillOutlineRegular : model.name === 'code' ? IconCodeOutlineRegular : ICONS[model.category];
-  const title = skill ? 'Skill' : native?.title ?? VARIANT_TITLES[classifyTool(model.name)];
+  const title = skill ? '技能' : native?.title ?? VARIANT_TITLES[classifyTool(model.name)];
   const skillName = typeof model.args?.name === 'string' ? model.args.name.split('\n')[0] : model.raw.split('\n')[0];
   const summary = skill ? skillName : native?.summary
     ?? (classifyTool(model.name) === 'others' ? `${model.name} · ${model.target ?? model.title}` : model.target ?? model.title);
