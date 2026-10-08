@@ -154,14 +154,27 @@ test('a settled-open collapse body does not clip; it clips only while closed or 
   assert.equal(renderToStaticMarkup(createElement(CollapseBody, { open: false, motion: true }, createElement('span', null, 'x'))), '');
 });
 
-test('panel narration is secondary colour and normal weight, beating the Markdown root primary colour', () => {
+test('panel narration is 13px on the 21px process line in the thought-text colour, with the Markdown root overridden', () => {
   const turn = sheet('TurnSection');
-  assert.match(/\.narration \{([^}]*)\}/.exec(turn)?.[1] ?? '', /color: var\(--dsw-alias-label-secondary\)/);
+  const narration = /\.narration \{([^}]*)\}/.exec(turn)?.[1] ?? '';
+  assert.match(narration, /color: var\(--dsw-alias-label-tertiary\)/);
+  assert.match(narration, /font-size: var\(--cv-font-secondary\)/);
+  assert.match(narration, /line-height: 21px/);
   const root = /\.narration \[data-reader-text\] > \* \{([^}]*)\}/.exec(turn)?.[1] ?? '';
-  assert.match(root, /color: var\(--dsw-alias-label-secondary\)/);
-  assert.doesNotMatch(root, /font-weight/, 'the Markdown base font is already regular weight');
-  assert.match(turn, /\.narration \[data-reader-text\] :not\(pre\) > code \{[^}]*color: var\(--dsw-alias-label-primary\)/);
-  assert.doesNotMatch(root, /font-size|font:/);
-  // The root rule being overridden: .markdown sets primary colour on itself, so inheritance from .narration alone is not enough.
+  assert.match(root, /color: var\(--dsw-alias-label-tertiary\)/);
+  assert.match(root, /font-size: var\(--cv-font-secondary\)/);
+  assert.match(root, /line-height: 21px/);
+  assert.doesNotMatch(root, /font-weight|font:/, 'the Markdown base weight is already regular');
+  // The thought text (the inset viewport) uses the same colour and line.
+  assert.match(/\.viewport \{([^}]*)\}/.exec(sheet('ReasoningRow'))?.[1] ?? '', /color: var\(--dsw-alias-label-tertiary\)[\s\S]*line-height: 21px/);
+  // Inline code is one step stronger than the text; strong keeps the Markdown weight; links are not touched.
+  assert.match(turn, /\.narration \[data-reader-text\] :not\(pre\) > code \{[^}]*color: var\(--dsw-alias-label-secondary\)/);
+  assert.doesNotMatch(turn, /\.narration[^{]*(strong|a)[^{]*\{/);
+  // Spacing scales with the smaller text: no 16px / 32px Markdown margins left on paragraphs, lists and headings.
+  assert.match(turn, /\.narration \[data-reader-text\] :where\(p, ul, ol, blockquote\) \{ margin: 8px 0; \}/);
+  assert.match(turn, /:where\(h1, h2, h3, h4, h5, h6\) \{[^}]*margin: 10px 0 4px[^}]*font-size: var\(--cv-font-secondary\)/);
+  assert.match(turn, /> \* > :first-child \{ margin-top: 0; \}/);
+  assert.match(turn, /> \* > :last-child \{ margin-bottom: 0; \}/);
+  // The rule being overridden: .markdown sets primary colour and the 16px base font on itself.
   assert.match(/\.markdown \{([^}]*)\}/.exec(readFileSync(new URL('markdown/MarkdownText.module.css', CLIENT), 'utf8'))?.[1] ?? '', /color: var\(--dsw-alias-label-primary\)/);
 });

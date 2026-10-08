@@ -1,11 +1,17 @@
 .turn { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .turn + .turn { margin-top: 20px; }
 .statusOnly { display: flex; align-items: center; min-height: var(--cv-row-height); color: var(--dsw-alias-label-secondary); font-size: var(--cv-font-secondary); }
-.narration { min-width: 0; margin: 2px 0 6px; color: var(--dsw-alias-label-secondary); font-size: var(--cv-font-body); line-height: var(--cv-line-body); overflow-wrap: anywhere; }
-/* The Markdown root sets its own primary colour, so inheriting from .narration is not enough: lower the root colour. */
-/* The base weight is already regular, so only the colour needs lowering; inline code keeps the primary colour. */
-.narration [data-reader-text] > * { color: var(--dsw-alias-label-secondary); }
-.narration [data-reader-text] :not(pre) > code { color: var(--dsw-alias-label-primary); }
+/* Panel narration reads like the process rows: 13px (host secondary size) on the 21px process line, in the same tertiary
+   colour as the thought text. The Markdown root sets its own font and primary colour, so inheriting from .narration is
+   not enough: the root is overridden, and block spacing is scaled down to match. */
+.narration { min-width: 0; margin: 2px 0 6px; color: var(--dsw-alias-label-tertiary); font-size: var(--cv-font-secondary); line-height: 21px; overflow-wrap: anywhere; }
+.narration [data-reader-text] > * { color: var(--dsw-alias-label-tertiary); font-size: var(--cv-font-secondary); line-height: 21px; }
+.narration [data-reader-text] :not(pre) > code { color: var(--dsw-alias-label-secondary); }
+.narration [data-reader-text] :where(p, ul, ol, blockquote) { margin: 8px 0; }
+.narration [data-reader-text] :where(h1, h2, h3, h4, h5, h6) { margin: 10px 0 4px; font-size: var(--cv-font-secondary); line-height: 21px; font-weight: 600; }
+.narration [data-reader-text] li::marker { line-height: 21px; }
+.narration [data-reader-text] > * > :first-child { margin-top: 0; }
+.narration [data-reader-text] > * > :last-child { margin-bottom: 0; }
 .output { min-width: 0; overflow-wrap: anywhere; }
 .answer { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
 [data-reader-panel] + .answer { margin-top: 4px; }
