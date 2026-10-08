@@ -17,7 +17,7 @@
 .panel[data-status=running] .status { color: var(--dsw-alias-label-deep-diving, var(--dsw-alias-label-secondary)); }
 .panel[data-status=error] .status, .panel[data-status=interrupted] .status { color: var(--dsw-alias-state-error-primary); }
 .panel[data-status=waiting] .status { color: var(--dsw-alias-state-business-primary); }
-.meta { flex: none; color: var(--dsw-alias-label-caption); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.meta { flex: none; color: var(--dsw-alias-label-caption); font-size: 12px; line-height: 18px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .meta::before { content: ''; display: inline-block; width: 2px; height: 2px; margin: 0 8px 3px 2px; border-radius: 999px; corner-shape: round; background: var(--dsw-alias-label-caption); vertical-align: middle; }
 .metaDanger { color: var(--dsw-alias-state-error-primary); }
 .body { display: flex; flex-direction: column; gap: 2px; min-width: 0; margin-left: calc(22px + var(--dsh-content-font-delta, 0px)); padding: 2px 0 4px; }

@@ -96,3 +96,9 @@ test('the cluster row uses the 24px row grammar with token colours only', () => 
   assert.match(css, /\.members \{[^}]*margin-left: calc\(22px/);
   assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}|rgba?\(/);
 });
+
+test('the panel header meta items are 12/18 secondary text while the status keeps the row size', () => {
+  const css = sheet('ProcessPanel');
+  assert.match(/\.meta \{([^}]*)\}/.exec(css)?.[1] ?? '', /font-size: 12px; line-height: 18px/);
+  assert.doesNotMatch(/\.status \{([^}]*)\}/.exec(css)?.[1] ?? '', /font-size/);
+});

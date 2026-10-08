@@ -28,6 +28,13 @@ test('live thinking spins, sweeps its title and shows the live inset', () => {
   assert.match(html, /data-reader-reasoning-text[^>]*><span>原文<\/span>/);
 });
 
+test('the live inset sits inside the 260ms collapse wrapper, so settling or opening animates instead of jumping', () => {
+  const live = render(ReasoningRow, { ...base, live: true, compact: false });
+  assert.match(live, /data-ud-motion="reader-collapse-size"[^>]*><div class="inset" data-reader-reasoning-card/);
+  assert.match(live, /data-reader-reasoning-scroll[\s\S]*data-reader-reasoning-text/);
+  assert.doesNotMatch(render(ReasoningRow, { ...base, live: false, compact: false }), /reader-collapse-size/);
+});
+
 test('with 折叠思考 on, live thinking is also a single row: spinner and title, no inset', () => {
   const html = render(ReasoningRow, { ...base, live: true, compact: true });
   assert.match(html, /data-stub="StateDot" data-state="ongoing"/);

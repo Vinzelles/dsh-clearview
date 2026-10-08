@@ -189,7 +189,7 @@ try {
       const text = node.querySelector('[data-reader-reasoning-text]');
       const viewport = node.querySelector('[data-reader-reasoning-scroll]');
       const card = node.querySelector('[data-reader-reasoning-card]');
-      return { row: rowText.slice(0, 80), cardPreview: card?.getAttribute('data-preview') ?? null, cardLive: card?.getAttribute('data-live') ?? null,
+      return { row: rowText.slice(0, 80), cardLive: card?.getAttribute('data-live') ?? null,
         textStart: text?.textContent.trim().slice(0, 40) ?? null, scrollTop: viewport?.scrollTop ?? null, scrollHeight: viewport?.scrollHeight ?? null, clientHeight: viewport?.clientHeight ?? null };
     });
     const sample = selector => { const node = root.querySelector(selector); return node ? { size: cs(node).fontSize, line: cs(node).lineHeight } : null; };
@@ -211,7 +211,7 @@ try {
       coverage: (() => {
         const tally = (selector, attribute) => { const counts = {}; for (const node of all(selector)) { const key = node.getAttribute(attribute) ?? ''; counts[key] = (counts[key] ?? 0) + 1; } return counts; };
         return { toolCategories: tally('[data-reader-tool-call]', 'data-tool-category'), toolPhases: tally('[data-reader-tool-call]', 'data-tool-phase'),
-          reasoningRows: all('[data-reader-reasoning]').length, folds: all('[data-reader-fold]').length, steps: all('[data-reader-step]').length,
+          reasoningRows: all('[data-reader-reasoning]').length, clusters: all('[data-reader-cluster]').length, clusterMembers: all('[data-reader-cluster] [data-reader-tool-call]').length,
           childCalls: all('[aria-label="子调用"] [data-reader-tool-call]').length, earlierButtons: all('[data-reader-earlier]').length, notices: all('[data-reader-notice]').length };
       })(),
       floating: { activity: !!root.querySelector('[data-reader-activity-pill]'), jump: !!root.querySelector('[data-reader-jump]') },
@@ -284,6 +284,9 @@ try {
       return true;
     })()`);
     await delay(500);
+    // Consecutive tool calls are merged into collapsed cluster rows; open them so the member tool rows can be measured.
+    await evaluate("document.querySelectorAll('[data-live-check=panel] [data-reader-cluster][data-expanded=\"false\"] [data-disclosure-row]').forEach(row => row.click())");
+    await delay(500);
     await evaluate("document.querySelector('[data-live-check=panel]')?.scrollIntoView({ block: 'start' })");
     await shot(`${name}-panel-open`);
     item.measuredPanel = await evaluate(measure);
@@ -316,6 +319,10 @@ try {
         errorBackground: style(summary)?.backgroundColor ?? null, errorFont: style(summary?.firstElementChild ?? summary)?.font.slice(0, 80) ?? null, errorText: summary?.textContent.slice(0, 100) ?? null };
     })()`);
     if (item.failedRow) { await delay(400); await shot(`${name}-failed-row`); }
+    await evaluate("document.querySelector('[data-live-check=panel] [data-reader-earlier]')?.click()");
+    await delay(500);
+    await evaluate("document.querySelectorAll('[data-live-check=panel] [data-reader-cluster][data-expanded=\"false\"] [data-disclosure-row]').forEach(row => row.click())");
+    await delay(500);
     item.toolOpened = await evaluate(`(() => {
       const panel = document.querySelector('[data-live-check=panel]');
       panel?.querySelector('[data-reader-earlier]')?.click();
@@ -359,7 +366,7 @@ try {
       cov.triggers[type].body = await evaluate(`document.querySelector('[data-reader-trigger="${type}"]')?.textContent.slice(0, 160)`);
     }
     for (const status of Object.keys(cov.counts.panelStatuses).filter(value => value !== 'done')) {
-      cov.panels[status] = await evaluate(`(() => { const panel = document.querySelector('[data-dsh-clearview] [data-reader-panel][data-status="${status}"]'); const header = panel.querySelector(':scope > [data-reader-disclosure]'); return { header: header.textContent.slice(0, 80), open: header.getAttribute('data-expanded'), steps: panel.querySelectorAll('[data-reader-step]').length }; })()`);
+      cov.panels[status] = await evaluate(`(() => { const panel = document.querySelector('[data-dsh-clearview] [data-reader-panel][data-status="${status}"]'); const header = panel.querySelector(':scope > [data-reader-disclosure]'); return { header: header.textContent.slice(0, 80), open: header.getAttribute('data-expanded'), clusters: panel.querySelectorAll('[data-reader-cluster]').length }; })()`);
       cov.panels[status].shot = await scrollShot(`[data-reader-panel][data-status="${status}"]`, `panel-${status}`);
     }
     for (const kind of Object.keys(cov.counts.records)) {
@@ -379,12 +386,12 @@ try {
     }
     // 「前 N 步」: the panel keeps only the latest steps while a turn did not finish well.
     for (let nth = 0; nth < 3; nth++) {
-      const before = await evaluate(`(() => { const button = document.querySelector('[data-dsh-clearview] [data-reader-earlier]'); if (!button) return null; const panel = button.closest('[data-reader-panel]'); const total = panel.querySelector(':scope > [data-reader-disclosure]').textContent.match(/(\\d+) 步/)?.[1] ?? null; button.setAttribute('data-live-earlier', '1'); panel.setAttribute('data-live-earlier-panel', '1'); return { text: button.textContent.trim().slice(0, 80), height: button.getBoundingClientRect().height, status: panel.getAttribute('data-status'), headerSteps: total, groupsBefore: panel.querySelectorAll('[data-reader-step]').length, toolsBefore: panel.querySelectorAll('[data-reader-tool-call]').length, reasoningBefore: panel.querySelectorAll('[data-reader-reasoning]').length }; })()`);
+      const before = await evaluate(`(() => { const button = document.querySelector('[data-dsh-clearview] [data-reader-earlier]'); if (!button) return null; const panel = button.closest('[data-reader-panel]'); const total = panel.querySelector(':scope > [data-reader-disclosure]').textContent.match(/(\\d+) 步/)?.[1] ?? null; button.setAttribute('data-live-earlier', '1'); panel.setAttribute('data-live-earlier-panel', '1'); return { text: button.textContent.trim().slice(0, 80), height: button.getBoundingClientRect().height, status: panel.getAttribute('data-status'), headerSteps: total, clustersBefore: panel.querySelectorAll('[data-reader-cluster]').length, toolsBefore: panel.querySelectorAll('[data-reader-tool-call]').length, reasoningBefore: panel.querySelectorAll('[data-reader-reasoning]').length }; })()`);
       if (!before) break;
       await scrollShot('[data-live-earlier]', `earlier-closed-${nth}`);
       await evaluate("document.querySelector('[data-live-earlier]').click()");
       await delay(700);
-      const after = await evaluate("(() => { const panel = document.querySelector('[data-live-earlier-panel]'); return { buttonGone: !panel.querySelector('[data-reader-earlier]'), groupsAfter: panel.querySelectorAll('[data-reader-step]').length, toolsAfter: panel.querySelectorAll('[data-reader-tool-call]').length, reasoningAfter: panel.querySelectorAll('[data-reader-reasoning]').length, fol\ds: panel.querySelectorAll('[\data-rea\der-fol\d]').length, fol\dSum: [...panel.querySelectorAll('[\data-rea\der-fol\d]')].re\duce((sum, no\de) => sum + Number(no\de.textContent.match(/\\d+/)?.[0] ?? 0), 0), hea\derTools: panel.querySelector(':scope > [\data-rea\der-\disclosure]').textContent.match(/(\\d+) 次工具/)?.[1] ?? null, labels: [...panel.querySelectorAll('[data-reader-step]')].slice(0, 3).map(node => node.getAttribute('data-reader-step')) }; })()");
+      const after = await evaluate("(() => { const panel = document.querySelector('[data-live-earlier-panel]'); return { buttonGone: !panel.querySelector('[data-reader-earlier]'), clustersAfter: panel.querySelectorAll('[data-reader-cluster]').length, toolsAfter: panel.querySelectorAll('[data-reader-tool-call]').length, clusterMembersAfter: panel.querySelectorAll('[data-reader-cluster] [data-reader-tool-call]').length, reasoningAfter: panel.querySelectorAll('[data-reader-reasoning]').length, headerTools: panel.querySelector(':scope > [data-reader-disclosure]').textContent.match(/(\\d+) 次工具/)?.[1] ?? null }; })()");
       await scrollShot('[data-live-earlier-panel]', `earlier-open-${nth}`);
       cov.earlier.push({ ...before, ...after });
       await evaluate("document.querySelectorAll('[data-live-earlier],[data-live-earlier-panel]').forEach(node => { node.removeAttribute('data-live-earlier'); node.removeAttribute('data-live-earlier-panel'); })");

@@ -4,6 +4,7 @@ import {
   StateDot, TextShimmer,
   IconFullscreenOutlineRegular, IconPauseOutlineRegular, IconPlayOutlineRegular, IconThinkOutlineRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives';
+import { CollapseBody } from './motion.js';
 import { followAdvance } from './reasoning-follow.js';
 import { MOTION } from './motion-tokens.js';
 import { RowSeparator } from './ProcessRow.js';
@@ -276,7 +277,7 @@ export function ReasoningRow({ children, step, live, follow, motion, selected, o
       {!open && preview && <><RowSeparator /><span className={css.preview}>{preview}</span></>}
       <span className={css.end}>{liveSeconds !== null ? `已 ${liveSeconds} 秒` : `${charCount} 字`}</span>
     </button>
-    {open && <div className={css.inset} data-reader-reasoning-card data-live={live || undefined}
+    <CollapseBody open={open} motion={motion}><div className={css.inset} data-reader-reasoning-card data-live={live || undefined}
       data-expanded={inflated || undefined} data-following={allowed} data-overflow={overflow}>
       <div ref={viewport} id={viewportId} className={css.viewport} data-edges={edges} data-reader-reasoning-scroll role="region"
         aria-label={`步骤 ${step} 的思考${overflow ? '，可滚动阅读' : ''}`} tabIndex={overflow ? 0 : undefined}
@@ -295,6 +296,6 @@ export function ReasoningRow({ children, step, live, follow, motion, selected, o
           <IconFullscreenOutlineRegular size={12} />
         </button>
       </div>}
-    </div>}
+    </div></CollapseBody>
   </div>;
 }

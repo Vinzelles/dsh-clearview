@@ -130,7 +130,7 @@ async function reader() {
         await wait(600);
     }
     historyBlockRenders = 0;
-    const toolRowsBeforeStream = host.querySelectorAll('[data-reader-tool-call]').length;
+    const toolRowsBeforeStream = host.querySelectorAll('[data-reader-tool-call], [data-reader-cluster]').length;
     let toolRowsAtHeavyCheck = -1;
     const frames: number[] = [], commits: number[] = [], scrolls: number[] = [];
     let last = 0, lastInput = 0, animations = 0, blur = false;
@@ -165,7 +165,7 @@ async function reader() {
             if (word) {
                 heavyChecked = true;
                 reader.dataset.dshcpHeavy = 'on';
-                toolRowsAtHeavyCheck = host.querySelectorAll('[data-reader-tool-call]').length;
+                toolRowsAtHeavyCheck = host.querySelectorAll('[data-reader-tool-call], [data-reader-cluster]').length;
                 heavyPreserved = getComputedStyle(word).filter.includes('blur(');
                 // A visible shimmer decoration that really animates (a running Web Animation or a CSS animation), not just a rendered node.
                 shimmerPreserved = shimmers.some(node => getComputedStyle(node).display !== 'none' && (node.getAnimations({ subtree: true }).length > 0 || getComputedStyle(node).animationName !== 'none'));
@@ -185,7 +185,11 @@ async function reader() {
     const earlier = host.querySelector<HTMLButtonElement>('[data-reader-earlier]');
     earlier?.click();
     await wait(300);
-    const foldRows = host.querySelectorAll('[data-reader-fold]').length;
+    // Consecutive tool calls merge into collapsed cluster rows; open them so the member tool rows are present.
+    const clusterRows = host.querySelectorAll('[data-reader-cluster]').length;
+    for (const cluster of host.querySelectorAll<HTMLElement>('[data-reader-cluster][data-expanded="false"]'))
+        cluster.querySelector<HTMLElement>('[data-disclosure-row]')?.click();
+    await wait(400);
     check(host.querySelectorAll('[data-reader-tool-call]').length === 20, 'tool rows missing');
     check(animations > 0 && blur, 'original blur animation was not active');
     if (!__BASELINE__)
@@ -227,7 +231,7 @@ async function reader() {
         check(snap?.chat.timeline.turns.get(21)?.status === 'closed', 'DOM compat snapshot stale');
         check(!!snap && turnMetaText(turnMeta(snap.chat.timeline.turns.get(21))) !== '', 'turn footer missing after fine-grained subscriptions');
     }
-    const result = { frameP95: quantile(frames, .95), frameMax: Math.max(...frames), framesOver25: frames.filter(n => n > 25).length, samples: frames.length, commitP95: quantile(commits, .95), historyBlockRenders, chatSubscribers: chat.subscriberCount(), sessionSubscribers: sess.subscriberCount(), pendingSubscribers: pend.subscriberCount(), peakAnimations: animations, blurActive: blur, heavyPreserved, shimmerPreserved, scrollRange: Math.max(...scrolls) - Math.min(...scrolls), maxActiveChars: text.length, turns: 21, tools: 20, expandEarlier: __EXPAND_EARLIER__, toolRowsDuringStream: { beforeStream: toolRowsBeforeStream, atHeavyCheck: toolRowsAtHeavyCheck }, earlierClicked: !!earlier, foldRowsAfterEarlier: foldRows };
+    const result = { frameP95: quantile(frames, .95), frameMax: Math.max(...frames), framesOver25: frames.filter(n => n > 25).length, samples: frames.length, commitP95: quantile(commits, .95), historyBlockRenders, chatSubscribers: chat.subscriberCount(), sessionSubscribers: sess.subscriberCount(), pendingSubscribers: pend.subscriberCount(), peakAnimations: animations, blurActive: blur, heavyPreserved, shimmerPreserved, scrollRange: Math.max(...scrolls) - Math.min(...scrolls), maxActiveChars: text.length, turns: 21, tools: 20, expandEarlier: __EXPAND_EARLIER__, toolRowsDuringStream: { beforeStream: toolRowsBeforeStream, atHeavyCheck: toolRowsAtHeavyCheck }, earlierClicked: !!earlier, clusterRowsAfterEarlier: clusterRows };
     flushSync(() => root.render(null));
     return result;
 }

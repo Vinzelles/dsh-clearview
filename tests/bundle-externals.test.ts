@@ -10,6 +10,7 @@ test('the built bundle requires only the three shared host modules', { skip: !ex
   assert.match(output, /Runtime externals: @deepseek-ai\/dsh-client-ui-primitives, react, react\/jsx-runtime/);
 });
 
-test('the built bundle carries the 0.2.0 root version', { skip: !existsSync(BUNDLE) && 'lib/client.js is not built' }, () => {
-  assert.match(readFileSync(BUNDLE, 'utf8'), /"0\.2\.0"/);
+test('the built bundle carries the package version as its root version', { skip: !existsSync(BUNDLE) && 'lib/client.js is not built' }, () => {
+  const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
+  assert.ok(readFileSync(BUNDLE, 'utf8').includes(`"${version}"`), `bundle lacks "${version}"`);
 });
