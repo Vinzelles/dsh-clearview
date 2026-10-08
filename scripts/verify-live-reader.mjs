@@ -317,6 +317,53 @@ try {
         panels: panelStyle, failedHeaderColor: failedHeader ? getComputedStyle(failedHeader.querySelector('span:nth-of-type(2)') ?? failedHeader).color : null, metas,
       };
     })()`);
+    // Narrow-width overflow in each disclosure state, then hover bleed at full width (side shadows, not clipped).
+    const overflowProbe = async label => { const measured = await evaluate(measure); return { label, ...measured?.overflowX, overflowing: measured?.overflowing ?? null }; };
+    const setWidth = width => send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+    const clickFirst = selector => evaluate(`(() => { const node = document.querySelector(${JSON.stringify(selector)}); if (!node) return false; node.click(); return true; })()`);
+    item.narrowStates = [];
+    await setWidth(480);
+    await delay(800);
+    item.narrowStates.push(await overflowProbe('panels open, clusters collapsed'));
+    await shot(`${name}-narrow-collapsed`);
+    await evaluate("document.querySelectorAll('[data-dsh-clearview] [data-reader-cluster][data-expanded=\"false\"] [data-disclosure-row]').forEach(row => row.click())");
+    await delay(800);
+    item.narrowStates.push(await overflowProbe('clusters opened'));
+    if (await clickFirst('[data-dsh-clearview] [data-reader-earlier]')) { await delay(800); item.narrowStates.push(await overflowProbe('前 N 步 opened')); }
+    if (await clickFirst('[data-dsh-clearview] [data-reader-reasoning-row][aria-expanded="false"]')) { await delay(800); item.narrowStates.push(await overflowProbe('reasoning row opened')); }
+    if (await clickFirst('[data-dsh-clearview] [data-reader-tool-call] [data-disclosure-row]')) { await delay(800); item.narrowStates.push(await overflowProbe('tool row opened')); }
+    await evaluate("document.querySelector('[data-dsh-clearview] [data-reader-tool-call]')?.scrollIntoView({ block: 'center' })");
+    await delay(400);
+    await shot(`${name}-narrow-opened`);
+    await setWidth(1440);
+    await delay(800);
+    const bleedProbe = `(selector => {
+      const el = document.querySelector(selector); if (!el) return null;
+      const style = getComputedStyle(el); const box = el.getBoundingClientRect();
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let textBox = null;
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) { if (node.textContent.trim()) { const range = document.createRange(); range.selectNodeContents(node); textBox = range.getBoundingClientRect(); break; } }
+      const clippedBy = [];
+      for (let parent = el.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+        const parentStyle = getComputedStyle(parent);
+        if (/(hidden|clip|auto|scroll)/.test(parentStyle.overflowX)) { const parentBox = parent.getBoundingClientRect(); if (parentBox.left > box.left - 6 + 0.5 || parentBox.right < box.right + 6 - 0.5) clippedBy.push({ tag: parent.tagName, cls: String(parent.className).slice(0, 40), overflowX: parentStyle.overflowX, left: Math.round(parentBox.left), right: Math.round(parentBox.right) }); }
+      }
+      return { hovered: el.matches(':hover'), background: style.backgroundColor, boxShadow: style.boxShadow, left: Math.round(box.left * 10) / 10, right: Math.round(box.right * 10) / 10, width: Math.round(box.width), height: Math.round(box.height * 10) / 10, textLeft: textBox ? Math.round(textBox.left * 10) / 10 : null, clippedBy };
+    })`;
+    item.hoverBleed = {};
+    for (const [key, selector] of [['panelHeader', '[data-dsh-clearview] [data-reader-panel] > [data-reader-disclosure] > button'], ['cluster', '[data-dsh-clearview] [data-reader-cluster] [data-disclosure-row]'],
+      ['toolRow', '[data-dsh-clearview] [data-reader-tool-call] [data-disclosure-row]'], ['reasoningRow', '[data-dsh-clearview] [data-reader-reasoning-row]'], ['fileChanges', '[data-dsh-clearview] [data-reader-file-changes] > button']]) {
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+      await delay(200);
+      const before = await evaluate(`${bleedProbe}(${JSON.stringify(selector)})`);
+      if (!before) { item.hoverBleed[key] = null; continue; }
+      await hover(selector, 0.15);
+      const after = await evaluate(`${bleedProbe}(${JSON.stringify(selector)})`);
+      item.hoverBleed[key] = { before, after, textShift: before.textLeft !== null && after.textLeft !== null ? Math.round((after.textLeft - before.textLeft) * 10) / 10 : null };
+      const { data } = await send('Page.captureScreenshot', { format: 'png', clip: { x: Math.max(0, after.left - 24), y: Math.max(0, (await evaluate(`document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect().top`)) - 8), width: after.width + 48, height: after.height + 16, scale: 2 } });
+      writeFileSync(join(out, `${name}-hover-${key}.png`), Buffer.from(data, 'base64'));
+      await shot(`${name}-hover-${key}-full`);
+    }
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
     await evaluate("document.querySelectorAll('[data-dsh-clearview] [data-reader-cluster][data-expanded=\"false\"] [data-disclosure-row]').forEach(row => row.click())");
     await delay(900);
     item.clustersOpened = await evaluate(`(() => [...document.querySelectorAll('[data-dsh-clearview] [data-reader-cluster]')].map(node => { const title = node.querySelector('[data-disclosure-row]')?.textContent ?? ''; const topCalls = [...node.querySelectorAll('[data-reader-tool-call]')].filter(call => !call.parentElement.closest('[aria-label=\"子调用\"]')); const calls = topCalls.length; const nested = node.querySelectorAll('[data-reader-tool-call]').length - calls; const records = node.querySelectorAll('[data-reader-record-kind]').length; const claimed = Number(title.match(/(\\d+) 次工具调用/)?.[1] ?? NaN); return { title: title.slice(0, 40), claimedCalls: claimed, calls, nested, records, ok: Number.isNaN(claimed) ? null : claimed === calls }; }))()`);
