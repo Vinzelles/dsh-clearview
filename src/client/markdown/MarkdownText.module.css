@@ -171,7 +171,13 @@
   accent-color: var(--dsw-alias-label-secondary);
 }
 
+/* The wrapper is a scroll container and must never be wider than its column: border-box with an explicit 100% width and zero
+   minimum, and no inline-size contribution from the table inside (a table's min-content can exceed a narrow column). */
 .tableScroll {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  contain: inline-size;
   max-width: 100%;
   overflow-x: auto;
   overscroll-behavior-x: contain;

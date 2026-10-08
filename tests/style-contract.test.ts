@@ -103,30 +103,61 @@ test('the panel header meta items are 12/18 secondary text while the status keep
   assert.doesNotMatch(/\.status \{([^}]*)\}/.exec(css)?.[1] ?? '', /font-size/);
 });
 
-test('no reader stylesheet widens its box with a negative horizontal margin or a calc(100% + …) width', () => {
-  // Hover bleed past the text is drawn with side box-shadows (ink overflow). A negative side margin or an oversized width
-  // makes rows poke out of a narrow column and gives the scroll container a horizontal scrollbar. No allow-list needed today:
-  // add a file/selector pair here only for a rule that is provably inside an overflow:hidden parent, with a comment saying why.
-  const allowed = new Set<string>([]);
+/** Horizontal margin values a declaration sets (null when it sets none): `margin`, `margin-inline` and the longhands. */
+function horizontalMargins(property: string, rawValue: string): string[] | null {
+  const value = rawValue.replace(/!important/gi, '').trim();
+  const tokens = value.match(/calc\([^)]*\)|\S+/g) ?? [];
+  switch (property) {
+    case 'margin':
+      // 1: all sides; 2: vertical horizontal; 3: top horizontal bottom; 4: top right bottom left.
+      return tokens.length === 1 ? [tokens[0]!] : tokens.length === 4 ? [tokens[1]!, tokens[3]!] : tokens.length >= 2 ? [tokens[1]!] : [];
+    case 'margin-inline': return tokens.length === 1 ? [tokens[0]!] : tokens.slice(0, 2); // start end
+    case 'margin-left': case 'margin-right': case 'margin-inline-start': case 'margin-inline-end': return tokens.slice(0, 1);
+    default: return null;
+  }
+}
+
+test('horizontal margin parsing covers shorthands, two-value margin-inline and !important', () => {
+  assert.deepEqual(horizontalMargins('margin', '0 -6px'), ['-6px']);
+  assert.deepEqual(horizontalMargins('margin', '1px -3px 2px'), ['-3px']);
+  assert.deepEqual(horizontalMargins('margin', '1px 2px 3px -4px'), ['2px', '-4px']);
+  assert.deepEqual(horizontalMargins('margin', '-1px'), ['-1px']);
+  assert.deepEqual(horizontalMargins('margin-inline', '0 -4px !important'), ['0', '-4px']);
+  assert.deepEqual(horizontalMargins('margin-inline', '-2px'), ['-2px']);
+  assert.deepEqual(horizontalMargins('margin-left', '-3px !important'), ['-3px']);
+  assert.equal(horizontalMargins('padding', '0 -1px'), null);
+});
+
+test('no stylesheet under src/client widens its box with a negative horizontal margin or a calc(100% + …) width', () => {
+  // Hover bleed past the text is drawn with side box-shadows (ink overflow). A negative side margin or an oversized width makes
+  // rows poke out of a narrow column and gives the scroll container a horizontal scrollbar. Allow-list: `<file> <selector>`
+  // pairs that are provably unable to widen the scroll area, each with the reason.
+  const allowed = new Map<string, string>([
+    // An inline anchor: its 3px transparent hit-area border is cancelled by the -3px margin, so the box is net zero width and
+    // it sits in text flow that already wraps at the container edge.
+    ['markdown/MarkdownText.module.css .markdown a', 'inline, net-zero width (3px border cancelled by -3px margin)'],
+  ]);
+  const sources: { name: string; text: string }[] = [];
+  for (const entry of readdirSync(CLIENT, { recursive: true }) as string[]) {
+    const name = entry.split(String.fromCharCode(92)).join('/');
+    if (name.endsWith('.css')) sources.push({ name, text: readFileSync(new URL(name, CLIENT), 'utf8') });
+  }
+  sources.push({ name: 'compat/styles.ts COMPAT_CSS', text: COMPAT_CSS });
+  assert.ok(sources.length > 10, 'the scan found the stylesheets');
   const offenders: string[] = [];
-  for (const file of readdirSync(CLIENT).filter(name => name.endsWith('.module.css'))) {
-    const text = readFileSync(new URL(file, CLIENT), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  for (const { name, text: raw } of sources) {
+    const text = raw.replace(/\/\*[\s\S]*?\*\//g, '');
     for (const rule of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
       const selector = rule[1]!.trim().replace(/\s+/g, ' ');
       for (const declaration of rule[2]!.split(';')) {
         const [property, ...rest] = declaration.split(':');
-        const name = property!.trim();
-        const value = rest.join(':').trim();
+        const key = property!.trim();
+        const value = rest.join(':').replace(/!important/gi, '').trim();
         const negative = (token: string) => /^-\d|^-\./.test(token) || /^calc\(\s*-/.test(token);
-        let bad = false;
-        if (name === 'margin' || name === 'margin-inline') {
-          const tokens = value.match(/calc\([^)]*\)|\S+/g) ?? [];
-          // 1 value: all sides; 2: vertical horizontal; 3: top horizontal bottom; 4: top right bottom left.
-          const horizontal = tokens.length === 1 ? [tokens[0]!] : tokens.length === 2 ? [tokens[1]!] : tokens.length === 3 ? [tokens[1]!] : [tokens[1]!, tokens[3]!];
-          bad = horizontal.some(negative);
-        } else if (['margin-left', 'margin-right', 'margin-inline-start', 'margin-inline-end'].includes(name)) bad = negative(value);
-        else if (['width', 'min-width', 'max-width', 'inline-size'].includes(name)) bad = /calc\(\s*100%\s*\+/.test(value);
-        if (bad && !allowed.has(`${file} ${selector}`)) offenders.push(`${file} ${selector} { ${name}: ${value} }`);
+        const margins = horizontalMargins(key, value);
+        const bad = margins !== null ? margins.some(negative)
+          : ['width', 'min-width', 'max-width', 'inline-size'].includes(key) && /calc\(\s*100%\s*\+/.test(value);
+        if (bad && !allowed.has(`${name} ${selector}`)) offenders.push(`${name} ${selector} { ${key}: ${value} }`);
       }
     }
   }
@@ -172,9 +203,20 @@ test('panel narration is 13px on the 21px process line in the thought-text colou
   assert.doesNotMatch(turn, /\.narration[^{]*(strong|a)[^{]*\{/);
   // Spacing scales with the smaller text: no 16px / 32px Markdown margins left on paragraphs, lists and headings.
   assert.match(turn, /\.narration \[data-reader-text\] :where\(p, ul, ol, blockquote\) \{ margin: 8px 0; \}/);
+  // The Markdown block rules set their own line height, so the 21px line is also set on the blocks, not only on the root.
+  assert.match(turn, /\.narration \[data-reader-text\] :where\(p, li, blockquote, h1, h2, h3, h4, h5, h6\) \{ line-height: 21px; \}/);
   assert.match(turn, /:where\(h1, h2, h3, h4, h5, h6\) \{[^}]*margin: 10px 0 4px[^}]*font-size: var\(--cv-font-secondary\)/);
   assert.match(turn, /> \* > :first-child \{ margin-top: 0; \}/);
   assert.match(turn, /> \* > :last-child \{ margin-bottom: 0; \}/);
   // The rule being overridden: .markdown sets primary colour and the 16px base font on itself.
   assert.match(/\.markdown \{([^}]*)\}/.exec(readFileSync(new URL('markdown/MarkdownText.module.css', CLIENT), 'utf8'))?.[1] ?? '', /color: var\(--dsw-alias-label-primary\)/);
+});
+
+test('the Markdown table wrapper never exceeds its column', () => {
+  const wrapper = /\.tableScroll \{([^}]*)\}/.exec(readFileSync(new URL('markdown/MarkdownText.module.css', CLIENT), 'utf8'))?.[1] ?? '';
+  assert.match(wrapper, /box-sizing: border-box/);
+  assert.match(wrapper, /width: 100%/);
+  assert.match(wrapper, /min-width: 0/);
+  assert.match(wrapper, /max-width: 100%/);
+  assert.match(wrapper, /contain: inline-size/);
 });
