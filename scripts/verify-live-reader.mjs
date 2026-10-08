@@ -348,8 +348,16 @@ try {
         answerInline: { code: inline('[data-reader-answer]', 'code'), strong: inline('[data-reader-answer]', 'strong'), link: inline('[data-reader-answer]', 'a') } };
     })()`);
     for (const [label, scope] of [['narration', '[data-reader-narration]'], ['answer', '[data-reader-answer]']]) {
-      const box = await evaluate(`(() => { const node = [...document.querySelectorAll('[data-dsh-clearview] ${scope} [data-reader-text] > *')].find(item => item.textContent.trim().length > 12 && !/^(PRE|UL|OL|TABLE|H[1-6])$/.test(item.tagName)); if (!node) return null; node.scrollIntoView({ block: 'center' }); const r = node.getBoundingClientRect(); return { x: Math.max(0, r.left - 24), y: Math.max(0, r.top - 12), width: r.width + 48, height: Math.min(r.height + 24, 160) }; })()`);
-      if (box) { await delay(400); const { data } = await send('Page.captureScreenshot', { format: 'png', clip: { ...box, scale: 2 } }); writeFileSync(join(out, `${name}-${label}-crop.png`), Buffer.from(data, 'base64')); }
+      const pick = `(() => [...document.querySelectorAll('[data-dsh-clearview] ${scope} [data-reader-text] > *')].find(item => item.textContent.trim().length > 12 && !/^(PRE|UL|OL|TABLE|H[1-6])$/.test(item.tagName)))()`;
+      if (!await evaluate(`(() => { const node = ${pick}; if (!node) return false; node.scrollIntoView({ block: 'center' }); return true; })()`)) continue;
+      await delay(700);
+      // scrollIntoView can leave the node under the sticky header; bring it to a fixed spot with the scroller itself.
+      await evaluate(`(() => { const node = ${pick}; const scroller = document.querySelector('[data-conversation-scroll]'); if (node && scroller) scroller.scrollTop += node.getBoundingClientRect().top - 360; })()`);
+      await delay(700);
+      // Measure after the scroll has settled: the reader may adjust the position once more.
+      const box = await evaluate(`(() => { const node = ${pick}; const r = node.getBoundingClientRect(); return { x: Math.max(0, r.left - 24), y: Math.max(0, r.top - 12), width: r.width + 48, height: Math.min(r.height + 24, 160) }; })()`);
+      const { data } = await send('Page.captureScreenshot', { format: 'png', clip: { ...box, scale: 2 } });
+      writeFileSync(join(out, `${name}-${label}-crop.png`), Buffer.from(data, 'base64'));
     }
     item.merged = null;
     if (await evaluate(`!!document.querySelector(${JSON.stringify(mergedScope)})`)) {
