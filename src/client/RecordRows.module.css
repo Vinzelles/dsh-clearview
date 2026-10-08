@@ -1,6 +1,8 @@
 .record { min-width: 0; }
-.row { margin: 0 -6px; padding: 0 6px; border-radius: var(--dsw-radius-sm); corner-shape: round; transition: background-color var(--cv-fast) ease; }
-.row:hover { background: var(--dsw-alias-interactive-bg-hover); }
+/* The hover background bleeds 6px past the text on both sides, drawn as zero-spread side shadows (ink overflow):
+   a negative margin or width: calc(100% + 12px) would widen the scrollable area of a narrow reader. */
+.row { border-radius: var(--dsw-radius-sm); corner-shape: round; box-shadow: 6px 0 0 transparent, -6px 0 0 transparent; transition: background-color var(--cv-fast) ease, box-shadow var(--cv-fast) ease; }
+.row:hover { background: var(--dsw-alias-interactive-bg-hover); box-shadow: 6px 0 0 var(--dsw-alias-interactive-bg-hover), -6px 0 0 var(--dsw-alias-interactive-bg-hover); }
 .failedTitle { color: var(--dsw-alias-state-error-primary); }
 .doneTitle { color: var(--dsw-alias-label-secondary); }
 .summary { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--dsw-alias-label-caption); font-size: var(--cv-font-secondary); }
@@ -12,8 +14,8 @@
 .question { margin: 0; color: var(--dsw-alias-label-secondary); font-weight: 500; }
 .answers { margin: 2px 0 0; padding-left: 18px; color: var(--dsw-alias-label-primary); }
 .skipped { margin: 2px 0 0; color: var(--dsw-alias-label-caption); font-size: 12px; }
-.chatLink { align-self: flex-start; margin-left: -6px; padding: 2px 6px; border: 0; border-radius: var(--dsw-radius-sm); corner-shape: round; background: transparent; color: var(--dsw-alias-state-business-primary); font: inherit; font-size: 12px; cursor: pointer; transition: background-color var(--cv-fast) ease; }
-.chatLink:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.chatLink { align-self: flex-start; padding: 2px 0; box-shadow: 6px 0 0 transparent, -6px 0 0 transparent; border: 0; border-radius: var(--dsw-radius-sm); corner-shape: round; background: transparent; color: var(--dsw-alias-state-business-primary); font: inherit; font-size: 12px; cursor: pointer; transition: background-color var(--cv-fast) ease; }
+.chatLink:hover { background: var(--dsw-alias-interactive-bg-hover); box-shadow: 6px 0 0 var(--dsw-alias-interactive-bg-hover), -6px 0 0 var(--dsw-alias-interactive-bg-hover); }
 .input { --cv-blocks-gap: 10px; width: fit-content; max-width: min(78%, 520px); margin: 6px 0 6px auto; padding: 6px 12px; border-radius: var(--dsw-radius-md); corner-shape: round; background: var(--dsw-specific-bubble); color: var(--dsw-alias-label-primary); font-size: var(--cv-font-secondary); line-height: 20px; overflow-wrap: anywhere; }
 .meta { margin: 0 0 2px; color: var(--dsw-alias-label-caption); font-size: 12px; line-height: 18px; }
 .notice { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-height: var(--cv-row-height); font-size: var(--cv-font-secondary); line-height: 20px; }

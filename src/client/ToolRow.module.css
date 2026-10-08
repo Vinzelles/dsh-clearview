@@ -1,6 +1,8 @@
 .tool { min-width: 0; }
-.row { margin: 0 -6px; padding: 0 6px; border-radius: var(--dsw-radius-sm); corner-shape: round; transition: background-color var(--cv-fast) ease; }
-.row:hover { background: var(--dsw-alias-interactive-bg-hover); }
+/* The hover background bleeds 6px past the text on both sides, drawn as zero-spread side shadows (ink overflow):
+   a negative margin or width: calc(100% + 12px) would widen the scrollable area of a narrow reader. */
+.row { border-radius: var(--dsw-radius-sm); corner-shape: round; box-shadow: 6px 0 0 transparent, -6px 0 0 transparent; transition: background-color var(--cv-fast) ease, box-shadow var(--cv-fast) ease; }
+.row:hover { background: var(--dsw-alias-interactive-bg-hover); box-shadow: 6px 0 0 var(--dsw-alias-interactive-bg-hover), -6px 0 0 var(--dsw-alias-interactive-bg-hover); }
 .failedTitle { color: var(--dsw-alias-state-error-primary); }
 .summary { flex: 1 1 auto; min-width: 0; color: var(--dsw-alias-label-caption); }
 .summaryContent { min-width: 0; overflow: hidden; }

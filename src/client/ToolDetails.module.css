@@ -14,7 +14,7 @@
 .rawLabel { margin: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; font-weight: 500; }
 .raw { margin: 0; max-height: 360px; overflow: auto; padding: 10px 12px; border-radius: var(--dsw-radius-sm); corner-shape: round; background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-secondary); font: 12px/18px var(--ds-font-family-code, ui-monospace, monospace); white-space: pre-wrap; overflow-wrap: anywhere; }
 .document { font-size: var(--cv-font-secondary); line-height: 21px; }
-.detail > summary { margin: 0 -6px; padding: 2px 6px; border-radius: var(--dsw-radius-sm); corner-shape: round; color: var(--dsw-alias-label-tertiary); font-size: 12px; cursor: pointer; }
-.detail > summary:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.detail > summary { margin: 0; padding: 2px 0; box-shadow: 6px 0 0 transparent, -6px 0 0 transparent; border-radius: var(--dsw-radius-sm); corner-shape: round; color: var(--dsw-alias-label-tertiary); font-size: 12px; cursor: pointer; }
+.detail > summary:hover { background: var(--dsw-alias-interactive-bg-hover); box-shadow: 6px 0 0 var(--dsw-alias-interactive-bg-hover), -6px 0 0 var(--dsw-alias-interactive-bg-hover); }
 [data-motion=off] .tabs > button, [data-motion=off] .inspect { transition: none; }
 @media (pointer: coarse) { .tabs > button { min-height: 44px; } }

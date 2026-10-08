@@ -102,3 +102,41 @@ test('the panel header meta items are 12/18 secondary text while the status keep
   assert.match(/\.meta \{([^}]*)\}/.exec(css)?.[1] ?? '', /font-size: 12px; line-height: 18px/);
   assert.doesNotMatch(/\.status \{([^}]*)\}/.exec(css)?.[1] ?? '', /font-size/);
 });
+
+test('no reader stylesheet widens its box with a negative horizontal margin or a calc(100% + …) width', () => {
+  // Hover bleed past the text is drawn with side box-shadows (ink overflow). A negative side margin or an oversized width
+  // makes rows poke out of a narrow column and gives the scroll container a horizontal scrollbar. No allow-list needed today:
+  // add a file/selector pair here only for a rule that is provably inside an overflow:hidden parent, with a comment saying why.
+  const allowed = new Set<string>([]);
+  const offenders: string[] = [];
+  for (const file of readdirSync(CLIENT).filter(name => name.endsWith('.module.css'))) {
+    const text = readFileSync(new URL(file, CLIENT), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const rule of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const selector = rule[1]!.trim().replace(/\s+/g, ' ');
+      for (const declaration of rule[2]!.split(';')) {
+        const [property, ...rest] = declaration.split(':');
+        const name = property!.trim();
+        const value = rest.join(':').trim();
+        const negative = (token: string) => /^-\d|^-\./.test(token) || /^calc\(\s*-/.test(token);
+        let bad = false;
+        if (name === 'margin' || name === 'margin-inline') {
+          const tokens = value.match(/calc\([^)]*\)|\S+/g) ?? [];
+          // 1 value: all sides; 2: vertical horizontal; 3: top horizontal bottom; 4: top right bottom left.
+          const horizontal = tokens.length === 1 ? [tokens[0]!] : tokens.length === 2 ? [tokens[1]!] : tokens.length === 3 ? [tokens[1]!] : [tokens[1]!, tokens[3]!];
+          bad = horizontal.some(negative);
+        } else if (['margin-left', 'margin-right', 'margin-inline-start', 'margin-inline-end'].includes(name)) bad = negative(value);
+        else if (['width', 'min-width', 'max-width', 'inline-size'].includes(name)) bad = /calc\(\s*100%\s*\+/.test(value);
+        if (bad && !allowed.has(`${file} ${selector}`)) offenders.push(`${file} ${selector} { ${name}: ${value} }`);
+      }
+    }
+  }
+  assert.deepEqual(offenders, []);
+});
+
+test('hover bleed on process rows is drawn with side shadows in the hover colour', () => {
+  for (const [file, selector] of [['ToolRow', '.row'], ['ClusterRow', '.row'], ['RecordRows', '.row'], ['ReasoningRow', '.row'], ['ProcessPanel', '.headerButton'], ['FileChanges', '.header']] as const) {
+    const css = sheet(file);
+    const hover = new RegExp(String.raw`${selector.replace('.', String.raw`\.`)}:hover[^{]*\{([^}]*)\}`).exec(css)?.[1] ?? '';
+    assert.match(hover, /box-shadow: 6px 0 0 var\(--dsw-alias-interactive-bg-hover\), -6px 0 0 var\(--dsw-alias-interactive-bg-hover\)/, `${file} ${selector}`);
+  }
+});
