@@ -191,3 +191,14 @@ test('only reasoning pairs: a lone tool, narration before a tool and two thought
   assert.deepEqual(merge([narration, settled('a')], none).map(row => row.kind), ['single', 'single']);
   assert.deepEqual(merge([t.item, u.item, settled('a')], lookup(t.node, u.node)).map(row => row.kind), ['single', 'thought']);
 });
+
+test('a call the reader has opened is never folded into the thought row, even once it has settled', () => {
+  const t = thought();
+  const items = [t.item, settled('a')];
+  const opened = new Set(['reader-tool:a']);
+  assert.deepEqual(mergeThoughts(groupOperations(items, lookup(t.node)), lookup(t.node), false, opened).map(row => row.kind), ['single', 'single']);
+  assert.equal(mergeThoughts(groupOperations(items, lookup(t.node)), lookup(t.node), false, new Set(['reader-tool:other']))[0]!.kind, 'thought');
+  const command = record('command', { outcome: { kind: 'success' } });
+  const get = lookup(t.node, command.node);
+  assert.deepEqual(mergeThoughts(groupOperations([t.item, command.item], get), get, false, new Set([command.item.key])).map(row => row.kind), ['single', 'single']);
+});

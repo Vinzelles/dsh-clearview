@@ -9,7 +9,7 @@ import { SystemPromptRow } from './native/SystemPromptRow.js';
 import { nodeText } from './node-payloads.js';
 import { Opening } from './Opening.js';
 import { ProcessPanel } from './ProcessPanel.js';
-import { commandOutputText, elapsedLabel, layoutTurn, panelCounts, panelStatus, runningLabel, statusLabel, type PanelItem } from './process-steps.js';
+import { commandOutputText, elapsedLabel, layoutTurn, panelCounts, panelStatus, runningLabel, statusLabel, type PanelItem, type ReasoningItem } from './process-steps.js';
 import { assistantSegments, boundaryOf, processChoiceKey, processExpanded, terminalLabel, type ReaderGroup, type TurnBoundary } from './projection.js';
 import { ReasoningRow, reasoningPreview } from './ReasoningRow.js';
 import { useReaderActions } from './reader-context.js';
@@ -165,22 +165,31 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, select
   // The host hands back a fresh resolver per call; keep one per turn and closing reply so the answer's Blocks stay memoised.
   const mentions = useMemo(() => status === 'done' && turn && closingSeq !== undefined ? fileMentions?.(turn, closingSeq) : undefined, [status, turn, closingSeq, fileMentions]);
   const shared = useMemo(() => ({ renderSlotChain: props.renderSlotChain, loadImage: props.loadImage }), [props.renderSlotChain, props.loadImage]);
-  const renderItem = useCallback((item: PanelItem): ReactNode => {
+  // Rows the reader opened keep their own row: a settled call is not folded into the thought above it under their cursor.
+  const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
+  const trackOpen = useCallback((key: string, value: boolean) => setOpened(previous => {
+    if (previous.has(key) === value) return previous;
+    const next = new Set(previous);
+    if (value) next.add(key); else next.delete(key);
+    return next;
+  }), []);
+  const renderItem = useCallback((item: PanelItem, track = true): ReactNode => {
     switch (item.kind) {
       case 'reasoning': return <BlockBoundary><ReasoningSegment {...shared} useSession={props.useSession} nodeKey={item.nodeKey} start={item.start} pinned={panelPinned} boundary={boundary} panelOpen={open} compact={compact} onRead={pinPanel} /></BlockBoundary>;
       case 'narration': return <BlockBoundary><NarrationSegment {...shared} useSession={props.useSession} nodeKey={item.nodeKey} start={item.start} pinned={panelPinned} /></BlockBoundary>;
-      case 'tool': return <BlockBoundary><ToolRow {...shared} entry={item.entry} turnClosed={closed} onRead={pinPanel} /></BlockBoundary>;
-      case 'record': return <BlockBoundary><RecordRow {...shared} useSession={props.useSession} nodeKey={item.nodeKey} t={props.contextT} onRead={pinPanel} turnClosed={closed} /></BlockBoundary>;
+      case 'tool': return <BlockBoundary><ToolRow {...shared} entry={item.entry} turnClosed={closed} onRead={pinPanel} onOpenChange={track ? trackOpen : undefined} /></BlockBoundary>;
+      case 'record': return <BlockBoundary><RecordRow {...shared} useSession={props.useSession} nodeKey={item.nodeKey} t={props.contextT} onRead={pinPanel} turnClosed={closed} onOpenChange={track ? trackOpen : undefined} /></BlockBoundary>;
       case 'input': return <BlockBoundary><InputBubble {...shared} useSession={props.useSession} nodeKey={item.nodeKey} /></BlockBoundary>;
     }
-  }, [shared, props.useSession, props.contextT, panelPinned, boundary, open, compact, pinPanel, closed]);
-  const renderThought = useCallback((thought: PanelItem, operation: PanelItem): ReactNode => {
-    if (thought.kind !== 'reasoning') return renderItem(thought);
+  }, [shared, props.useSession, props.contextT, panelPinned, boundary, open, compact, pinPanel, closed, trackOpen]);
+  // The row inside a merged thought is not tracked: opening it there must not unfold the merge.
+  const renderTail = useCallback((item: PanelItem): ReactNode => renderItem(item, false), [renderItem]);
+  const renderThought = useCallback((thought: ReasoningItem, operation: PanelItem): ReactNode => {
     const node = operation.kind === 'record' ? get(operation.nodeKey) : undefined;
     const suffix = operation.kind === 'tool' ? toolRowTitle(operation.entry) : node ? recordView(node, closed).title : undefined;
     return <BlockBoundary><ReasoningSegment {...shared} useSession={props.useSession} nodeKey={thought.nodeKey} start={thought.start} pinned={panelPinned} boundary={boundary} panelOpen={open} compact={compact} onRead={pinPanel}
-      suffix={suffix} tailItem={operation} renderTail={renderItem} /></BlockBoundary>;
-  }, [renderItem, shared, props.useSession, panelPinned, boundary, open, compact, pinPanel, get, closed]);
+      suffix={suffix} tailItem={operation} renderTail={renderTail} /></BlockBoundary>;
+  }, [renderTail, shared, props.useSession, panelPinned, boundary, open, compact, pinPanel, get, closed]);
   const answerBlocks = useMemo(() => layout.answer.flatMap(segment => {
     const node = get(segment.nodeKey);
     if (!node || node.kind !== 'assistant-step') return [];
@@ -194,7 +203,7 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, select
     {leading.opening && <BlockBoundary><Opening {...shared} useSession={props.useSession} nodeKey={leading.opening} /></BlockBoundary>}
     {layout.panel.length > 0 && <BlockBoundary><ProcessPanel panelKey={group.key} status={status} statusLabel={label} elapsed={elapsed} counts={counts}
       items={layout.panel} open={open} onOpenChange={setOpen} earlierOpen={earlierOpen} onEarlierOpen={openEarlier}
-      motion={motion} get={get} turnClosed={closed} onRead={pinPanel} renderItem={renderItem} renderThought={renderThought} /></BlockBoundary>}
+      motion={motion} get={get} turnClosed={closed} onRead={pinPanel} renderItem={renderItem} renderThought={renderThought} opened={opened} /></BlockBoundary>}
     {layout.panel.length === 0 && boundary.status === 'open' && <div className={css.statusOnly} data-reader-status-only>
       <StatusText text={label} motion={motion} shimmer={status === 'running'} />
     </div>}

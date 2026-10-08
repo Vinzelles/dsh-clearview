@@ -161,13 +161,15 @@ export function RecordBody({ kind, data, view, nodeKey, ...render }: BlockRender
 }
 
 /** One process record in the native row grammar; context and prompt rows keep their native presentation. */
-export const RecordRow = memo(function RecordRow({ useSession, nodeKey, t, onRead, turnClosed = false, ...render }: BlockRenderProps & Pick<ReaderProps, 'useSession'> & {
+export const RecordRow = memo(function RecordRow({ useSession, nodeKey, t, onRead, onOpenChange, turnClosed = false, ...render }: BlockRenderProps & Pick<ReaderProps, 'useSession'> & {
   nodeKey: string; t: ReaderProps['contextT']; onRead: () => void; turnClosed?: boolean;
+  /** Reports the reader opening or closing this row, so a settled record is not folded away under them. */
+  onOpenChange?: (key: string, open: boolean) => void;
 }) {
   const node = useChatSelector(useSession, chat => chat.nodes.get(nodeKey));
   const { motion } = useReaderActions();
   const [open, setOpen] = useState(false);
-  const toggle = useCallback(() => { onRead(); setOpen(value => !value); }, [onRead]);
+  const toggle = useCallback(() => { onRead(); setOpen(!open); onOpenChange?.(nodeKey, !open); }, [onRead, open, onOpenChange, nodeKey]);
   if (!node || node.visibility === 'hidden') return null;
   if (node.kind === 'context') return <ContextInjectionRow {...(node.data as ContextMessageNode)} t={t} />;
   if (node.kind === 'system-prompt') {

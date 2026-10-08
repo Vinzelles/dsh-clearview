@@ -2,8 +2,10 @@
 .turn + .turn { margin-top: 20px; }
 .statusOnly { display: flex; align-items: center; min-height: var(--cv-row-height); color: var(--dsw-alias-label-secondary); font-size: var(--cv-font-secondary); }
 .narration { min-width: 0; margin: 2px 0 6px; color: var(--dsw-alias-label-secondary); font-size: var(--cv-font-body); line-height: var(--cv-line-body); overflow-wrap: anywhere; }
-/* The Markdown root sets its own primary colour, so inheriting from .narration is not enough: lower only the root colour and weight. */
-.narration [data-reader-text] > * { color: var(--dsw-alias-label-secondary); font-weight: 400; }
+/* The Markdown root sets its own primary colour, so inheriting from .narration is not enough: lower the root colour. */
+/* The base weight is already regular, so only the colour needs lowering; inline code keeps the primary colour. */
+.narration [data-reader-text] > * { color: var(--dsw-alias-label-secondary); }
+.narration [data-reader-text] :not(pre) > code { color: var(--dsw-alias-label-primary); }
 .output { min-width: 0; overflow-wrap: anywhere; }
 .answer { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
 [data-reader-panel] + .answer { margin-top: 4px; }

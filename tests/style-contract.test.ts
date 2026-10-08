@@ -159,7 +159,8 @@ test('panel narration is secondary colour and normal weight, beating the Markdow
   assert.match(/\.narration \{([^}]*)\}/.exec(turn)?.[1] ?? '', /color: var\(--dsw-alias-label-secondary\)/);
   const root = /\.narration \[data-reader-text\] > \* \{([^}]*)\}/.exec(turn)?.[1] ?? '';
   assert.match(root, /color: var\(--dsw-alias-label-secondary\)/);
-  assert.match(root, /font-weight: 400/);
+  assert.doesNotMatch(root, /font-weight/, 'the Markdown base font is already regular weight');
+  assert.match(turn, /\.narration \[data-reader-text\] :not\(pre\) > code \{[^}]*color: var\(--dsw-alias-label-primary\)/);
   assert.doesNotMatch(root, /font-size|font:/);
   // The root rule being overridden: .markdown sets primary colour on itself, so inheritance from .narration alone is not enough.
   assert.match(/\.markdown \{([^}]*)\}/.exec(readFileSync(new URL('markdown/MarkdownText.module.css', CLIENT), 'utf8'))?.[1] ?? '', /color: var\(--dsw-alias-label-primary\)/);

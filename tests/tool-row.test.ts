@@ -7,7 +7,7 @@ import { InspectButton, ToolDetails } from '../src/client/ToolDetails.tsx';
 import { activitySummary } from '../src/client/tool-activity.ts';
 import { ReaderActionsContext, type ReaderActions } from '../src/client/reader-context.ts';
 import { errorExcerpt } from '../src/client/ProcessRow.tsx';
-import { ToolImages, ToolRow, toolEndLabel } from '../src/client/ToolRow.tsx';
+import { ToolImages, ToolRow, toolEndLabel, toolRowTitle } from '../src/client/ToolRow.tsx';
 import { settledTool, toolCall, toolEntry } from './support/chat-fixture.ts';
 
 function renderIn<P extends object>(actions: ReaderActions, component: ComponentType<P>, props: P): string {
@@ -88,4 +88,13 @@ test('the inspect button renders only when the host can inspect a call, and call
   assert.equal(button.type, 'button');
   (button.props as { onClick: () => void }).onClick();
   assert.deepEqual(calls, ['c9']);
+});
+
+test('the row title and the merged-row suffix come from one function', () => {
+  const entry = toolEntry('t1', 1, settledTool('t1', 'bash', { command: 'ls' }));
+  const html = renderIn({ motion: true }, ToolRow, { entry, turnClosed: true, onRead: () => {}, ...render });
+  assert.equal(toolRowTitle(entry), 'Bash');
+  assert.match(html, /data-row-title="">Bash</);
+  assert.equal(toolRowTitle(toolEntry('t2', 1, settledTool('t2', 'skill', { name: 'x' }))), '技能');
+  assert.equal(toolRowTitle(toolEntry('t3', 1, settledTool('t3', 'mystery', {}))), '工具调用');
 });

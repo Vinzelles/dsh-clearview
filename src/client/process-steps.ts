@@ -5,7 +5,8 @@ import { activityPhase, activitySummary, preparingLabel, type ReaderFlowEntry, t
 
 /** One chronological row of a turn's process panel. */
 export type PanelItem =
-  | { kind: 'reasoning' | 'narration'; key: string; nodeKey: string; start: number; step: number | null }
+  | { kind: 'reasoning'; key: string; nodeKey: string; start: number; step: number | null }
+  | { kind: 'narration'; key: string; nodeKey: string; start: number; step: number | null }
   | { kind: 'tool'; key: string; entry: ToolActivityEntry; step: number | null }
   | { kind: 'record' | 'input'; key: string; nodeKey: string; step: number | null };
 
@@ -239,11 +240,12 @@ export function groupOperations(items: readonly PanelItem[], get: Getter, turnCl
 }
 
 /** A settled thought read together with the one healthy operation right after it. */
-export type ThoughtRow = { kind: 'thought'; reasoning: Extract<PanelItem, { start: number }>; operation: PanelItem };
+export type ReasoningItem = Extract<PanelItem, { kind: 'reasoning' }>;
+export type ThoughtRow = { kind: 'thought'; reasoning: ReasoningItem; operation: PanelItem };
 export type FlowRow = OperationRow | ThoughtRow;
 
 /** The thought is still streaming: the trailing reasoning segment of a running step. */
-function reasoningLive(item: Extract<PanelItem, { start: number }>, node: ChatConversationViewNode): boolean {
+function reasoningLive(item: ReasoningItem, node: ChatConversationViewNode): boolean {
   const data = node.data as AssistantChatData;
   if (data.status !== 'running') return false;
   return assistantSegments(data.blocks).at(-1)?.start === item.start && data.blocks.at(-1)?.kind === 'reasoning';
@@ -259,14 +261,15 @@ function operationSettled(item: PanelItem, get: Getter, turnClosed: boolean): bo
 
 /**
  * Fold a settled thought and the single, settled, healthy operation that follows it into one row. Live thinking, a
- * running / failed / interrupted operation, a cluster next, or anything between the two keep separate rows.
+ * running / failed / interrupted operation, one the reader has opened (`opened` holds item keys, so an open row is not
+ * swallowed when its call settles), a cluster next, or anything between the two keep separate rows.
  */
-export function mergeThoughts(rows: readonly OperationRow[], get: Getter, turnClosed = false): FlowRow[] {
+export function mergeThoughts(rows: readonly OperationRow[], get: Getter, turnClosed = false, opened: ReadonlySet<string> = new Set()): FlowRow[] {
   const result: FlowRow[] = [];
   for (let index = 0; index < rows.length; index++) {
     const row = rows[index]!;
     const next = rows[index + 1];
-    if (row.kind === 'single' && row.item.kind === 'reasoning' && next?.kind === 'single' && operationSettled(next.item, get, turnClosed)) {
+    if (row.kind === 'single' && row.item.kind === 'reasoning' && next?.kind === 'single' && !opened.has(next.item.key) && operationSettled(next.item, get, turnClosed)) {
       const node = get(row.item.nodeKey);
       if (node?.kind === 'assistant-step' && !reasoningLive(row.item, node)) {
         result.push({ kind: 'thought', reasoning: row.item, operation: next.item });

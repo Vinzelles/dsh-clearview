@@ -152,3 +152,13 @@ test('a settled thought and the one healthy tool call after it render as one mer
   assert.doesNotMatch(cluster, /data-thought/);
   assert.match(cluster, /data-item="r1"[\s\S]*data-reader-cluster/);
 });
+
+test('a tool call the reader opened keeps its own row instead of folding into the thought', () => {
+  const turn = turnLocation({ steps: [1] });
+  const node = assistantNode(turn, 1, [reasoning('先看一下。')]);
+  const thought: PanelItem = { kind: 'reasoning', key: 'r1', nodeKey: node.key, start: 0, step: 1 };
+  const get = (key: string) => key === node.key ? node : undefined;
+  const props = { ...base, status: 'done' as const, turnClosed: true, get, items: [thought, done('a', 1)], open: true };
+  assert.match(render(ProcessPanel, { ...props, opened: new Set(['a']) }), /data-item="r1"[\s\S]*data-item="a"/);
+  assert.match(render(ProcessPanel, props), /data-thought="r1"/);
+});

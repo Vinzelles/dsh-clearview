@@ -41,10 +41,11 @@ export function toolEndLabel(phase: ToolPhase, exitCode: number | undefined, ela
 }
 
 /** The row title of a tool call: 「技能」 for skills, the native title, or the variant fallback (「工具调用」 for unknown tools). */
-export function toolRowTitle(entry: ToolActivityEntry): string {
-  const model = activitySummary(entry);
+export function toolRowTitle(entry: ToolActivityEntry, known?: { model: ReturnType<typeof activitySummary>; native: { title: string } | null }): string {
+  const model = known?.model ?? activitySummary(entry);
   if (model.name === 'skill') return '技能';
-  return (entry.block ? toolRowModel(model.name, entry.block).title : null) ?? VARIANT_TITLES[classifyTool(model.name)];
+  const native = known ? known.native : entry.block ? toolRowModel(model.name, entry.block) : null;
+  return native?.title ?? VARIANT_TITLES[classifyTool(model.name)];
 }
 
 function resultText(block: ToolCallBlock | undefined): string {
@@ -52,13 +53,15 @@ function resultText(block: ToolCallBlock | undefined): string {
 }
 
 /** One tool call in the native 24px row grammar, keyed by call id from generation to result. */
-export const ToolRow = memo(function ToolRow({ entry, turnClosed, onRead, depth = 0, ...render }: BlockRenderProps & {
+export const ToolRow = memo(function ToolRow({ entry, turnClosed, onRead, onOpenChange, depth = 0, ...render }: BlockRenderProps & {
   entry: ToolActivityEntry; turnClosed: boolean; onRead: () => void; depth?: number;
+  /** Reports the reader opening or closing this row, so a settled call is not folded away under them. */
+  onOpenChange?: (key: string, open: boolean) => void;
 }) {
   const { motion } = useReaderActions();
   const [open, setOpen] = useState(false);
   const control = useRef<HTMLElement | null>(null);
-  const toggle = useCallback(() => { onRead(); setOpen(value => !value); }, [onRead]);
+  const toggle = useCallback(() => { onRead(); setOpen(!open); onOpenChange?.(entry.key, !open); }, [onRead, open, onOpenChange, entry.key]);
   const model = useMemo(() => activitySummary(entry), [entry.block, entry.draft]);
   if (depth > 6) return <p className={css.deep}>更深的嵌套调用可在原对话查看。</p>;
   const phase = activityPhase(entry, turnClosed);
@@ -66,7 +69,7 @@ export const ToolRow = memo(function ToolRow({ entry, turnClosed, onRead, depth 
   const native = block ? toolRowModel(model.name, block) : null;
   const skill = model.name === 'skill';
   const Icon = skill ? IconSkillOutlineRegular : model.name === 'code' ? IconCodeOutlineRegular : ICONS[model.category];
-  const title = skill ? '技能' : native?.title ?? VARIANT_TITLES[classifyTool(model.name)];
+  const title = toolRowTitle(entry, { model, native });
   const skillName = typeof model.args?.name === 'string' ? model.args.name.split('\n')[0] : model.raw.split('\n')[0];
   const summary = skill ? skillName : native?.summary
     ?? (classifyTool(model.name) === 'others' ? `${model.name} · ${model.target ?? model.title}` : model.target ?? model.title);
@@ -97,7 +100,7 @@ export const ToolRow = memo(function ToolRow({ entry, turnClosed, onRead, depth 
   </div>;
 }, (previous, next) => previous.entry.callId === next.entry.callId && previous.entry.block === next.entry.block
   && previous.entry.draft === next.entry.draft && previous.entry.step === next.entry.step
-  && previous.turnClosed === next.turnClosed && previous.depth === next.depth && previous.onRead === next.onRead
+  && previous.turnClosed === next.turnClosed && previous.depth === next.depth && previous.onRead === next.onRead && previous.onOpenChange === next.onOpenChange
   && previous.renderSlotChain === next.renderSlotChain && previous.loadImage === next.loadImage);
 
 function mediaOf(block: ToolCallBlock | undefined, depth = 0): ReturnType<typeof contentBlocks> {
