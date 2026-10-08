@@ -390,6 +390,19 @@ try {
       await evaluate("document.querySelectorAll('[data-live-earlier],[data-live-earlier-panel]').forEach(node => { node.removeAttribute('data-live-earlier'); node.removeAttribute('data-live-earlier-panel'); })");
     }
     guardCreates();
+    // 阅读 → 对话 → 阅读 round trips (tab switches only): the reader remounts and restores its position;
+    // any exception thrown meanwhile lands in report.exceptions and fails the run.
+    const exceptionsBefore = report.exceptions.length;
+    item.roundTrips = [];
+    for (let trip = 0; trip < 2; trip++) {
+      await clickTab('对话');
+      await delay(1200);
+      const readerWhileOnChat = await evaluate("!!document.querySelector('[data-dsh-clearview]')");
+      await clickTab('阅读');
+      await delay(1500);
+      item.roundTrips.push({ readerWhileOnChat, readerBack: await evaluate("!!document.querySelector('[data-dsh-clearview] section[data-reader-turn]')") });
+    }
+    item.roundTripExceptions = report.exceptions.length - exceptionsBefore;
     // Conditions first, while the reader still has the whole pane: narrow width, host font
     // size 13/14/16, dark / light, reduced motion. Opening a file below adds a right
     // sidebar that would crowd these screenshots, so that happens last.
