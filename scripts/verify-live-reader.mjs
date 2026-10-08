@@ -317,6 +317,61 @@ try {
         panels: panelStyle, failedHeaderColor: failedHeader ? getComputedStyle(failedHeader.querySelector('span:nth-of-type(2)') ?? failedHeader).color : null, metas,
       };
     })()`);
+    // A settled thought followed by exactly one settled tool call / record renders as one thought row with a short
+    // suffix (class *suffix*); its tool row only exists once the thought row is opened.
+    const mergedScope = '[data-dsh-clearview] [data-reader-reasoning]:has([class*="suffix"])';
+    const openMerged = scope => evaluate(`(() => { const rows = [...document.querySelectorAll(${JSON.stringify(scope + ' [data-reader-reasoning-row][aria-expanded="false"]')})].slice(0, 80); rows.forEach(row => row.click()); return rows.length; })()`);
+    item.rowCensus = await evaluate(`(() => {
+      const root = document.querySelector('[data-dsh-clearview]'); const scroller = document.querySelector('[data-conversation-scroll]');
+      const sr = scroller.getBoundingClientRect(); const composerTop = document.querySelector('[data-composer-seat]')?.getBoundingClientRect().top ?? innerHeight;
+      const top = sr.top; const bottom = Math.min(sr.bottom, composerTop);
+      const inWindow = node => { const box = node.getBoundingClientRect(); return box.height > 0 && box.bottom > top && box.top < bottom; };
+      const rows = [...root.querySelectorAll('[data-reader-reasoning-row], [data-reader-cluster] [data-disclosure-row], [data-reader-tool-call] [data-disclosure-row], [data-reader-record-kind] [data-disclosure-row], [data-reader-panel] > [data-reader-disclosure] > button')];
+      const thoughts = [...root.querySelectorAll('[data-reader-reasoning]')];
+      const merged = thoughts.filter(node => node.querySelector('[class*="suffix"]'));
+      const standalone = [...root.querySelectorAll('[data-reader-tool-call]')].filter(node => !node.closest('[data-reader-cluster]') && !node.closest('[data-reader-reasoning]') && !node.parentElement.closest('[aria-label="子调用"]'));
+      const order = [...root.querySelectorAll('[data-reader-reasoning], [data-reader-tool-call], [data-reader-cluster]')].filter(node => !node.closest('[data-reader-cluster]') || node.hasAttribute('data-reader-cluster')).filter(node => node.hasAttribute('data-reader-cluster') || node.hasAttribute('data-reader-reasoning') || (!node.closest('[data-reader-reasoning]') && !node.parentElement.closest('[aria-label="子调用"]')));
+      let thoughtThenStandaloneTool = 0;
+      order.forEach((node, index) => { if (node.hasAttribute('data-reader-reasoning') && !node.querySelector('[class*="suffix"]') && order[index + 1]?.hasAttribute('data-reader-tool-call')) thoughtThenStandaloneTool++; });
+      return { thoughtRows: thoughts.length, mergedThoughtRows: merged.length, mergedSuffixes: [...new Set(merged.map(node => node.querySelector('[class*="suffix"]').textContent))].slice(0, 8),
+        standaloneToolRows: standalone.length, clusters: root.querySelectorAll('[data-reader-cluster]').length, thoughtThenStandaloneTool,
+        visibleRowsInWindow: rows.filter(inWindow).length, fullyVisibleRows: rows.filter(node => { const box = node.getBoundingClientRect(); return box.top >= top && box.bottom <= bottom; }).length, windowHeight: Math.round(bottom - top) };
+    })()`);
+    item.narration = await evaluate(`(() => {
+      const root = document.querySelector('[data-dsh-clearview]');
+      const probe = document.createElement('span'); probe.style.color = 'var(--dsw-alias-label-secondary)'; root.appendChild(probe); const secondary = getComputedStyle(probe).color; probe.style.color = 'var(--dsw-alias-label-primary)'; const primary = getComputedStyle(probe).color; probe.remove();
+      const paragraph = scope => [...root.querySelectorAll(scope + ' [data-reader-text] > p')].find(node => node.textContent.trim().length > 20);
+      const describe = node => node ? { color: getComputedStyle(node).color, weight: getComputedStyle(node).fontWeight, size: getComputedStyle(node).fontSize, text: node.textContent.slice(0, 30) } : null;
+      const inline = (scope, tag) => { const node = root.querySelector(scope + ' [data-reader-text] ' + tag); return node ? { color: getComputedStyle(node).color, weight: getComputedStyle(node).fontWeight, parentColor: getComputedStyle(node.parentElement).color } : null; };
+      return { secondary, primary, narration: describe(paragraph('[data-reader-narration]')), answer: describe(paragraph('[data-reader-answer]')),
+        narrationInline: { code: inline('[data-reader-narration]', 'code'), strong: inline('[data-reader-narration]', 'strong'), link: inline('[data-reader-narration]', 'a') },
+        answerInline: { code: inline('[data-reader-answer]', 'code'), strong: inline('[data-reader-answer]', 'strong'), link: inline('[data-reader-answer]', 'a') } };
+    })()`);
+    item.merged = null;
+    if (await evaluate(`!!document.querySelector(${JSON.stringify(mergedScope)})`)) {
+      await evaluate(`document.querySelector(${JSON.stringify(mergedScope)}).setAttribute('data-live-anim', 'merged')`);
+      await evaluate("document.querySelector('[data-live-anim=merged]').scrollIntoView({ block: 'center' })");
+      await delay(400);
+      const closed = await evaluate("(() => { const node = document.querySelector('[data-live-anim=merged]'); return { toolRowBefore: !!node.querySelector('[data-reader-tool-call]'), rowText: node.querySelector('[data-reader-reasoning-row]').textContent.slice(0, 80), height: Math.round(node.querySelector('[data-reader-reasoning-row]').getBoundingClientRect().height * 10) / 10 }; })()");
+      await shot(`${name}-merged-closed`);
+      await evaluate("document.querySelector('[data-live-anim=merged] [data-reader-reasoning-row]').click()");
+      await delay(900);
+      const opened = await evaluate("(() => { const node = document.querySelector('[data-live-anim=merged]'); const text = node.querySelector('[data-reader-reasoning-text]'); const tool = node.querySelector('[data-reader-tool-call], [data-reader-record-kind]'); return { thoughtText: !!text, toolRowAfter: !!tool, toolKind: tool?.hasAttribute('data-reader-tool-call') ? 'tool' : tool ? 'record' : null, textBeforeTool: !!(text && tool && (text.compareDocumentPosition(tool) & Node.DOCUMENT_POSITION_FOLLOWING)) }; })()");
+      await evaluate("document.querySelector('[data-live-anim=merged]').scrollIntoView({ block: 'center' })");
+      await delay(300);
+      await shot(`${name}-merged-open`);
+      const toolOpen = await evaluate("(() => { const row = document.querySelector('[data-live-anim=merged] [data-reader-tool-call] [data-disclosure-row], [data-live-anim=merged] [data-reader-record-kind] [data-disclosure-row]'); if (!row) return null; row.click(); return true; })()");
+      await delay(800);
+      const toolDetails = toolOpen ? await evaluate("(() => { const node = document.querySelector('[data-live-anim=merged]'); const row = node.querySelector('[data-reader-tool-call] [data-disclosure-row], [data-reader-record-kind] [data-disclosure-row]'); return { rowExpanded: row.getAttribute('aria-expanded'), details: !!node.querySelector('[data-reader-tool-details]'), raw: !!node.querySelector('[data-reader-record-kind] pre, [data-reader-record-kind] [role=tree]') }; })()") : null;
+      await shot(`${name}-merged-tool-open`);
+      item.merged = { closed, opened, toolOpen, toolDetails };
+      // Leave it closed for the later probes.
+      if (toolOpen) await evaluate("document.querySelector('[data-live-anim=merged] [data-reader-tool-call] [data-disclosure-row], [data-live-anim=merged] [data-reader-record-kind] [data-disclosure-row]')?.click()");
+      await delay(500);
+      await evaluate("document.querySelector('[data-live-anim=merged] [data-reader-reasoning-row]').click()");
+      await delay(700);
+      await evaluate("document.querySelector('[data-live-anim=merged]')?.removeAttribute('data-live-anim')");
+    }
     // Collapse-body animation: sampled every frame inside the page. data-clip must be present while the height
     // animates (computed overflow hidden), gone afterwards (overflow visible), with no height jump at the end.
     const animationProbe = (containerSelector, triggerSelector, direction) => evaluate(`new Promise(resolve => {
@@ -358,6 +413,14 @@ try {
     await evaluate("(() => { const row = document.querySelector('[data-dsh-clearview] [data-reader-reasoning-row][aria-expanded=\"false\"]'); row?.closest('[data-reader-reasoning]')?.setAttribute('data-live-anim', 'reasoning'); })()");
     item.animations.reasoning = await evaluate("!!document.querySelector('[data-live-anim=reasoning]')") ? [await animationProbe('[data-live-anim=reasoning]', '[data-reader-reasoning-row]', 'expand'), null] : null;
     if (item.animations.reasoning) { await delay(300); item.animations.reasoning[1] = await animationProbe('[data-live-anim=reasoning]', '[data-reader-reasoning-row]', 'collapse'); await delay(300); }
+    if (await evaluate(`!!document.querySelector(${JSON.stringify(mergedScope)} + ' [data-reader-reasoning-row][aria-expanded="false"]')`)) {
+      await evaluate(`document.querySelector(${JSON.stringify(mergedScope + ' [data-reader-reasoning-row][aria-expanded="false"]')}).closest('[data-reader-reasoning]').setAttribute('data-live-anim', 'merged')`);
+      item.animations.merged = [await animationProbe('[data-live-anim=merged]', '[data-reader-reasoning-row]', 'expand'), null];
+      await delay(300);
+      item.animations.merged[1] = await animationProbe('[data-live-anim=merged]', '[data-reader-reasoning-row]', 'collapse');
+      await delay(300);
+      await evaluate("document.querySelector('[data-live-anim=merged]')?.removeAttribute('data-live-anim')");
+    }
     // 前 N 步 inserts rows into the (already open) panel body: it must not turn the body's clip on or leave it on.
     if (await evaluate("!!document.querySelector('[data-dsh-clearview] [data-reader-earlier]')")) {
       await evaluate("document.querySelector('[data-dsh-clearview] [data-reader-earlier]').closest('[data-reader-panel]').setAttribute('data-live-anim', 'earlier')");
@@ -376,6 +439,7 @@ try {
     await evaluate("document.querySelectorAll('[data-dsh-clearview] [data-reader-cluster][data-expanded=\"false\"] [data-disclosure-row]').forEach(row => row.click())");
     await delay(800);
     item.narrowStates.push(await overflowProbe('clusters opened'));
+    if (await openMerged('[data-dsh-clearview]')) { await delay(900); item.narrowStates.push(await overflowProbe('merged thought rows opened')); }
     if (await clickFirst('[data-dsh-clearview] [data-reader-earlier]')) { await delay(800); item.narrowStates.push(await overflowProbe('前 N 步 opened')); }
     if (await clickFirst('[data-dsh-clearview] [data-reader-reasoning-row][aria-expanded="false"]')) { await delay(800); item.narrowStates.push(await overflowProbe('reasoning row opened')); }
     if (await clickFirst('[data-dsh-clearview] [data-reader-tool-call] [data-disclosure-row]')) { await delay(800); item.narrowStates.push(await overflowProbe('tool row opened')); }
@@ -398,7 +462,7 @@ try {
     })`;
     item.hoverBleed = {};
     for (const [key, selector] of [['panelHeader', '[data-dsh-clearview] [data-reader-panel] > [data-reader-disclosure] > button'], ['cluster', '[data-dsh-clearview] [data-reader-cluster] [data-disclosure-row]'],
-      ['toolRow', '[data-dsh-clearview] [data-reader-tool-call] [data-disclosure-row]'], ['reasoningRow', '[data-dsh-clearview] [data-reader-reasoning-row]'], ['fileChanges', '[data-dsh-clearview] [data-reader-file-changes] > button']]) {
+      ['toolRow', '[data-dsh-clearview] [data-reader-tool-call] [data-disclosure-row]'], ['reasoningRow', '[data-dsh-clearview] [data-reader-reasoning-row]'], ['mergedRow', '[data-dsh-clearview] [data-reader-reasoning]:has([class*="suffix"]) [data-reader-reasoning-row]'], ['fileChanges', '[data-dsh-clearview] [data-reader-file-changes] > button']]) {
       await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
       await delay(200);
       const before = await evaluate(`${bleedProbe}(${JSON.stringify(selector)})`);
@@ -413,6 +477,8 @@ try {
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
     await evaluate("document.querySelectorAll('[data-dsh-clearview] [data-reader-cluster][data-expanded=\"false\"] [data-disclosure-row]').forEach(row => row.click())");
     await delay(900);
+    await openMerged('[data-dsh-clearview]');
+    await delay(700);
     item.clustersOpened = await evaluate(`(() => [...document.querySelectorAll('[data-dsh-clearview] [data-reader-cluster]')].map(node => { const title = node.querySelector('[data-disclosure-row]')?.textContent ?? ''; const topCalls = [...node.querySelectorAll('[data-reader-tool-call]')].filter(call => !call.parentElement.closest('[aria-label=\"子调用\"]')); const calls = topCalls.length; const nested = node.querySelectorAll('[data-reader-tool-call]').length - calls; const records = node.querySelectorAll('[data-reader-record-kind]').length; const claimed = Number(title.match(/(\\d+) 次工具调用/)?.[1] ?? NaN); return { title: title.slice(0, 40), claimedCalls: claimed, calls, nested, records, ok: Number.isNaN(claimed) ? null : claimed === calls }; }))()`);
     await evaluate("document.querySelector('[data-dsh-clearview] [data-reader-cluster]')?.scrollIntoView({ block: 'center' })");
     await delay(400);
@@ -429,7 +495,9 @@ try {
     await shot(`${name}-bottom-gap`);
     await evaluate("document.querySelector('[data-dsh-clearview] [data-reader-panel]')?.scrollIntoView({ block: 'start' })");
     await delay(400);
-    // Consecutive tool calls are merged into collapsed cluster rows; open them so the member tool rows can be measured.
+    // Consecutive tool calls are merged into collapsed cluster rows and single calls into their thought row; open both so the member tool rows can be measured.
+    await openMerged('[data-live-check=panel]');
+    await delay(500);
     await evaluate("document.querySelectorAll('[data-live-check=panel] [data-reader-cluster][data-expanded=\"false\"] [data-disclosure-row]').forEach(row => row.click())");
     await delay(500);
     await evaluate("document.querySelector('[data-live-check=panel]')?.scrollIntoView({ block: 'start' })");
