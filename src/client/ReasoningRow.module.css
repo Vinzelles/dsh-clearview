@@ -13,7 +13,9 @@
 .icon { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 16px; height: 16px; margin-right: 6px; }
 .title { flex: none; }
 .preview { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--dsw-alias-label-caption); }
+.suffix { flex: none; color: var(--dsw-alias-label-secondary); white-space: nowrap; }
 .end { flex: none; margin-left: auto; padding-left: 8px; color: var(--dsw-alias-label-caption); font-size: 12px; font-variant-numeric: tabular-nums; }
+.tail { display: flex; flex-direction: column; min-width: 0; margin-left: calc(22px + var(--dsh-content-font-delta, 0px)); }
 .inset { position: relative; margin: 2px 0 6px calc(22px + var(--dsh-content-font-delta, 0px)); border-radius: var(--dsw-radius-md); corner-shape: round; background: var(--cv-inset-bg); }
 .viewport {
   position: relative; max-height: 240px; overflow: auto; overflow-anchor: none;

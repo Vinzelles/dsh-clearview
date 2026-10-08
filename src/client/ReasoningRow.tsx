@@ -47,13 +47,19 @@ export interface ReasoningRowProps {
   startedAt: number | null;
   charCount: number;
   preview: string;
+  /** Merged row: the title of the one tool call that followed this thought, shown after the preview. */
+  suffix?: string;
+  /** Merged row: that tool row, rendered under the full text once the row is opened. */
+  tail?: ReactNode;
+  /** Start opened (tests and callers that restore an opened row). */
+  initialOpen?: boolean;
 }
 
-export function ReasoningRow({ children, step, live, follow, motion, selected, onRead, compact, durationMs, startedAt, charCount, preview }: ReasoningRowProps) {
+export function ReasoningRow({ children, step, live, follow, motion, selected, onRead, compact, durationMs, startedAt, charCount, preview, suffix, tail, initialOpen = false }: ReasoningRowProps) {
   const viewport = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const viewportId = useId();
-  const [manual, setManual] = useState<'open' | 'closed' | null>(null);
+  const [manual, setManual] = useState<'open' | 'closed' | null>(initialOpen ? 'open' : null);
   const [expanded, setExpanded] = useState(false);
   const [following, setFollowing] = useState(true);
   const [overflow, setOverflow] = useState(false);
@@ -275,6 +281,7 @@ export function ReasoningRow({ children, step, live, follow, motion, selected, o
       <span className={css.icon} aria-hidden="true">{live ? <StateDot state="ongoing" size={12} /> : <IconThinkOutlineRegular size={14} />}</span>
       <TextShimmer active={live && motion} className={css.title}>{title}</TextShimmer>
       {!open && preview && <><RowSeparator /><span className={css.preview}>{preview}</span></>}
+      {suffix && <><RowSeparator /><span className={css.suffix}>{suffix}</span></>}
       <span className={css.end}>{liveSeconds !== null ? `已 ${liveSeconds} 秒` : `${charCount} 字`}</span>
     </button>
     <CollapseBody open={open} motion={motion}><div className={css.inset} data-reader-reasoning-card data-live={live || undefined}
@@ -296,6 +303,6 @@ export function ReasoningRow({ children, step, live, follow, motion, selected, o
           <IconFullscreenOutlineRegular size={12} />
         </button>
       </div>}
-    </div></CollapseBody>
+    </div>{tail && <div className={css.tail}>{tail}</div>}</CollapseBody>
   </div>;
 }

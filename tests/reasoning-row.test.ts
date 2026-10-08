@@ -58,3 +58,21 @@ test('follow metrics use the real scroll extent, padding included', () => {
   assert.deepEqual(scrollMetrics({ scrollHeight: 129, clientHeight: 128 }), { tail: 1, overflow: false });
   assert.deepEqual(scrollMetrics({ scrollHeight: 300, clientHeight: 128 }), { tail: 172, overflow: true });
 });
+
+test('a merged thought row carries the tool title as a quiet suffix; the tool row exists only once opened', () => {
+  const tail = createElement('div', { 'data-tail': '' }, '工具行');
+  const closed = render(ReasoningRow, { ...base, live: false, compact: false, suffix: 'Bash', tail });
+  assert.match(closed, /思考了 6 秒/);
+  assert.match(closed, /先看工作区。/);
+  assert.match(closed, /class="suffix">Bash</);
+  assert.match(closed, /data-reader-reasoning-row/);
+  assert.doesNotMatch(closed, /data-tail|data-reader-reasoning-card/);
+  const opened = render(ReasoningRow, { ...base, live: false, compact: false, suffix: 'Bash', tail, initialOpen: true });
+  assert.match(opened, /class="suffix">Bash</);
+  assert.match(opened, /data-reader-reasoning-card[\s\S]*data-reader-reasoning-text[\s\S]*class="tail"[^>]*><div data-tail="">工具行/);
+});
+
+test('a plain thought row has no suffix and no tail slot', () => {
+  const html = render(ReasoningRow, { ...base, live: false, compact: false, initialOpen: true });
+  assert.doesNotMatch(html, /class="suffix"|class="tail"/);
+});

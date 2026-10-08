@@ -14,11 +14,11 @@ import { assistantSegments, boundaryOf, processChoiceKey, processExpanded, termi
 import { ReasoningRow, reasoningPreview } from './ReasoningRow.js';
 import { useReaderActions } from './reader-context.js';
 import { createGroupSelector } from './reader-selection.js';
-import { InputBubble, RecordRow, TurnNotice } from './RecordRows.js';
+import { InputBubble, RecordRow, TurnNotice, recordView } from './RecordRows.js';
 import type { RewindSpan } from './rewind-hidden.js';
 import { RevealLedgerContext, type RevealLedger } from './streaming.js';
 import { readerFlow } from './tool-activity.js';
-import { ToolImages, ToolRow } from './ToolRow.js';
+import { ToolImages, ToolRow, toolRowTitle } from './ToolRow.js';
 import { TurnFooter } from './TurnFooter.js';
 import { closingOf } from './turn-meta.js';
 import type { BlockRenderProps, ReaderProps } from './types.js';
@@ -41,8 +41,10 @@ function useSegment(useSession: ReaderProps['useSession'], nodeKey: string, star
 /** The answer zone and the panel's narration show the same body segment under one reveal identity. */
 const revealKeyOf = (nodeKey: string, start: number) => `${nodeKey}:${start}`;
 
-const ReasoningSegment = memo(function ReasoningSegment({ useSession, nodeKey, start, pinned, boundary, panelOpen, compact, onRead, ...render }: SegmentProps & {
+const ReasoningSegment = memo(function ReasoningSegment({ useSession, nodeKey, start, pinned, boundary, panelOpen, compact, onRead, suffix, tailItem, renderTail, ...render }: SegmentProps & {
   boundary: TurnBoundary; panelOpen: boolean; compact: boolean; onRead: () => void;
+  /** Merged with one healthy operation: its row title and the item rendered under the opened thought. */
+  suffix?: string; tailItem?: PanelItem; renderTail?: (item: PanelItem) => ReactNode;
 }) {
   const { motion } = useReaderActions();
   const { data, part, last } = useSegment(useSession, nodeKey, start);
@@ -58,7 +60,7 @@ const ReasoningSegment = memo(function ReasoningSegment({ useSession, nodeKey, s
   const text = part.blocks.map(block => block.kind === 'reasoning' ? block.text : '').join('\n');
   return <ReasoningRow step={data.step} live={live} follow={panelOpen && boundary.status === 'open' && data.step === boundary.latestStep}
     motion={motion} selected={pinned} onRead={onRead} compact={compact} durationMs={thinkingMs} startedAt={data.time}
-    charCount={text.length} preview={reasoningPreview(text)}>
+    charCount={text.length} preview={reasoningPreview(text)} suffix={suffix} tail={tailItem && renderTail ? renderTail(tailItem) : undefined}>
     <Blocks {...render} blocks={part.blocks} streaming={live} holdFormatting={pinned} startedAt={data.time} interrupted={data.status === 'interrupted'} liveText />
   </ReasoningRow>;
 });
@@ -172,6 +174,13 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, select
       case 'input': return <BlockBoundary><InputBubble {...shared} useSession={props.useSession} nodeKey={item.nodeKey} /></BlockBoundary>;
     }
   }, [shared, props.useSession, props.contextT, panelPinned, boundary, open, compact, pinPanel, closed]);
+  const renderThought = useCallback((thought: PanelItem, operation: PanelItem): ReactNode => {
+    if (thought.kind !== 'reasoning') return renderItem(thought);
+    const node = operation.kind === 'record' ? get(operation.nodeKey) : undefined;
+    const suffix = operation.kind === 'tool' ? toolRowTitle(operation.entry) : node ? recordView(node, closed).title : undefined;
+    return <BlockBoundary><ReasoningSegment {...shared} useSession={props.useSession} nodeKey={thought.nodeKey} start={thought.start} pinned={panelPinned} boundary={boundary} panelOpen={open} compact={compact} onRead={pinPanel}
+      suffix={suffix} tailItem={operation} renderTail={renderItem} /></BlockBoundary>;
+  }, [renderItem, shared, props.useSession, panelPinned, boundary, open, compact, pinPanel, get, closed]);
   const answerBlocks = useMemo(() => layout.answer.flatMap(segment => {
     const node = get(segment.nodeKey);
     if (!node || node.kind !== 'assistant-step') return [];
@@ -185,7 +194,7 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, select
     {leading.opening && <BlockBoundary><Opening {...shared} useSession={props.useSession} nodeKey={leading.opening} /></BlockBoundary>}
     {layout.panel.length > 0 && <BlockBoundary><ProcessPanel panelKey={group.key} status={status} statusLabel={label} elapsed={elapsed} counts={counts}
       items={layout.panel} open={open} onOpenChange={setOpen} earlierOpen={earlierOpen} onEarlierOpen={openEarlier}
-      motion={motion} get={get} turnClosed={closed} onRead={pinPanel} renderItem={renderItem} /></BlockBoundary>}
+      motion={motion} get={get} turnClosed={closed} onRead={pinPanel} renderItem={renderItem} renderThought={renderThought} /></BlockBoundary>}
     {layout.panel.length === 0 && boundary.status === 'open' && <div className={css.statusOnly} data-reader-status-only>
       <StatusText text={label} motion={motion} shimmer={status === 'running'} />
     </div>}

@@ -194,7 +194,9 @@ test('an opened earlier range stays open for the whole turn, whatever its status
   assert.match(renderTurn(nodes, turn), /data-reader-earlier/);
   const opened = renderTurn(nodes, turn, { expanded: { 'turn:1:earlier': true } });
   assert.doesNotMatch(opened, /data-reader-earlier/);
-  assert.match(opened, /data-reader-tool-call="c1"/);
+  // Each thought merges with the one settled tool call after it, so both steps are present as thought rows.
+  assert.equal(opened.match(/data-reader-reasoning-row/g)?.length, 2);
+  assert.equal(opened.match(/class="suffix">Bash</g)?.length, 2);
   assert.doesNotMatch(opened, /步骤 \d|data-reader-step/);
 });
 
@@ -212,6 +214,18 @@ test('consecutive tool calls of an interrupted turn cluster into one collapsed r
   const opened = renderTurn([user, step, first, failing], turn);
   assert.match(opened, /data-cluster-state="failed"/);
   assert.match(opened, /data-reader-tool-call="c1"[\s\S]*data-reader-tool-call="c2"/);
+});
+
+test('a thought followed by one settled tool call is one row in a real turn; the tool row appears only when opened', () => {
+  const turn = turnLocation({ status: 'closed', reason: 'aborted', steps: [1] });
+  const user = chatNode('user', { content: [{ type: 'text', text: '看一下' }] }, turn);
+  const step = assistantNode(turn, 1, [reasoning('先看工作区。'), toolCall('c1', 'bash', { command: 'ls' })], 'interrupted');
+  const tool = chatNode('tool-call', { root: settledTool('c1', 'bash', { command: 'ls' }) }, turn, 1);
+  const html = renderTurn([user, step, tool], turn);
+  assert.match(html, /data-reader-reasoning-row/);
+  assert.match(html, /class="suffix">Bash</);
+  assert.doesNotMatch(html, /data-reader-tool-call=/);
+  assert.match(html, /aria-expanded="false"/);
 });
 
 test('the process panel and the footer each sit inside their own BlockBoundary, never around the section', () => {

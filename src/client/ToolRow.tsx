@@ -40,6 +40,13 @@ export function toolEndLabel(phase: ToolPhase, exitCode: number | undefined, ela
   }
 }
 
+/** The row title of a tool call: 「技能」 for skills, the native title, or the variant fallback (「工具调用」 for unknown tools). */
+export function toolRowTitle(entry: ToolActivityEntry): string {
+  const model = activitySummary(entry);
+  if (model.name === 'skill') return '技能';
+  return (entry.block ? toolRowModel(model.name, entry.block).title : null) ?? VARIANT_TITLES[classifyTool(model.name)];
+}
+
 function resultText(block: ToolCallBlock | undefined): string {
   return block && 'kind' in block ? block.content.filter(item => item.type === 'text').map(item => item.text).join('\n') : '';
 }

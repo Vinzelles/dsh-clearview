@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  clusterElapsedMs, formatOperationClusterSummary, groupOperations, type OperationRow, type PanelItem,
+  clusterElapsedMs, formatOperationClusterSummary, groupOperations, mergeThoughts, type FlowRow, type OperationRow, type PanelItem,
 } from '../src/client/process-steps.ts';
-import { chatNode, settledTool, toolCall, toolEntry, turnLocation } from './support/chat-fixture.ts';
+import { assistantNode, chatNode, reasoning, settledTool, toolCall, toolEntry, turnLocation } from './support/chat-fixture.ts';
 
 const turn = turnLocation({ steps: [1] });
 const none = () => undefined;
@@ -111,4 +111,83 @@ test('cluster elapsed runs from the first call start to the last call end, and i
   assert.equal(clusterElapsedMs([settled('a', 'bash', {}, { callTime: 1000, time: 2000 }), settled('b', 'bash', {}, { callTime: 3000, time: 6500 })]), 5500);
   assert.equal(clusterElapsedMs([settled('a'), running('b')]), null);
   assert.equal(clusterElapsedMs([settled('a', 'bash', {}, { callTime: undefined })]), null);
+});
+
+// --- a settled thought followed by exactly one settled, healthy operation reads as one row ---
+
+function thought(status: 'running' | 'settled' | 'interrupted' = 'settled', tail: 'reasoning' | 'tool' = 'reasoning') {
+  const blocks = tail === 'tool' ? [reasoning('先看一下。'), toolCall('c9', 'bash')] : [reasoning('先看一下。')];
+  const node = assistantNode(turn, 1, blocks, status);
+  const item: PanelItem = { kind: 'reasoning', key: `${node.key}:0`, nodeKey: node.key, start: 0, step: 1 };
+  return { node, item };
+}
+const merge = (items: PanelItem[], get: (key: string) => ReturnType<typeof chatNode> | undefined, closed = false): FlowRow[] =>
+  mergeThoughts(groupOperations(items, get, closed), get, closed);
+const merged = (row: FlowRow | undefined) => { assert.equal(row?.kind, 'thought'); return row as Extract<FlowRow, { kind: 'thought' }>; };
+
+test('a settled thought followed by one settled tool call merges with it', () => {
+  const t = thought();
+  const rows = merge([t.item, settled('a')], lookup(t.node));
+  assert.equal(rows.length, 1);
+  assert.equal(merged(rows[0]).reasoning, t.item);
+  assert.equal(merged(rows[0]).operation.key, 'reader-tool:a');
+});
+
+test('a settled thought also merges with one healthy command or manual-compaction record', () => {
+  const t = thought();
+  const command = record('command', { outcome: { kind: 'success' } });
+  const compact = record('manual-compaction', { command: { outcome: { kind: 'success' } }, compaction: {} });
+  assert.equal(merged(merge([t.item, command.item], lookup(t.node, command.node))[0]).operation, command.item);
+  assert.equal(merged(merge([t.item, compact.item], lookup(t.node, compact.node))[0]).operation, compact.item);
+});
+
+test('a thought of an interrupted or settled step merges; rows after the pair are untouched', () => {
+  const t = thought('interrupted');
+  const rows = merge([t.item, settled('a'), narration, settled('b')], lookup(t.node), true);
+  assert.deepEqual(rows.map(row => row.kind), ['thought', 'single', 'single']);
+});
+
+test('no merge while the tool is preparing or running, or after it failed or was interrupted', () => {
+  const t = thought();
+  for (const op of [draftTool('a'), running('a')]) assert.deepEqual(merge([t.item, op], lookup(t.node)).map(row => row.kind), ['single', 'single']);
+  assert.deepEqual(merge([t.item, settled('a', 'bash', {}, { isError: true })], lookup(t.node)).map(row => row.kind), ['single', 'single']);
+  assert.deepEqual(merge([t.item, running('a')], lookup(t.node), true).map(row => row.kind), ['single', 'single']);
+});
+
+test('no merge for a running or failed command record', () => {
+  const t = thought();
+  const live = record('command', { name: 'x' });
+  const failed = record('command', { outcome: { kind: 'error' } });
+  assert.deepEqual(merge([t.item, live.item], lookup(t.node, live.node)).map(row => row.kind), ['single', 'single']);
+  assert.deepEqual(merge([t.item, failed.item], lookup(t.node, failed.node)).map(row => row.kind), ['single', 'single']);
+});
+
+test('no merge for live thinking, even when a settled tool follows', () => {
+  const live = thought('running');
+  assert.deepEqual(merge([live.item, settled('a')], lookup(live.node)).map(row => row.kind), ['single', 'single']);
+  // The step is still running but this thought is already followed by a tool call: it is settled.
+  const done = thought('running', 'tool');
+  assert.equal(merge([done.item, settled('a')], lookup(done.node))[0]!.kind, 'thought');
+});
+
+test('no merge when a cluster follows, when anything sits between, or for a non-operational record', () => {
+  const t = thought();
+  assert.deepEqual(merge([t.item, settled('a'), settled('b')], lookup(t.node)).map(row => row.kind), ['single', 'cluster']);
+  assert.deepEqual(merge([t.item, narration, settled('a')], lookup(t.node)).map(row => row.kind), ['single', 'single', 'single']);
+  assert.deepEqual(merge([t.item, input, settled('a')], lookup(t.node)).map(row => row.kind), ['single', 'single', 'single']);
+  const plan = record('submitted-plan', { title: 'p' });
+  assert.deepEqual(merge([t.item, plan.item], lookup(t.node, plan.node)).map(row => row.kind), ['single', 'single']);
+});
+
+test('a thought whose node is missing is not merged (it would hide the tool row)', () => {
+  const t = thought();
+  assert.deepEqual(merge([t.item, settled('a')], none).map(row => row.kind), ['single', 'single']);
+});
+
+test('only reasoning pairs: a lone tool, narration before a tool and two thoughts stay as they are', () => {
+  const t = thought();
+  const u = thought();
+  assert.deepEqual(merge([settled('a')], none).map(row => row.kind), ['single']);
+  assert.deepEqual(merge([narration, settled('a')], none).map(row => row.kind), ['single', 'single']);
+  assert.deepEqual(merge([t.item, u.item, settled('a')], lookup(t.node, u.node)).map(row => row.kind), ['single', 'thought']);
 });

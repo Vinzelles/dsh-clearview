@@ -6,7 +6,7 @@ import { createElement } from 'react';
 import { render } from './support/render.ts';
 import { ProcessPanel } from '../src/client/ProcessPanel.tsx';
 import type { PanelItem } from '../src/client/process-steps.ts';
-import { chatNode, settledTool, toolCall, toolEntry, turnLocation } from './support/chat-fixture.ts';
+import { assistantNode, chatNode, reasoning, settledTool, toolCall, toolEntry, turnLocation } from './support/chat-fixture.ts';
 
 const think = (step: number): PanelItem => ({ kind: 'reasoning', key: `r${step}`, nodeKey: `n${step}`, start: 0, step });
 const tool = (id: string, step: number): PanelItem => ({ kind: 'tool', key: id, entry: toolEntry(id, step, undefined, toolCall(id, 'bash')), step });
@@ -16,6 +16,7 @@ const base = {
   panelKey: 'turn:1', statusLabel: '已完成', elapsed: '用时 16 分 39 秒', counts: { steps: 65, tools: 18, failed: 1 },
   onOpenChange: () => {}, earlierOpen: false, onEarlierOpen: () => {}, motion: true, get: () => undefined, turnClosed: false, onRead: () => {},
   renderItem: (item: PanelItem) => createElement('div', { 'data-item': item.key }),
+  renderThought: (thought: PanelItem, operation: PanelItem) => createElement('div', { 'data-thought': thought.key, 'data-with': operation.key }),
 };
 
 test('a finished panel is one plain header row with its status, time and counts', () => {
@@ -133,4 +134,21 @@ test('the panel has no outer container: no background, ring, shadow, radius or s
 test('expanded content is indented to align with the header text', () => {
   const css = readFileSync(new URL('../src/client/ProcessPanel.module.css', import.meta.url), 'utf8');
   assert.match(/(?:^|\n)\.body \{([^}]*)\}/.exec(css)?.[1] ?? '', /padding[^;]*22px|margin-left: calc\(22px/);
+});
+
+test('a settled thought and the one healthy tool call after it render as one merged row; the counts are unchanged', () => {
+  const turn = turnLocation({ steps: [1] });
+  const node = assistantNode(turn, 1, [reasoning('先看一下。')]);
+  const thought: PanelItem = { kind: 'reasoning', key: 'r1', nodeKey: node.key, start: 0, step: 1 };
+  const get = (key: string) => key === node.key ? node : undefined;
+  const merged = render(ProcessPanel, { ...base, status: 'done', turnClosed: true, get, items: [thought, done('a', 1)], open: true });
+  assert.match(merged, /data-thought="r1" data-with="a"/);
+  assert.doesNotMatch(merged, /data-item=/);
+  assert.match(merged, /65 步[\s\S]*18 次工具[\s\S]*1 次失败/);
+  const failed = render(ProcessPanel, { ...base, status: 'error', statusLabel: '出错', turnClosed: true, get, items: [thought, done('a', 1, { isError: true })], open: true });
+  assert.doesNotMatch(failed, /data-thought/);
+  assert.match(failed, /data-item="r1"[\s\S]*data-item="a"/);
+  const cluster = render(ProcessPanel, { ...base, status: 'done', turnClosed: true, get, items: [thought, done('a', 1), done('b', 1)], open: true });
+  assert.doesNotMatch(cluster, /data-thought/);
+  assert.match(cluster, /data-item="r1"[\s\S]*data-reader-cluster/);
 });

@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { StateDot } from '@deepseek-ai/dsh-client-ui-primitives';
 import { ClusterRow } from './ClusterRow.js';
 import { CollapseBody, StatusText } from './motion.js';
-import { groupOperations, groupSteps, type PanelCounts, type PanelItem, type PanelStatus } from './process-steps.js';
+import { groupOperations, groupSteps, mergeThoughts, type PanelCounts, type PanelItem, type PanelStatus } from './process-steps.js';
 import css from './ProcessPanel.module.css';
 
 const DOT: Record<Exclude<PanelStatus, 'running'>, 'done' | 'error' | 'warning' | 'idle'> = {
@@ -29,6 +29,8 @@ export interface ProcessPanelProps {
   get: (key: string) => ChatConversationViewNode | undefined;
   turnClosed: boolean;
   renderItem: (item: PanelItem) => ReactNode;
+  /** A settled thought merged with the one healthy operation after it. */
+  renderThought: (thought: PanelItem, operation: PanelItem) => ReactNode;
 }
 
 /** One turn's process: a plain status header row and, below it, the rows in time order with tool runs clustered. */
@@ -36,7 +38,7 @@ export function ProcessPanel(props: ProcessPanelProps) {
   const bodyId = useId();
   const condense = props.status !== 'done' && !props.earlierOpen;
   const layout = useMemo(() => groupSteps(props.items, { condense }), [props.items, condense]);
-  const rows = useMemo(() => groupOperations(layout.visible, props.get, props.turnClosed), [layout.visible, props.get, props.turnClosed]);
+  const rows = useMemo(() => mergeThoughts(groupOperations(layout.visible, props.get, props.turnClosed), props.get, props.turnClosed), [layout.visible, props.get, props.turnClosed]);
   const { counts } = props;
   const meta: ReactNode[] = [];
   if (props.elapsed) meta.push(<span key="elapsed" className={`${css.meta} ${css.elapsed}`}>{props.elapsed}</span>);
@@ -62,7 +64,9 @@ export function ProcessPanel(props: ProcessPanelProps) {
         </button>}
         {rows.map(row => row.kind === 'single'
           ? <Fragment key={row.item.key}>{props.renderItem(row.item)}</Fragment>
-          : <ClusterRow key={row.key} cluster={row} motion={props.motion} onRead={props.onRead} renderItem={props.renderItem} />)}
+          : row.kind === 'thought'
+            ? <Fragment key={row.reasoning.key}>{props.renderThought(row.reasoning, row.operation)}</Fragment>
+            : <ClusterRow key={row.key} cluster={row} motion={props.motion} onRead={props.onRead} renderItem={props.renderItem} />)}
       </div>
     </CollapseBody>
   </div>;
