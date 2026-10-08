@@ -19,7 +19,7 @@
   overflow-anchor: auto;
   container-type: inline-size;
 }
-.column { display: flex; flex-direction: column; gap: 22px; width: 100%; max-width: var(--dsh-chat-content-width, 748px); min-width: 0; margin: 0 auto; }
+.column { display: flex; flex-direction: column; gap: 22px; width: 100%; padding-bottom: 24px; max-width: var(--dsh-chat-content-width, 748px); min-width: 0; margin: 0 auto; }
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
 .switchButton { display: inline-flex; align-items: center; gap: 8px; padding: 2px 8px; border: 0; border-radius: var(--dsw-radius-sm); corner-shape: round; background: transparent; color: var(--dsw-alias-label-tertiary); font: inherit; white-space: nowrap; cursor: pointer; transition: background-color var(--cv-fast) ease, color var(--cv-fast) ease; }
 .switchButton:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); }

@@ -194,7 +194,24 @@ test('an opened earlier range stays open for the whole turn, whatever its status
   assert.match(renderTurn(nodes, turn), /data-reader-earlier/);
   const opened = renderTurn(nodes, turn, { expanded: { 'turn:1:earlier': true } });
   assert.doesNotMatch(opened, /data-reader-earlier/);
-  assert.match(opened, /data-reader-step="步骤 1"/);
+  assert.match(opened, /data-reader-tool-call="c1"/);
+  assert.doesNotMatch(opened, /步骤 \d|data-reader-step/);
+});
+
+test('consecutive tool calls of an interrupted turn cluster into one collapsed row; a failure opens it', () => {
+  const turn = turnLocation({ status: 'closed', reason: 'aborted', steps: [1] });
+  const user = chatNode('user', { content: [{ type: 'text', text: '连续做' }] }, turn);
+  const step = assistantNode(turn, 1, [toolCall('c1', 'bash', { command: 'ls' }), toolCall('c2', 'read', { path: 'a.ts' })], 'interrupted');
+  const first = chatNode('tool-call', { root: settledTool('c1', 'bash', { command: 'ls' }) }, turn, 1);
+  const second = chatNode('tool-call', { root: settledTool('c2', 'read', { path: 'a.ts' }) }, turn, 1);
+  const html = renderTurn([user, step, first, second], turn);
+  assert.match(html, /data-reader-cluster="cluster:reader-tool:c1"[^>]*data-cluster-state="idle"/);
+  assert.match(html, /运行了 1 条命令，进行了 2 次工具调用，执行了 1 个操作/);
+  assert.doesNotMatch(html, /data-reader-tool-call=/);
+  const failing = chatNode('tool-call', { root: settledTool('c2', 'read', { path: 'a.ts' }, { isError: true }) }, turn, 1);
+  const opened = renderTurn([user, step, first, failing], turn);
+  assert.match(opened, /data-cluster-state="failed"/);
+  assert.match(opened, /data-reader-tool-call="c1"[\s\S]*data-reader-tool-call="c2"/);
 });
 
 test('the process panel and the footer each sit inside their own BlockBoundary, never around the section', () => {

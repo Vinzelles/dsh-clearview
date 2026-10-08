@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { COMPAT_CSS } from '../src/client/compat/styles.ts';
 
 const CLIENT = new URL('../src/client/', import.meta.url);
-const REDESIGNED = ['Reader', 'ProcessRow', 'ToolRow', 'ToolDetails', 'ReasoningRow', 'RecordRows', 'Opening', 'ProcessPanel', 'TurnSection', 'TurnFooter', 'FloatingStatus', 'FileChanges'];
+const REDESIGNED = ['Reader', 'ProcessRow', 'ToolRow', 'ToolDetails', 'ReasoningRow', 'RecordRows', 'Opening', 'ProcessPanel', 'ClusterRow', 'TurnSection', 'TurnFooter', 'FloatingStatus', 'FileChanges'];
 const sheet = (name: string) => readFileSync(new URL(`${name}.module.css`, CLIENT), 'utf8');
 
 test('redesigned surfaces use token radii and no in-flow backdrop blur', () => {
@@ -82,3 +82,17 @@ test('the turn-trigger opening is a 24px row, not a padded card', () => {
   assert.doesNotMatch(/\.trigger \{([^}]*)\}/.exec(opening)?.[1] ?? '', /background|box-shadow|border-radius/);
 });
 
+test('the reader column keeps 24px of breathing room after its last element, without a measured min-height', () => {
+  const column = /\.column \{([^}]*)\}/.exec(sheet('Reader'))?.[1] ?? '';
+  assert.match(column, /padding-bottom: 24px/);
+  assert.doesNotMatch(readFileSync(new URL('Reader.module.css', CLIENT), 'utf8'), /min-height:\s*var\(--reader-flow-min-height/);
+  for (const file of readdirSync(CLIENT).filter(name => name.endsWith('.tsx'))) {
+    assert.doesNotMatch(readFileSync(new URL(file, CLIENT), 'utf8'), /reader-flow-min-height/, file);
+  }
+});
+
+test('the cluster row uses the 24px row grammar with token colours only', () => {
+  const css = sheet('ClusterRow');
+  assert.match(css, /\.members \{[^}]*margin-left: calc\(22px/);
+  assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}|rgba?\(/);
+});

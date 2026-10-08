@@ -36,11 +36,3 @@ export function ErrorSummary({ text }: { text: string }) {
   if (!text) return null;
   return <Inset tone="error"><pre className={css.errorText}>{text}</pre></Inset>;
 }
-
-/** A run of folded tool calls inside one step. */
-export function FoldRow({ count, open, onToggle }: { count: number; open: boolean; onToggle: () => void }) {
-  return <button type="button" className={css.fold} aria-expanded={open} onClick={onToggle} data-reader-fold>
-    <span className={css.foldIcon}><Chevron open={open} /></span>
-    <span>{open ? `收起 ${count} 次工具调用` : `+${count} 次工具调用`}</span>
-  </button>;
-}

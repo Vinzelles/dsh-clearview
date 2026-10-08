@@ -93,18 +93,8 @@ export function layoutTurn(flow: readonly ReaderFlowEntry[], get: Getter, bounda
   };
 }
 
-export type PanelEntry = { kind: 'item'; item: PanelItem } | { kind: 'fold'; key: string; items: PanelItem[] };
-export interface StepGroup { key: string; label: string; entries: PanelEntry[] }
-export interface StepLayout { earlier: { steps: number; summary: string } | null; groups: StepGroup[] }
-
-const FOLD_MIN = 6;
-const FOLD_KEEP = 3;
-
-export function stepLabel(first: number, last: number): string {
-  // Step 0 means no row of the group knows its step (mid-turn window): no label.
-  if (last === 0) return '';
-  return first === last ? `步骤 ${first}` : `步骤 ${first}–${last}`;
-}
+/** What the process panel lists: `earlier` is the condensed 「前 N 步」 range, `visible` the rows shown in time order. */
+export interface StepLayout { earlier: { steps: number; summary: string } | null; visible: PanelItem[] }
 
 /** Step-less rows (turn-level context, records) join the nearest known step. */
 function effectiveSteps(items: readonly PanelItem[]): number[] {
@@ -122,32 +112,7 @@ function effectiveSteps(items: readonly PanelItem[]): number[] {
   return result;
 }
 
-function foldEntries(items: readonly PanelItem[], isActive: (item: PanelItem) => boolean): PanelEntry[] {
-  const entries: PanelEntry[] = [];
-  let run: PanelItem[] = [];
-  const flush = () => {
-    if (run.length >= FOLD_MIN) {
-      const head = run.slice(0, run.length - FOLD_KEEP);
-      const folded = head.filter(item => !isActive(item));
-      if (folded.length > 0) entries.push({ kind: 'fold', key: `fold:${folded[0]!.key}`, items: folded });
-      for (const item of head) if (isActive(item)) entries.push({ kind: 'item', item });
-      for (const item of run.slice(run.length - FOLD_KEEP)) entries.push({ kind: 'item', item });
-    } else {
-      for (const item of run) entries.push({ kind: 'item', item });
-    }
-    run = [];
-  };
-  for (const item of items) {
-    if (item.kind === 'tool') { run.push(item); continue; }
-    flush();
-    entries.push({ kind: 'item', item });
-  }
-  flush();
-  return entries;
-}
-
-export function groupSteps(items: readonly PanelItem[], options: { condense: boolean; isActive?: (item: PanelItem) => boolean }): StepLayout {
-  const isActive = options.isActive ?? (() => false);
+export function groupSteps(items: readonly PanelItem[], options: { condense: boolean }): StepLayout {
   const steps = effectiveSteps(items);
   const runs: { step: number; items: PanelItem[] }[] = [];
   items.forEach((item, index) => {
@@ -156,33 +121,28 @@ export function groupSteps(items: readonly PanelItem[], options: { condense: boo
     if (last && last.step === step) last.items.push(item);
     else runs.push({ step, items: [item] });
   });
-  const ranges: { first: number; last: number; items: PanelItem[] }[] = [];
-  let pending: { first: number; last: number; items: PanelItem[] } | null = null;
+  // A step that holds one lone tool row has no structure of its own: it joins its neighbours into one group.
+  const ranges: PanelItem[][] = [];
+  let pending: PanelItem[] | null = null;
   for (const run of runs) {
-    const trivial = run.items.length === 1 && run.items[0]!.kind === 'tool';
-    if (trivial) {
-      if (pending) { pending.last = run.step; pending.items.push(...run.items); }
-      else pending = { first: run.step, last: run.step, items: [...run.items] };
+    if (run.items.length === 1 && run.items[0]!.kind === 'tool') {
+      if (pending) pending.push(...run.items);
+      else pending = [...run.items];
       continue;
     }
     if (pending) { ranges.push(pending); pending = null; }
-    ranges.push({ first: run.step, last: run.step, items: run.items });
+    ranges.push(run.items);
   }
   if (pending) ranges.push(pending);
+  if (!options.condense || ranges.length < 2) return { earlier: null, visible: [...items] };
   const stepOfItem = new Map(items.map((item, index) => [item, steps[index]!]));
-  const groups = ranges.map(range => ({
-    key: `step:${range.first}:${range.items[0]!.key}`,
-    label: stepLabel(range.first, range.last),
-    entries: foldEntries(range.items, isActive),
-    steps: new Set(range.items.map(item => stepOfItem.get(item)!)).size,
-    items: range.items,
-  }));
-  const strip = ({ key, label, entries }: (typeof groups)[number]): StepGroup => ({ key, label, entries });
-  if (!options.condense || groups.length < 2) return { earlier: null, groups: groups.map(strip) };
-  const earlier = groups.slice(0, -1);
+  const earlier = ranges.slice(0, -1);
   return {
-    earlier: { steps: earlier.reduce((sum, group) => sum + group.steps, 0), summary: categorySummary(earlier.flatMap(group => group.items)) },
-    groups: [strip(groups.at(-1)!)],
+    earlier: {
+      steps: earlier.reduce((sum, range) => sum + new Set(range.map(item => stepOfItem.get(item)!)).size, 0),
+      summary: categorySummary(earlier.flat()),
+    },
+    visible: ranges.at(-1)!,
   };
 }
 
@@ -204,6 +164,92 @@ export function categorySummary(items: readonly PanelItem[]): string {
   }
   return CATEGORY_LABELS.filter(([category]) => (counts.get(category) ?? 0) > 0).slice(0, 3)
     .map(([category, label]) => label(counts.get(category)!)).join(' · ');
+}
+
+export interface OperationClusterSummary { commands: number; tools: number; operations: number; failed: number; skills: number }
+
+/** One row of the visible process list: a lone item, or two or more consecutive operational items merged. */
+export type OperationRow =
+  | { kind: 'single'; item: PanelItem }
+  | { kind: 'cluster'; key: string; items: PanelItem[]; summary: OperationClusterSummary; hasActive: boolean; hasFailed: boolean };
+
+/** Exact 0.1.18 wording; the parts that are zero are left out. */
+export function formatOperationClusterSummary(summary: OperationClusterSummary): string {
+  const parts: string[] = [];
+  if (summary.skills > 0) parts.push(`使用了 ${summary.skills} 个技能`);
+  if (summary.commands > 0) parts.push(`运行了 ${summary.commands} 条命令`);
+  if (summary.tools > 0) parts.push(`进行了 ${summary.tools} 次工具调用`);
+  if (summary.operations > 0) parts.push(`执行了 ${summary.operations} 个操作`);
+  return parts.join('，');
+}
+
+function isOperationRecord(node: ChatConversationViewNode | undefined): node is ChatConversationViewNode {
+  return node?.kind === 'command' || node?.kind === 'manual-compaction';
+}
+
+/** A command or manual compaction that has produced neither an outcome nor a result yet. */
+function recordRunning(node: ChatConversationViewNode): boolean {
+  const data = node.data as { outcome?: unknown; compaction?: unknown; command?: { outcome?: unknown } | null } | null;
+  return node.kind === 'command' ? data?.outcome == null : data?.command?.outcome == null && data?.compaction == null;
+}
+
+/**
+ * Merge consecutive operational items (tool calls, command and manual-compaction records) into clusters.
+ * Reasoning, narration, mid-turn input and every other record break a run; a run of one stays a single row.
+ * The key follows the first member, so it survives the cluster growing while a turn runs.
+ */
+export function groupOperations(items: readonly PanelItem[], get: Getter, turnClosed = false): OperationRow[] {
+  const rows: OperationRow[] = [];
+  let run: PanelItem[] = [];
+  const flush = () => {
+    if (run.length === 1) rows.push({ kind: 'single', item: run[0]! });
+    else if (run.length > 1) {
+      const summary: OperationClusterSummary = { commands: 0, tools: 0, operations: 0, failed: 0, skills: 0 };
+      let hasActive = false;
+      for (const item of run) {
+        if (item.kind === 'tool') {
+          summary.tools++;
+          const phase = activityPhase(item.entry, turnClosed);
+          if (phase === 'preparing' || phase === 'running') hasActive = true;
+          if (phase === 'failed') summary.failed++;
+          const facts = activitySummary(item.entry);
+          if (facts.name === 'skill') summary.skills++;
+          if (facts.category === 'terminal') summary.commands++;
+          else if (facts.category === 'read' || facts.category === 'write') summary.operations++;
+          continue;
+        }
+        const node = get(item.nodeKey);
+        if (!node) continue;
+        summary.commands++;
+        summary.operations++;
+        if (!turnClosed && recordRunning(node)) hasActive = true;
+        if (recordFailed(node)) summary.failed++;
+      }
+      rows.push({ kind: 'cluster', key: `cluster:${run[0]!.key}`, items: run, summary, hasActive, hasFailed: summary.failed > 0 });
+    }
+    run = [];
+  };
+  for (const item of items) {
+    if (item.kind === 'tool' || (item.kind === 'record' && isOperationRecord(get(item.nodeKey)))) { run.push(item); continue; }
+    flush();
+    rows.push({ kind: 'single', item });
+  }
+  flush();
+  return rows;
+}
+
+/** First call start to last call end; unknown while any tool call is unsettled or lacks a start time. */
+export function clusterElapsedMs(items: readonly PanelItem[]): number | null {
+  let start = Infinity;
+  let end = -Infinity;
+  for (const item of items) {
+    if (item.kind !== 'tool') continue;
+    const block = item.entry.block;
+    if (!block || !('kind' in block) || block.callTime == null) return null;
+    start = Math.min(start, block.callTime);
+    end = Math.max(end, block.time);
+  }
+  return Number.isFinite(start) && Number.isFinite(end) && end >= start ? end - start : null;
 }
 
 export interface PanelCounts { steps: number; tools: number; failed: number }

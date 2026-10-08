@@ -74,35 +74,27 @@ function think(step: number): PanelItem {
   return { kind: 'reasoning', key: `r:${step}`, nodeKey: `n:${step}`, start: 0, step };
 }
 
-test('steps with a single tool row merge into one range label', () => {
-  const layout = groupSteps([think(1), tool('a', 1), tool('b', 2), tool('c', 3), tool('d', 4), think(5), tool('e', 5)], { condense: false });
-  assert.deepEqual(layout.groups.map(group => group.label), ['步骤 1', '步骤 2–4', '步骤 5']);
+test('without condensing every item stays visible, in time order, with no step grouping artefacts', () => {
+  const items = [think(1), tool('a', 1), tool('b', 2), tool('c', 3), tool('d', 4), think(5), tool('e', 5)];
+  const layout = groupSteps(items, { condense: false });
   assert.equal(layout.earlier, null);
+  assert.deepEqual(layout.visible.map(item => item.key), items.map(item => item.key));
+  assert.ok(!('groups' in layout));
 });
 
 test('condensing keeps only the latest step group and summarizes the rest', () => {
   const items = [think(1), tool('a', 1, 'read'), tool('b', 1, 'read'), think(2), tool('c', 2, 'bash'), think(3), tool('d', 3, 'write')];
   const layout = groupSteps(items, { condense: true });
-  assert.deepEqual(layout.groups.map(group => group.label), ['步骤 3']);
+  assert.deepEqual(layout.visible.map(item => item.key), ['r:3', 'reader-tool:d']);
   assert.deepEqual(layout.earlier, { steps: 2, summary: '读取 2 个文件 · 运行 1 条命令' });
   assert.equal(groupSteps(items.slice(0, 3), { condense: true }).earlier, null);
 });
 
-test('six or more consecutive tools fold all but the last three, keeping active calls visible', () => {
-  const items = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map(id => tool(id, 1));
-  const [group] = groupSteps(items, { condense: false }).groups;
-  assert.equal(group!.entries[0]!.kind, 'fold');
-  assert.equal((group!.entries[0] as { items: PanelItem[] }).items.length, 4);
-  assert.equal(group!.entries.length, 4);
-  const withActive = groupSteps(items, { condense: false, isActive: item => item.key === 'reader-tool:b' }).groups[0]!;
-  assert.equal((withActive.entries[0] as { items: PanelItem[] }).items.length, 3);
-  assert.equal(withActive.entries.length, 5);
-});
-
 test('items without a step join the nearest step instead of creating their own group', () => {
   const record: PanelItem = { kind: 'record', key: 'ctx', nodeKey: 'ctx', step: null };
-  const layout = groupSteps([record, think(1), tool('a', 1)], { condense: false });
-  assert.deepEqual(layout.groups.map(group => group.label), ['步骤 1']);
+  const layout = groupSteps([record, think(1), tool('a', 1)], { condense: true });
+  assert.equal(layout.earlier, null);
+  assert.equal(layout.visible.length, 3);
 });
 
 test('category summary uses a fixed order and the first three non-zero counts', () => {
@@ -155,11 +147,10 @@ test('running label names the current activity', () => {
   assert.equal(runningLabel(thinking, [node.key, waitingTool.key], getter(node, waitingTool)), '正在使用工具');
 });
 
-test('a group whose rows have no known step has an empty label', () => {
+test('rows with no known step stay visible and never condense', () => {
   const noStep = (callId: string): PanelItem => ({ kind: 'tool', key: `reader-tool:${callId}`, entry: toolEntry(callId, 0, undefined, toolCall(callId, 'bash')), step: null });
-  const layout = groupSteps([noStep('a'), noStep('b')], { condense: false });
-  assert.equal(layout.groups.length, 1);
-  assert.equal(layout.groups[0]!.label, '');
+  const layout = groupSteps([noStep('a'), noStep('b')], { condense: true });
+  assert.equal(layout.visible.length, 2);
   assert.equal(layout.earlier, null);
 });
 
@@ -179,23 +170,16 @@ test('panel status is unknown for a turn whose status is unknown', () => {
   assert.equal(panelStatus(boundaryOf(turnLocation({ status: 'unknown' })), 2), 'unknown');
 });
 
-test('five consecutive tool calls stay listed; six fold all but the last three', () => {
-  const five = groupSteps(['a', 'b', 'c', 'd', 'e'].map(id => tool(id, 1)), { condense: false }).groups[0]!;
-  assert.equal(five.entries.length, 5);
-  assert.ok(five.entries.every(entry => entry.kind === 'item'));
-  const six = groupSteps(['a', 'b', 'c', 'd', 'e', 'f'].map(id => tool(id, 1)), { condense: false }).groups[0]!;
-  assert.deepEqual(six.entries.map(entry => entry.kind), ['fold', 'item', 'item', 'item']);
-  assert.equal((six.entries[0] as { items: PanelItem[] }).items.length, 3);
+test('long runs of tool calls are never folded by the step grouping; clustering owns them', () => {
+  const items = Array.from({ length: 12 }, (_, index) => tool(`t${index + 1}`, 1));
+  assert.deepEqual(groupSteps(items, { condense: false }).visible, items);
 });
 
-test('eight single-tool steps merge into one range group with one fold row and the last three tools', () => {
+test('eight single-tool steps merge into one range, so condensing keeps all of them', () => {
   const items = Array.from({ length: 8 }, (_, index) => tool(`t${index + 1}`, index + 1));
   const layout = groupSteps(items, { condense: true });
   assert.equal(layout.earlier, null);
-  assert.deepEqual(layout.groups.map(group => group.label), ['步骤 1–8']);
-  const { entries } = layout.groups[0]!;
-  assert.deepEqual(entries.map(entry => entry.kind), ['fold', 'item', 'item', 'item']);
-  assert.equal((entries[0] as { items: PanelItem[] }).items.length, 5);
+  assert.deepEqual(layout.visible, items);
 });
 
 test('a successful command with text is listed as an output; failures and empty results are not', () => {

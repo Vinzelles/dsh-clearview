@@ -17,7 +17,7 @@ import { createGroupSelector } from './reader-selection.js';
 import { InputBubble, RecordRow, TurnNotice } from './RecordRows.js';
 import type { RewindSpan } from './rewind-hidden.js';
 import { RevealLedgerContext, type RevealLedger } from './streaming.js';
-import { activityPhase, readerFlow } from './tool-activity.js';
+import { readerFlow } from './tool-activity.js';
 import { ToolImages, ToolRow } from './ToolRow.js';
 import { TurnFooter } from './TurnFooter.js';
 import { closingOf } from './turn-meta.js';
@@ -158,7 +158,6 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, select
   const now = useNow(status === 'running' || status === 'waiting');
   const label = statusLabel(status, boundary.reason, status === 'running' ? runningLabel(turn, group.keys, get) : '');
   const elapsed = elapsedLabel(turn, now, status);
-  const isActive = useCallback((item: PanelItem) => item.kind === 'tool' && ['preparing', 'running'].includes(activityPhase(item.entry, closed)), [closed]);
   const panelPinned = pinnedKeys.includes(group.key);
   const closingSeq = closingOf(turn)?.seq;
   // The host hands back a fresh resolver per call; keep one per turn and closing reply so the answer's Blocks stay memoised.
@@ -186,7 +185,7 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, select
     {leading.opening && <BlockBoundary><Opening {...shared} useSession={props.useSession} nodeKey={leading.opening} /></BlockBoundary>}
     {layout.panel.length > 0 && <BlockBoundary><ProcessPanel panelKey={group.key} status={status} statusLabel={label} elapsed={elapsed} counts={counts}
       items={layout.panel} open={open} onOpenChange={setOpen} earlierOpen={earlierOpen} onEarlierOpen={openEarlier}
-      motion={motion} isActive={isActive} renderItem={renderItem} /></BlockBoundary>}
+      motion={motion} get={get} turnClosed={closed} onRead={pinPanel} renderItem={renderItem} /></BlockBoundary>}
     {layout.panel.length === 0 && boundary.status === 'open' && <div className={css.statusOnly} data-reader-status-only>
       <StatusText text={label} motion={motion} shimmer={status === 'running'} />
     </div>}
