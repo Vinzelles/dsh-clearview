@@ -114,7 +114,7 @@ export function Reader(rawProps: ReaderProps) {
       <div className={css.column}>
         <div className={css.toolbar} data-ud-check="reader-toolbar">
           <Switch label={`折叠思考${collapseThinking ? '开' : '关'}`} checked={collapseThinking} onChange={() => props.actions.setCollapseThinking(!collapseThinking)}
-            title="开启后，已完成的思考只保留一行；关闭后显示前三行预览。" />
+            title="开启后，进行中的思考也只显示一行；已完成的思考始终是一行，点击查看全文。" />
           <Switch label={`动效${motionPreference ? '开' : '关'}`} checked={motionPreference} onChange={() => props.actions.setMotion(!motionPreference)}
             title="新到文字柔和显现，过程平滑展开；关闭后立即完整显示，自动遵循系统减少动态效果设置。" />
         </div>

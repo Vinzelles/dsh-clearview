@@ -40,7 +40,7 @@ export interface ReasoningRowProps {
   motion: boolean;
   selected: boolean;
   onRead: () => void;
-  /** 折叠思考 on: settled thinking keeps only its row. */
+  /** 折叠思考 on: live thinking is a single row too (settled thinking is always one). */
   compact: boolean;
   durationMs: number | null;
   startedAt: number | null;
@@ -68,11 +68,8 @@ export function ReasoningRow({ children, step, live, follow, motion, selected, o
   const finishRef = useRef<{ cancel: () => void } | null>(null);
   const lastTop = useRef(0);
   const followSeeded = useRef(false);
-  const open = manual === null ? live : manual === 'open';
-  const previewMode = !open && !compact && !live;
-  /** Read by the follow cleanup, which runs after the render that decides whether this row settles into its preview. */
-  const previewNext = useRef(previewMode);
-  previewNext.current = previewMode;
+  // Settled thinking is a single row until it is opened; live thinking shows its inset unless 折叠思考 is on.
+  const open = manual === null ? live && !compact : manual === 'open';
   const inflated = open && expanded;
   const allowed = open && following && follow && motion && !selected;
 
@@ -119,10 +116,6 @@ export function ReasoningRow({ children, step, live, follow, motion, selected, o
   useLayoutEffect(() => {
     if (!open && expanded) setExpanded(false);
   }, [open, expanded]);
-
-  useLayoutEffect(() => {
-    if (previewMode && viewport.current) viewport.current.scrollTop = 0;
-  }, [previewMode]);
 
   useLayoutEffect(() => {
     const port = viewport.current;
@@ -209,8 +202,6 @@ export function ReasoningRow({ children, step, live, follow, motion, selected, o
       stopFollow.current = () => {};
       if (!tracking) return;
       tracking = false;
-      // Settling into the clamped preview: it must start at the beginning, so no glide toward the stale end.
-      if (previewNext.current) return;
       const end = tail;
       if (clientHeight > 1 && end - state.pos > 1 && port.isConnected) {
         let glideFrame = 0;
@@ -231,7 +222,7 @@ export function ReasoningRow({ children, step, live, follow, motion, selected, o
         glideFrame = requestAnimationFrame(glide);
       }
     };
-  }, [allowed, pause, open, previewMode]);
+  }, [allowed, pause, open]);
 
   useLayoutEffect(() => {
     const port = viewport.current;
@@ -285,15 +276,14 @@ export function ReasoningRow({ children, step, live, follow, motion, selected, o
       {!open && preview && <><RowSeparator /><span className={css.preview}>{preview}</span></>}
       <span className={css.end}>{liveSeconds !== null ? `已 ${liveSeconds} 秒` : `${charCount} 字`}</span>
     </button>
-    {(open || previewMode) && <div className={css.inset} data-reader-reasoning-card data-live={live || undefined} data-preview={previewMode || undefined}
+    {open && <div className={css.inset} data-reader-reasoning-card data-live={live || undefined}
       data-expanded={inflated || undefined} data-following={allowed} data-overflow={overflow}>
       <div ref={viewport} id={viewportId} className={css.viewport} data-edges={edges} data-reader-reasoning-scroll role="region"
-        aria-label={`步骤 ${step} 的思考${overflow ? '，可滚动阅读' : ''}`} tabIndex={open && overflow ? 0 : undefined}
-        onPointerDown={open ? pause : undefined} onFocus={open ? pause : undefined}
-        onClick={previewMode ? () => { onRead(); setManual('open'); } : undefined}>
+        aria-label={`步骤 ${step} 的思考${overflow ? '，可滚动阅读' : ''}`} tabIndex={overflow ? 0 : undefined}
+        onPointerDown={pause} onFocus={pause}>
         <div ref={content} className={css.text} data-reader-reasoning-text>{children}</div>
       </div>
-      {open && (overflow || expanded) && <div className={css.controls}>
+      {(overflow || expanded) && <div className={css.controls}>
         {follow && motion && <button type="button" className={css.control} disabled={selected}
           aria-label={following ? '暂停自动跟随思考' : '继续跟随最新思考'} title={selected ? '取消文字选择后可继续跟随' : following ? '暂停跟随' : '跟随最新'}
           onClick={() => { if (following) pause(); else { onRead(); setFollowing(true); } }}>

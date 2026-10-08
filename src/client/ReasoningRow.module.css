@@ -22,7 +22,6 @@
   scrollbar-width: thin; scrollbar-color: var(--dsw-alias-border-l1) transparent;
 }
 .inset[data-live=true] .viewport { max-height: 128px; }
-.inset[data-preview=true] .viewport { max-height: 72px; overflow: hidden; cursor: pointer; -webkit-mask-image: linear-gradient(#000 55%, transparent); mask-image: linear-gradient(#000 55%, transparent); }
 .inset[data-expanded=true] .viewport { max-height: min(60vh, 560px, var(--reason-reading-height, 560px)); }
 .viewport[data-edges=top], .viewport[data-edges=both] { -webkit-mask-image: linear-gradient(transparent 0, #000 26px, #000 100%); mask-image: linear-gradient(transparent 0, #000 26px, #000 100%); }
 .inset[data-expanded=true] .viewport { -webkit-mask-image: none; mask-image: none; }

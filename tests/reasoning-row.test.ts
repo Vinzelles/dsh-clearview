@@ -20,25 +20,29 @@ test('the preview is the first sentence of the first line', () => {
   assert.equal(reasoningPreview('a'.repeat(100)).length, 80);
 });
 
-test('live thinking spins, sweeps its title and shows the inset', () => {
-  const html = render(ReasoningRow, { ...base, live: true, compact: true });
+test('live thinking spins, sweeps its title and shows the live inset', () => {
+  const html = render(ReasoningRow, { ...base, live: true, compact: false });
   assert.match(html, /data-stub="StateDot" data-state="ongoing"/);
   assert.match(html, /data-stub="TextShimmer" data-active="true"[^>]*>思考中/);
   assert.match(html, /data-live="true"/);
   assert.match(html, /data-reader-reasoning-text[^>]*><span>原文<\/span>/);
 });
 
-test('settled thinking in compact mode is a single row with its duration and preview', () => {
-  const html = render(ReasoningRow, { ...base, live: false, compact: true });
-  assert.match(html, /思考了 6 秒/);
-  assert.match(html, /先看工作区。/);
-  assert.doesNotMatch(html, /data-reader-reasoning-card/);
+test('with 折叠思考 on, live thinking is also a single row: spinner and title, no inset', () => {
+  const html = render(ReasoningRow, { ...base, live: true, compact: true });
+  assert.match(html, /data-stub="StateDot" data-state="ongoing"/);
+  assert.match(html, /data-stub="TextShimmer" data-active="true"[^>]*>思考中/);
+  assert.doesNotMatch(html, /data-reader-reasoning-card|data-reader-reasoning-text/);
 });
 
-test('settled thinking outside compact mode shows a clamped preview inset', () => {
-  const html = render(ReasoningRow, { ...base, live: false, compact: false });
-  assert.match(html, /data-preview="true"/);
-  assert.doesNotMatch(html, /data-live/);
+test('settled thinking is always a single row with its duration and preview, in either mode', () => {
+  for (const compact of [true, false]) {
+    const html = render(ReasoningRow, { ...base, live: false, compact });
+    assert.match(html, /思考了 6 秒/, `compact=${compact}`);
+    assert.match(html, /先看工作区。/, `compact=${compact}`);
+    assert.doesNotMatch(html, /data-reader-reasoning-card|data-preview|data-reader-reasoning-text/, `compact=${compact}`);
+    assert.match(html, /aria-expanded="false"/, `compact=${compact}`);
+  }
 });
 
 test('follow metrics use the real scroll extent, padding included', () => {
@@ -46,10 +50,4 @@ test('follow metrics use the real scroll extent, padding included', () => {
   assert.deepEqual(scrollMetrics({ scrollHeight: 116, clientHeight: 128 }), { tail: 0, overflow: false });
   assert.deepEqual(scrollMetrics({ scrollHeight: 129, clientHeight: 128 }), { tail: 1, overflow: false });
   assert.deepEqual(scrollMetrics({ scrollHeight: 300, clientHeight: 128 }), { tail: 172, overflow: true });
-});
-
-test('a settled preview is never marked expanded and starts unexpanded', () => {
-  const html = render(ReasoningRow, { ...base, live: false, compact: false });
-  assert.doesNotMatch(html, /data-expanded/);
-  assert.doesNotMatch(html, /data-reader-reasoning-card[^>]*data-live/);
 });
