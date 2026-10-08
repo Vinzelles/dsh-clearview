@@ -9,7 +9,7 @@ import { SystemPromptRow } from './native/SystemPromptRow.js';
 import { nodeText } from './node-payloads.js';
 import { Opening } from './Opening.js';
 import { ProcessPanel } from './ProcessPanel.js';
-import { commandOutputText, elapsedLabel, layoutTurn, panelCounts, panelStatus, runningLabel, statusLabel, type PanelItem, type ReasoningItem } from './process-steps.js';
+import { commandOutputText, elapsedLabel, layoutTurn, panelCounts, panelStatus, rememberOpened, runningLabel, statusLabel, type PanelItem, type ReasoningItem } from './process-steps.js';
 import { assistantSegments, boundaryOf, processChoiceKey, processExpanded, terminalLabel, type ReaderGroup, type TurnBoundary } from './projection.js';
 import { ReasoningRow, reasoningPreview } from './ReasoningRow.js';
 import { useReaderActions } from './reader-context.js';
@@ -167,12 +167,7 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, select
   const shared = useMemo(() => ({ renderSlotChain: props.renderSlotChain, loadImage: props.loadImage }), [props.renderSlotChain, props.loadImage]);
   // Rows the reader opened keep their own row: a settled call is not folded into the thought above it under their cursor.
   const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
-  const trackOpen = useCallback((key: string, value: boolean) => setOpened(previous => {
-    if (previous.has(key) === value) return previous;
-    const next = new Set(previous);
-    if (value) next.add(key); else next.delete(key);
-    return next;
-  }), []);
+  const trackOpen = useCallback((key: string, value: boolean) => setOpened(previous => rememberOpened(previous, key, value)), []);
   const renderItem = useCallback((item: PanelItem, track = true): ReactNode => {
     switch (item.kind) {
       case 'reasoning': return <BlockBoundary><ReasoningSegment {...shared} useSession={props.useSession} nodeKey={item.nodeKey} start={item.start} pinned={panelPinned} boundary={boundary} panelOpen={open} compact={compact} onRead={pinPanel} /></BlockBoundary>;

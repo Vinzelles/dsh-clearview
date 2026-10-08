@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  clusterElapsedMs, formatOperationClusterSummary, groupOperations, mergeThoughts, type FlowRow, type OperationRow, type PanelItem,
+  rememberOpened, clusterElapsedMs, formatOperationClusterSummary, groupOperations, mergeThoughts, type FlowRow, type OperationRow, type PanelItem,
 } from '../src/client/process-steps.ts';
 import { assistantNode, chatNode, reasoning, settledTool, toolCall, toolEntry, turnLocation } from './support/chat-fixture.ts';
 
@@ -201,4 +201,17 @@ test('a call the reader has opened is never folded into the thought row, even on
   const command = record('command', { outcome: { kind: 'success' } });
   const get = lookup(t.node, command.node);
   assert.deepEqual(mergeThoughts(groupOperations([t.item, command.item], get), get, false, new Set([command.item.key])).map(row => row.kind), ['single', 'single']);
+});
+
+test('opened rows are remembered for the rest of the turn: closing one keeps it standalone, and the set is stable when nothing changes', () => {
+  const none = new Set<string>();
+  const once = rememberOpened(none, 'reader-tool:a', true);
+  assert.ok(once.has('reader-tool:a'));
+  assert.notEqual(once, none);
+  assert.equal(rememberOpened(once, 'reader-tool:a', true), once);
+  assert.equal(rememberOpened(once, 'reader-tool:a', false), once, 'closing does not forget');
+  assert.equal(rememberOpened(none, 'reader-tool:b', false), none);
+  const t = thought();
+  const rows = mergeThoughts(groupOperations([t.item, settled('a')], lookup(t.node)), lookup(t.node), false, rememberOpened(once, 'reader-tool:a', false));
+  assert.deepEqual(rows.map(row => row.kind), ['single', 'single']);
 });

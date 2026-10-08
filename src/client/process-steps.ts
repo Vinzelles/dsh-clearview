@@ -260,6 +260,15 @@ function operationSettled(item: PanelItem, get: Getter, turnClosed: boolean): bo
 }
 
 /**
+ * Remember a row the reader opened. The set only grows for the rest of the turn: closing the row again must not let it
+ * fold into the collapsed thought above it, which would make it vanish under the cursor. Returns the same set when nothing changes.
+ */
+export function rememberOpened(opened: ReadonlySet<string>, key: string, open: boolean): ReadonlySet<string> {
+  if (!open || opened.has(key)) return opened;
+  return new Set(opened).add(key);
+}
+
+/**
  * Fold a settled thought and the single, settled, healthy operation that follows it into one row. Live thinking, a
  * running / failed / interrupted operation, one the reader has opened (`opened` holds item keys, so an open row is not
  * swallowed when its call settles), a cluster next, or anything between the two keep separate rows.
