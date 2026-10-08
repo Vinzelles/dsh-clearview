@@ -31,7 +31,7 @@
 
 - 展开收起容器（`CollapseBody`）只在高度动画进行中和收起时裁剪内容；展开稳定后不再裁剪，面板内容、合并行成员、思考行的悬停底色右侧外扩不会被切掉。
 
-- 回答里 Markdown 表格容器（`tableScroll`）显式 `box-sizing: border-box`、`width: 100%`、`min-width: 0`，并用 `contain: inline-size` 不再把表格自身的最小内容宽度带进父级尺寸：新主题下 480px 出现的 1px 横向溢出（容器右缘 470 对阅读根 469）来自这个唯一的滚动容器。样式契约测试的负外边距 / `calc(100% + …)` 扫描现在递归整个 `src/client`（含 markdown、native 和兼容层 CSS），并正确处理 `!important` 与双值 `margin-inline`；唯一的白名单是 Markdown 行内链接（3px 透明边框与 -3px 外边距相抵，净宽为零）。
+- 回答里 Markdown 表格容器（`tableScroll`）显式 `box-sizing: border-box`、`width: 100%`、`min-width: 0`，并用 `contain: inline-size` 不再把表格自身的最小内容宽度带进父级尺寸：新主题下 480px 曾出现 1px 横向溢出（容器右缘 470 对阅读根 469），只有这个容器；修复后真实宿主复查所有会话都不再溢出（具体成因未单独定位）。样式契约测试的负外边距 / `calc(100% + …)` 扫描现在递归整个 `src/client`（含 markdown、native 和兼容层 CSS），并正确处理 `!important` 与双值 `margin-inline`；唯一的白名单是 Markdown 行内链接（3px 透明边框与 -3px 外边距相抵，净宽为零）。
 
 ### 底部留白
 

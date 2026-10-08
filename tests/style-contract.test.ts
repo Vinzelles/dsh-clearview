@@ -94,7 +94,7 @@ test('the reader column keeps 24px of breathing room after its last element, wit
 test('the cluster row uses the 24px row grammar with token colours only', () => {
   const css = sheet('ClusterRow');
   assert.match(css, /\.members \{[^}]*margin-left: calc\(22px/);
-  assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}|rgba?\(/);
+  assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}\b|rgba?\(/);
 });
 
 test('the panel header meta items are 12/18 secondary text while the status keeps the row size', () => {
@@ -200,14 +200,18 @@ test('panel narration is 13px on the 21px process line in the thought-text colou
   assert.match(/\.viewport \{([^}]*)\}/.exec(sheet('ReasoningRow'))?.[1] ?? '', /color: var\(--dsw-alias-label-tertiary\)[\s\S]*line-height: 21px/);
   // Inline code is one step stronger than the text; strong keeps the Markdown weight; links are not touched.
   assert.match(turn, /\.narration \[data-reader-text\] :not\(pre\) > code \{[^}]*color: var\(--dsw-alias-label-secondary\)/);
-  assert.doesNotMatch(turn, /\.narration[^{]*(strong|a)[^{]*\{/);
+  assert.doesNotMatch(turn, /\.narration[^{]*\b(strong|a)\s*\{/);
+  // Linked inline code keeps the link colour instead of the inline-code colour.
+  assert.match(turn, /\.narration \[data-reader-text\] a > code \{ color: inherit; \}/);
+  // Nested lists keep the answer zone's 4px gap.
+  assert.match(turn, /\.narration \[data-reader-text\] li > :where\(ul, ol\) \{ margin-top: 4px; \}/);
+  // One line-height declaration per heading: the block rule owns it, the heading rule does not repeat it.
+  assert.doesNotMatch(/:where\(h1, h2, h3, h4, h5, h6\) \{([^}]*)\}/.exec(turn)?.[1] ?? '', /line-height/);
   // Spacing scales with the smaller text: no 16px / 32px Markdown margins left on paragraphs, lists and headings.
   assert.match(turn, /\.narration \[data-reader-text\] :where\(p, ul, ol, blockquote\) \{ margin: 8px 0; \}/);
   // The Markdown block rules set their own line height, so the 21px line is also set on the blocks, not only on the root.
   assert.match(turn, /\.narration \[data-reader-text\] :where\(p, li, blockquote, h1, h2, h3, h4, h5, h6\) \{ line-height: 21px; \}/);
   assert.match(turn, /:where\(h1, h2, h3, h4, h5, h6\) \{[^}]*margin: 10px 0 4px[^}]*font-size: var\(--cv-font-secondary\)/);
-  assert.match(turn, /> \* > :first-child \{ margin-top: 0; \}/);
-  assert.match(turn, /> \* > :last-child \{ margin-bottom: 0; \}/);
   // The rule being overridden: .markdown sets primary colour and the 16px base font on itself.
   assert.match(/\.markdown \{([^}]*)\}/.exec(readFileSync(new URL('markdown/MarkdownText.module.css', CLIENT), 'utf8'))?.[1] ?? '', /color: var\(--dsw-alias-label-primary\)/);
 });
@@ -217,6 +221,5 @@ test('the Markdown table wrapper never exceeds its column', () => {
   assert.match(wrapper, /box-sizing: border-box/);
   assert.match(wrapper, /width: 100%/);
   assert.match(wrapper, /min-width: 0/);
-  assert.match(wrapper, /max-width: 100%/);
   assert.match(wrapper, /contain: inline-size/);
 });

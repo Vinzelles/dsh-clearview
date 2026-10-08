@@ -7,13 +7,13 @@
 .narration { min-width: 0; margin: 2px 0 6px; color: var(--dsw-alias-label-tertiary); font-size: var(--cv-font-secondary); line-height: 21px; overflow-wrap: anywhere; }
 .narration [data-reader-text] > * { color: var(--dsw-alias-label-tertiary); font-size: var(--cv-font-secondary); line-height: 21px; }
 .narration [data-reader-text] :not(pre) > code { color: var(--dsw-alias-label-secondary); }
+.narration [data-reader-text] a > code { color: inherit; }
 .narration [data-reader-text] :where(p, ul, ol, blockquote) { margin: 8px 0; }
 /* The Markdown paragraph, list and heading rules set their own line height (the host theme's 1.75-style ratio gave 23px at 13px), so the process line goes on the blocks themselves, not just the root. */
 .narration [data-reader-text] :where(p, li, blockquote, h1, h2, h3, h4, h5, h6) { line-height: 21px; }
-.narration [data-reader-text] :where(h1, h2, h3, h4, h5, h6) { margin: 10px 0 4px; font-size: var(--cv-font-secondary); line-height: 21px; font-weight: 600; }
+.narration [data-reader-text] :where(h1, h2, h3, h4, h5, h6) { margin: 10px 0 4px; font-size: var(--cv-font-secondary); font-weight: 600; }
+.narration [data-reader-text] li > :where(ul, ol) { margin-top: 4px; }
 .narration [data-reader-text] li::marker { line-height: 21px; }
-.narration [data-reader-text] > * > :first-child { margin-top: 0; }
-.narration [data-reader-text] > * > :last-child { margin-bottom: 0; }
 .output { min-width: 0; overflow-wrap: anywhere; }
 .answer { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
 [data-reader-panel] + .answer { margin-top: 4px; }
