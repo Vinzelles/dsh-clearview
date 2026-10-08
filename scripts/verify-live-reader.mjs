@@ -19,6 +19,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+// The reader must report the version this worktree is released as.
+const expectedVersion = JSON.parse(readFileSync(resolve('package.json'), 'utf8')).version;
 const base = process.env.DSH_TEST_URL || 'http://127.0.0.1:3193';
 const bundle = readFileSync(resolve(process.env.READER_BUNDLE || 'lib/client.js'));
 const titles = (process.env.READER_SESSIONS || '').split('|').map(value => value.trim()).filter(Boolean);
@@ -515,7 +517,7 @@ report.profileRemoved = !existsSync(profile);
 if (report.sessionCountAfter === undefined) report.sessionCountAfter = await sessionCount().catch(() => null);
 const readerErrors = report.exceptions.concat(report.consoleErrors).filter(text => /clearview|data-reader|dsh-clearview/i.test(text));
 report.pass = (!intercept || report.replacements + report.spliced > 0)
-  && report.sessions.every(item => item.opened && item.readerMounted && item.initial?.version === '0.2.0' && item.initial.blockErrors.length === 0 && item.final?.blockErrors.length === 0)
+  && report.sessions.every(item => item.opened && item.readerMounted && item.initial?.version === expectedVersion && item.initial.blockErrors.length === 0 && item.final?.blockErrors.length === 0)
   && readerErrors.length === 0 && report.handlerErrors.length === 0 && report.profileRemoved
   && report.sessionCreates <= 1 && report.sessionCountBefore === report.sessionCountAfter;
 report.readerErrors = readerErrors;
