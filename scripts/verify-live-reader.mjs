@@ -286,6 +286,55 @@ try {
       return true;
     })()`);
     await delay(500);
+    // 0.2.1 visual contract, measured with every panel open and every cluster still in its default state.
+    await evaluate("[...document.querySelectorAll('[data-dsh-clearview] [data-reader-disclosure][data-expanded=\"false\"] > button')].slice(0, 12).forEach(button => button.click())");
+    await delay(900);
+    await evaluate("document.querySelector('[data-dsh-clearview] [data-reader-panel]')?.scrollIntoView({ block: 'start' })");
+    await delay(500);
+    await shot(`${name}-panel-default`);
+    item.polish = await evaluate(`(() => {
+      const root = document.querySelector('[data-dsh-clearview]');
+      if (!root) return null;
+      const all = selector => [...root.querySelectorAll(selector)];
+      const visible = node => { const box = node.getBoundingClientRect(); return box.width > 0 && box.height > 0; };
+      const clusters = all('[data-reader-cluster]').map(node => ({ state: node.getAttribute('data-cluster-state'), expanded: node.getAttribute('data-expanded'),
+        title: node.querySelector('[data-disclosure-row]')?.textContent.slice(0, 50), members: node.querySelectorAll('[data-reader-tool-call], [data-reader-record-kind]').length }));
+      const text = root.innerText;
+      const panels = all('[data-reader-panel]');
+      const panelStyle = panels.slice(0, 3).map(panel => { const style = getComputedStyle(panel); const header = panel.querySelector(':scope > [data-reader-disclosure] > button');
+        return { status: panel.getAttribute('data-status'), background: style.backgroundColor, boxShadow: style.boxShadow, radius: style.borderRadius, headerHeight: header ? Math.round(header.getBoundingClientRect().height * 10) / 10 : null,
+          headerColor: header ? getComputedStyle(header.querySelector('span:nth-of-type(2)') ?? header).color : null, headerText: header?.textContent.slice(0, 60) }; });
+      const failedHeader = all('[data-reader-panel][data-status="error"] > [data-reader-disclosure] > button, [data-reader-panel][data-status="interrupted"] > [data-reader-disclosure] > button')[0];
+      const metas = panels.slice(0, 2).map(panel => { const tag = panel.querySelector(':scope > [data-reader-disclosure] > button > span:last-of-type'); return tag ? { size: getComputedStyle(tag).fontSize, line: getComputedStyle(tag).lineHeight } : null; });
+      return {
+        clusterCount: clusters.length, clusterMembers: clusters.reduce((sum, item) => sum + item.members, 0), clusterStates: clusters.reduce((out, item) => { out[item.state] = (out[item.state] ?? 0) + 1; return out; }, {}),
+        clusterExpandedDefault: clusters.filter(item => item.expanded === 'true').length, clusterSample: clusters.slice(0, 4),
+        stepLabelsVisible: (text.match(/步骤\\s*\\d/g) ?? []).length, stepGroupAttributes: all('[data-reader-step]').length,
+        toolCallEnglishVisible: (text.match(/Tool call/g) ?? []).length, toolCallSamples: [...text.matchAll(/.{0,30}Tool call.{0,30}/g)].slice(0, 3).map(match => match[0]), stepSamples: [...text.matchAll(/.{0,30}步骤\\s*\\d.{0,30}/g)].slice(0, 3).map(match => match[0]), toolCallEnglishInDom: (root.textContent.match(/Tool call/g) ?? []).length,
+        previewAttributes: all('[data-preview]').length,
+        reasoningInsetsVisible: all('[data-reader-reasoning-card]').filter(node => visible(node) && node.getAttribute('data-live') !== 'true').length, reasoningRows: all('[data-reader-reasoning]').length,
+        toolTitles: [...new Set(all('[data-reader-tool-call] [data-disclosure-row]').map(row => row.textContent.slice(0, 14)))].slice(0, 12),
+        panels: panelStyle, failedHeaderColor: failedHeader ? getComputedStyle(failedHeader.querySelector('span:nth-of-type(2)') ?? failedHeader).color : null, metas,
+      };
+    })()`);
+    await evaluate("document.querySelectorAll('[data-dsh-clearview] [data-reader-cluster][data-expanded=\"false\"] [data-disclosure-row]').forEach(row => row.click())");
+    await delay(900);
+    item.clustersOpened = await evaluate(`(() => [...document.querySelectorAll('[data-dsh-clearview] [data-reader-cluster]')].map(node => { const title = node.querySelector('[data-disclosure-row]')?.textContent ?? ''; const topCalls = [...node.querySelectorAll('[data-reader-tool-call]')].filter(call => !call.parentElement.closest('[aria-label=\"子调用\"]')); const calls = topCalls.length; const nested = node.querySelectorAll('[data-reader-tool-call]').length - calls; const records = node.querySelectorAll('[data-reader-record-kind]').length; const claimed = Number(title.match(/(\\d+) 次工具调用/)?.[1] ?? NaN); return { title: title.slice(0, 40), claimedCalls: claimed, calls, nested, records, ok: Number.isNaN(claimed) ? null : claimed === calls }; }))()`);
+    await evaluate("document.querySelector('[data-dsh-clearview] [data-reader-cluster]')?.scrollIntoView({ block: 'center' })");
+    await delay(400);
+    await shot(`${name}-clusters-open`);
+    await evaluate("(() => { const scroller = document.querySelector('[data-conversation-scroll]'); if (scroller) scroller.scrollTop = scroller.scrollHeight; })()");
+    await delay(700);
+    item.bottomGap = await evaluate(`(() => {
+      const root = document.querySelector('[data-dsh-clearview]'); const composer = document.querySelector('[data-composer-seat]');
+      if (!root || !composer) return null;
+      const blocks = [...root.querySelectorAll('[data-reader-file-changes], [data-reader-turn-footer], [data-reader-answer], [data-reader-panel], [data-reader-attention]')].filter(node => node.getBoundingClientRect().height > 0);
+      const lastContent = Math.max(...blocks.map(node => node.getBoundingClientRect().bottom));
+      return { composerTop: Math.round(composer.getBoundingClientRect().top), lastContentBottom: Math.round(lastContent), gap: Math.round(composer.getBoundingClientRect().top - lastContent), rootBottom: Math.round(root.getBoundingClientRect().bottom) };
+    })()`);
+    await shot(`${name}-bottom-gap`);
+    await evaluate("document.querySelector('[data-dsh-clearview] [data-reader-panel]')?.scrollIntoView({ block: 'start' })");
+    await delay(400);
     // Consecutive tool calls are merged into collapsed cluster rows; open them so the member tool rows can be measured.
     await evaluate("document.querySelectorAll('[data-live-check=panel] [data-reader-cluster][data-expanded=\"false\"] [data-disclosure-row]').forEach(row => row.click())");
     await delay(500);
