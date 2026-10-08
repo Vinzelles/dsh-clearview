@@ -340,10 +340,10 @@ try {
     item.narration = await evaluate(`(() => {
       const root = document.querySelector('[data-dsh-clearview]');
       const probe = document.createElement('span'); probe.style.color = 'var(--dsw-alias-label-secondary)'; root.appendChild(probe); const secondary = getComputedStyle(probe).color; probe.style.color = 'var(--dsw-alias-label-primary)'; const primary = getComputedStyle(probe).color; probe.remove();
-      const paragraph = scope => [...root.querySelectorAll(scope + ' [data-reader-text] > p')].find(node => node.textContent.trim().length > 20);
-      const describe = node => node ? { color: getComputedStyle(node).color, weight: getComputedStyle(node).fontWeight, size: getComputedStyle(node).fontSize, text: node.textContent.slice(0, 30) } : null;
+      const paragraph = scope => [...root.querySelectorAll(scope + ' [data-reader-text] > *')].find(node => node.textContent.trim().length > 12 && !/^(PRE|UL|OL|TABLE|H[1-6])$/.test(node.tagName));
+      const describe = node => node ? { tag: node.tagName, cls: String(node.className).slice(0, 30), color: getComputedStyle(node).color, weight: getComputedStyle(node).fontWeight, size: getComputedStyle(node).fontSize, text: node.textContent.slice(0, 30) } : null;
       const inline = (scope, tag) => { const node = root.querySelector(scope + ' [data-reader-text] ' + tag); return node ? { color: getComputedStyle(node).color, weight: getComputedStyle(node).fontWeight, parentColor: getComputedStyle(node.parentElement).color } : null; };
-      return { secondary, primary, narration: describe(paragraph('[data-reader-narration]')), answer: describe(paragraph('[data-reader-answer]')),
+      return { secondary, primary, narration: describe(paragraph('[data-reader-narration]')), answer: describe(paragraph('[data-reader-answer]')), narrationInner: describe(paragraph('[data-reader-narration]')?.querySelector('p, li')), answerInner: describe(paragraph('[data-reader-answer]')?.querySelector('p, li')),
         narrationInline: { code: inline('[data-reader-narration]', 'code'), strong: inline('[data-reader-narration]', 'strong'), link: inline('[data-reader-narration]', 'a') },
         answerInline: { code: inline('[data-reader-answer]', 'code'), strong: inline('[data-reader-answer]', 'strong'), link: inline('[data-reader-answer]', 'a') } };
     })()`);
