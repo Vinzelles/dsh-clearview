@@ -16,3 +16,11 @@ test('renders a following viewport with the text and no resume button', () => {
   assert.match(html, /data-reader-reasoning-scroll[\s\S]*Hmm, the 围脊 boxes/);
   assert.doesNotMatch(html, /继续跟随/);
 });
+
+test('reduced motion keeps following (no resume button) and the viewport is a named region', () => {
+  const html = renderToStaticMarkup(createElement(LiveThought, { follow: true, motion: false }, 'text'));
+  assert.match(html, /data-reader-live-thought[^>]*data-following="true"/);
+  assert.doesNotMatch(html, /继续跟随/);
+  assert.match(html, /role="region"/);
+  assert.match(html, /aria-label="思考内容"/);
+});

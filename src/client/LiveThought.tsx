@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { followAdvance } from './reasoning-follow.js';
 import css from './LiveThought.module.css';
@@ -14,11 +14,15 @@ export function LiveThought({ follow, motion, children }: { follow: boolean; mot
   const content = useRef<HTMLDivElement>(null);
   const [following, setFollowing] = useState(true);
   const [scrolled, setScrolled] = useState(false);
+  const [overflow, setOverflow] = useState(false);
+  const viewportId = useId();
   const stopFollow = useRef<() => void>(() => {});
   const finishRef = useRef<{ cancel: () => void } | null>(null);
   const lastTop = useRef(0);
   const followSeeded = useRef(false);
   const allowed = following && follow && motion;
+  // Reduced motion: no easing, the viewport jumps to the newest text.
+  const jumping = following && follow && !motion;
 
   const pause = useCallback(() => {
     stopFollow.current();
@@ -45,7 +49,10 @@ export function LiveThought({ follow, motion, children }: { follow: boolean; mot
     const paint = (pos: number) => { port.scrollTop = pos; lastTop.current = port.scrollTop; };
     const refresh = () => {
       clientHeight = port.clientHeight;
-      tail = scrollMetrics(port).tail;
+      const metrics = scrollMetrics(port);
+      tail = metrics.tail;
+      setOverflow(metrics.overflow);
+      if (jumping && alive && !hasSelection() && Math.abs(port.scrollTop - tail) > 1) paint(tail);
     };
     stopFollow.current = () => { finishRef.current?.cancel(); cancel(); tracking = false; };
     const canFollow = () => allowed && alive && !document.hidden && !hasSelection();
@@ -74,9 +81,9 @@ export function LiveThought({ follow, motion, children }: { follow: boolean; mot
       frame = requestAnimationFrame(loop);
     };
     const onScroll = () => {
-      if ((tracking || finishRef.current) && Math.abs(port.scrollTop - lastTop.current) > 1) pause();
+      if ((tracking || jumping || finishRef.current) && Math.abs(port.scrollTop - lastTop.current) > 1) pause();
     };
-    const onWheel = () => { if (tracking || finishRef.current) pause(); };
+    const onWheel = () => { if (tracking || jumping || finishRef.current) pause(); };
     const onSelection = () => { if (hasSelection()) pause(); };
     const onVisibility = () => { if (!document.hidden && canFollow()) run(); };
     const observer = new ResizeObserver(() => { refresh(); if (tracking) run(); });
@@ -117,14 +124,15 @@ export function LiveThought({ follow, motion, children }: { follow: boolean; mot
         glideFrame = requestAnimationFrame(glide);
       }
     };
-  }, [allowed, pause]);
+  }, [allowed, jumping, pause]);
 
-  return <div className={css.live} data-reader-live-thought data-following={allowed}>
-    <div ref={viewport} className={css.viewport} data-reader-reasoning-scroll data-scrolled={scrolled}
+  return <div className={css.live} data-reader-live-thought data-following={follow && following}>
+    <div ref={viewport} id={viewportId} className={css.viewport} data-reader-reasoning-scroll role="region"
+      aria-label={`思考内容${overflow ? '，可滚动阅读' : ''}`} tabIndex={overflow ? 0 : undefined} data-scrolled={scrolled}
       onScroll={() => setScrolled((viewport.current?.scrollTop ?? 0) > 0)}
       onPointerDown={pause} onFocus={pause}>
       <div ref={content} data-reader-reasoning-text>{children}</div>
     </div>
-    {!following && <button type="button" className={css.resume} onClick={() => setFollowing(true)}>继续跟随</button>}
+    {!following && <button type="button" className={css.resume} aria-controls={viewportId} onClick={() => setFollowing(true)}>继续跟随</button>}
   </div>;
 }
