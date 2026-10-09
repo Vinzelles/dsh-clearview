@@ -1,6 +1,6 @@
 .tool { min-width: 0; }
 .detail { margin: 2px 0 8px 22px; min-width: 0; }
 .children { display: flex; flex-direction: column; margin: 2px 0 6px 7px; padding-left: 14px; border-left: 1px solid var(--cc-border); }
-.command { font-family: var(--cc-font-mono); font-size: var(--cc-size-code); }
+:global([data-dsh-clearview]) .tool .command { font-family: var(--cc-font-mono); font-size: var(--cc-size-code) !important; line-height: inherit; color: var(--cc-text-100); background: none; border: 0; padding: 0; box-shadow: none; }
 .deep { margin: 0; color: var(--cc-text-500); font-size: var(--cc-size-small); }
 .media { display: flex; flex-direction: column; gap: 12px; }

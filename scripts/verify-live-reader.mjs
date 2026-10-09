@@ -1,25 +1,31 @@
-// Real-host check: a fresh headless Chrome profile opens the live DSH page and
-// receives the locally built reader bundle through CDP response interception.
-// Nothing is installed and no message is sent; only existing sessions are opened.
-// Safety: this script only reads and navigates. It never types, never presses a key,
-// never clicks fork / rewind / approve / stop / settings, and never creates a session.
-// Workspace rows (and their 「展开其余」 buttons) are only toggled open when READER_EXPAND lists
-// them, to reach sessions hidden in collapsed sidebar groups; the script counts session/create
-// requests and aborts if there is more than the host's own blank startup session.
-// READER_SESSIONS entries are title prefixes, or "#<id suffix>" to pick one session row by id.
-// READER_CONDITIONS=0 skips the font-size / theme / reduced-motion matrix (narrow still runs).
-// The theme check only flips document.body's data-ds-dark-theme attribute inside the headless page; no host preference is written.
-// Pass also requires the retired 0.2.x selectors (panel / cluster / earlier / activity pill ...) to count 0.
-// Side effects to expect: (1) loading the DSH page makes the host open its own blank startup
-// session; (2) the 复制回答 check clicks the real copy button, and headless Chrome may write the
-// answer text to your real system clipboard (the profile is isolated, the OS clipboard is not);
-// (3) the temporary Chrome profile (%TEMP%/clearview-live-*) is removed when the run ends: the
-// script stops Chrome (taskkill /T /F on Windows), waits for it to exit, then deletes the
-// profile with retries, on success, on failure and on an uncaught error.
+// Read-only host verification. Request-stage interception denies every non-allowlisted RPC,
+// including startup session/create. Clipboard writes are browser-local receipts only.
+// Missing sessions, blocked prerequisites and known native chat noise are reported uncovered.
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+
+import { readonlyDecision, readonlyRequestSummary, classifyBrowserError, interactionCoverage, recordBlockedRequest, summarizeReaderGate } from './browser-readonly.mjs';
+
+// BEGIN TYPOGRAPHY GATE: pure numeric checks; CSS family and FontFace loading are separate evidence.
+function typographyGate(fonts) {
+  const px = value => typeof value === 'string' && value.trim().endsWith('px') && value.trim().slice(0, -2).trim() !== '' ? Number(value.trim().slice(0, -2)) : NaN;
+  const delta = fonts?.delta;
+  const expectedBody = 16 + delta;
+  const expectedCommand = 13 + delta;
+  const size = px(fonts?.prose?.size);
+  const line = px(fonts?.prose?.line);
+  const close = (actual, expected) => Number.isFinite(actual) && Number.isFinite(expected) && Math.abs(actual - expected) <= 0.12;
+  const validDelta = Number.isFinite(delta) && expectedBody > 0 && expectedCommand > 0;
+  const proseSize = validDelta && fonts?.prose?.tag === 'P' && close(size, expectedBody);
+  const proseLine = proseSize && close(line, size * 1.6);
+  const proseWeight = fonts?.prose?.weight === '400' || fonts?.prose?.weight === 'normal';
+  const commandSize = !fonts?.command || validDelta && close(px(fonts.command.size), expectedCommand);
+  return { pass: proseSize && proseLine && proseWeight && commandSize, delta, expectedBody, expectedCommand,
+    proseSize, proseLine, proseWeight, commandSize, commandCovered: !!fonts?.command };
+}
+// END TYPOGRAPHY GATE
 
 // The reader must report the version this worktree is released as.
 const expectedVersion = JSON.parse(readFileSync(resolve('package.json'), 'utf8')).version;
@@ -58,7 +64,10 @@ function spliceReaderModule(text) {
 const sessionCount = async () => {
   const response = await fetch(new URL('/api/session/list', base), { method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ type: 'client-request', rpcId: crypto.randomUUID(), method: 'session/list', payload: { args: { _request: {} } } }) });
-  return (await response.json()).result?.value?.items?.length ?? null;
+  if (!response.ok) throw new Error('session/list HTTP ' + response.status);
+  const items = (await response.json()).result?.value?.items;
+  if (!Array.isArray(items)) throw new Error('session/list did not return a session inventory');
+  return items.length;
 };
 const profile = mkdtempSync(join(tmpdir(), 'clearview-live-'));
 const chrome = spawn(process.env.CHROME_PATH || join(process.env.ProgramFiles || 'C:/Program Files', 'Google/Chrome/Application/chrome.exe'),
@@ -84,8 +93,9 @@ const removeProfile = () => {
 const bail = error => { console.error(error); killChrome(); removeProfile(); process.exit(2); };
 process.on('unhandledRejection', bail);
 process.on('uncaughtException', bail);
-const sessionCountBefore = await sessionCount();
-const report = { base, entry: entry.url, sessions: [], exceptions: [], consoleErrors: [], replacements: 0, spliced: 0, sessionCreates: 0, comboPassedThrough: [], handlerErrors: [], sessionCountBefore };
+const sessionCountBefore = await sessionCount().catch(() => null);
+const report = { base, entry: entry.url, sessions: [], exceptions: [], consoleErrors: [], replacements: 0, spliced: 0, sessionCreates: 0, comboPassedThrough: [], handlerErrors: [], sessionCountBefore, blockedRequests: [], skippedChecks: [], blockedPrerequisite: [], hostBackgroundErrors: [], uncovered: [], fatal: null };
+let exceptionPhase = 'startup';
 let ws;
 try {
   let port;
@@ -99,17 +109,30 @@ try {
   await new Promise((done, fail) => { ws.onopen = done; ws.onerror = fail; });
   let id = 0;
   const pending = new Map();
-  const send = (method, params = {}) => new Promise((done, fail) => { const n = ++id; pending.set(n, { done, fail }); ws.send(JSON.stringify({ id: n, method, params })); });
+  const createRequests = new Set();
+  const send = (method, params = {}) => new Promise((done, fail) => { const n = ++id; const timer = setTimeout(() => { pending.delete(n); fail(new Error('CDP timeout: ' + method)); }, 15000); pending.set(n, { done, fail, timer }); ws.send(JSON.stringify({ id: n, method, params })); });
   ws.onmessage = async event => {
+    let paused;
     try {
       const message = JSON.parse(event.data);
-      if (message.method === 'Network.requestWillBeSent' && message.params.request.method === 'POST' && /session\/create/.test(message.params.request.postData ?? '')) report.sessionCreates++;
+      if (message.method === 'Network.requestWillBeSent' && /session[/.]create/.test(message.params.request.url + (message.params.request.postData ?? ''))) createRequests.add(message.params.requestId);
+      if (message.method === 'Network.responseReceived' && createRequests.has(message.params.requestId)) report.sessionCreates++;
       const waiter = pending.get(message.id);
-      if (waiter) { pending.delete(message.id); message.error ? waiter.fail(new Error(message.error.message)) : waiter.done(message.result); }
-      if (message.method === 'Runtime.exceptionThrown') report.exceptions.push(message.params.exceptionDetails.exception?.description || message.params.exceptionDetails.text);
-      if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') report.consoleErrors.push(message.params.args.map(arg => arg.value ?? arg.description ?? '').join(' ').slice(0, 500));
+      if (waiter) { clearTimeout(waiter.timer); pending.delete(message.id); message.error ? waiter.fail(new Error(message.error.message)) : waiter.done(message.result); }
+      if (message.method === 'Runtime.exceptionThrown') report.exceptions.push({ kind: 'runtime', text: message.params.exceptionDetails.exception?.description || message.params.exceptionDetails.text, phase: exceptionPhase });
+      if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') report.consoleErrors.push({ kind: 'console', text: message.params.args.map(arg => arg.value ?? arg.description ?? '').join(' ').slice(0, 2000), phase: exceptionPhase });
       if (message.method === 'Fetch.requestPaused') {
-        const { requestId, request, responseStatusCode } = message.params;
+        const { requestId, request, responseStatusCode, responseErrorReason } = message.params;
+        paused = requestId;
+        if (responseStatusCode === undefined && responseErrorReason === undefined) {
+          const decision = readonlyDecision(request, base);
+          if (!decision.allowed) {
+            const summary = readonlyRequestSummary(request, decision);
+            recordBlockedRequest(report.blockedRequests, summary);
+            await send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' });
+          } else await send('Fetch.continueRequest', { requestId });
+          return;
+        }
         const list = comboList(request.url);
         let replaced = null;
         if (list.includes('dsh-clearview/client.js') && responseStatusCode === 200) {
@@ -131,6 +154,7 @@ try {
     } catch (error) {
       // A failed interception reply must not become an unhandled rejection that skips cleanup.
       report.handlerErrors.push(String(error?.stack ?? error).slice(0, 500));
+      if (paused) await send('Fetch.failRequest', { requestId: paused, errorReason: 'BlockedByClient' }).catch(() => {});
     }
   };
   const evaluate = async expression => {
@@ -149,11 +173,28 @@ try {
   await send('Runtime.enable');
   await send('Page.enable');
   await send('Network.enable');
-  await send('Browser.grantPermissions', { origin: new URL(base).origin, permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] }).catch(() => {});
-  if (intercept) await send('Fetch.enable', { patterns: [{ urlPattern: '*dsh-clearview/client.js*', requestStage: 'Response' }] });
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
+    const receipt = { ready: false, writes: [] }; globalThis.__clearviewClipboardStub = receipt;
+    const record = (kind, length) => receipt.writes.push({ kind, length });
+    Object.defineProperty(navigator, 'clipboard', { configurable: false, value: Object.freeze({
+      writeText: async text => { record('writeText', String(text).length); },
+      write: async items => { record('write', items.length); },
+      readText: async () => '', read: async () => [],
+    }) });
+    const original = document.execCommand.bind(document);
+    document.execCommand = (command, ...args) => {
+      if (/^(copy|cut)$/i.test(command)) { record('execCommand:' + command, document.getSelection()?.toString().length ?? 0); return true; }
+      return original(command, ...args);
+    };
+    document.addEventListener('copy', event => { event.preventDefault(); record('copy-event', event.clipboardData?.getData('text/plain')?.length ?? 0); });
+    document.addEventListener('cut', event => event.preventDefault());
+    receipt.ready = true;
+  })()` });
+  await send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }, ...(intercept ? [{ urlPattern: '*dsh-clearview/client.js*', requestStage: 'Response' }] : [])] });
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: base });
-  if (!await until("!!document.querySelector('[data-composer-seat]')", 30000)) throw new Error('DSH did not finish loading');
+  if (!await until("!!document.querySelector('[data-composer-seat]')", 30000)) { report.uncovered.push({ kind: 'host-startup', reason: 'Host did not finish loading with writes blocked' }); throw new Error('DSH did not finish loading safely'); }
+  if (!await evaluate('globalThis.__clearviewClipboardStub?.ready === true')) throw new Error('Browser-local clipboard stub unavailable');
 
   // Selectors of the 0.2.x layout that must not exist any more (counted only to assert 0).
   const retiredSelector = '[data-reader-panel],[data-reader-process],[data-reader-cluster],[data-reader-earlier],[data-reader-narration],[data-reader-activity-pill],[data-reader-reasoning-card],[data-reader-reasoning-row]';
@@ -198,17 +239,27 @@ try {
     for (const line of lines) { const height = Math.round(line.getBoundingClientRect().height * 10) / 10; heights[height] = (heights[height] ?? 0) + 1; }
     const summaries = all('[data-reader-tool-call] [data-reader-line] span[title]');
     const clipped = summaries.filter(node => node.scrollWidth > node.clientWidth + 1);
-    const sample = node => node ? { size: cs(node).fontSize, line: cs(node).lineHeight, family: cs(node).fontFamily.slice(0, 120) } : null;
-    const prose = root.querySelector('[data-reader-answer]') ?? root.querySelector('[data-reader-flow] [data-reader-key]');
+    const sample = node => node ? { tag: node.tagName, size: cs(node).fontSize, line: cs(node).lineHeight, weight: cs(node).fontWeight, family: cs(node).fontFamily.slice(0, 120) } : null;
+    // Measure rendered prose paragraphs, not the outer article/Block root.
+    const prose = root.querySelector('[data-reader-answer] p') ?? root.querySelector('[data-reader-flow] article[data-reader-key] p');
     const code = root.querySelector('[data-reader-answer] code, [data-reader-flow] code');
+    const command = root.querySelector('[data-reader-tool-call][data-tool-category="terminal"] [data-reader-line] code');
+    // Resolve the custom property's calc() independently of the paragraph we are testing.
+    const deltaProbe = document.createElement('span');
+    deltaProbe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none';
+    deltaProbe.style.setProperty('font-size', 'calc(100px + var(--dsh-content-font-delta, 0px))', 'important');
+    root.appendChild(deltaProbe);
+    let delta;
+    try { delta = Number.parseFloat(cs(deltaProbe).fontSize) - 100; }
+    finally { deltaProbe.remove(); }
     let backdrop = root; while (backdrop && /^rgba\\(0, 0, 0, 0\\)$|^transparent$/.test(cs(backdrop).backgroundColor)) backdrop = backdrop.parentElement;
     const scroller = document.querySelector('[data-conversation-scroll]');
     return {
       viewport: { width: innerWidth, height: innerHeight },
       lineCount: lines.length, lineHeights: heights,
       toolSummaries: summaries.length, clippedSummaries: clipped.length,
-      fonts: { prose: sample(prose), line: sample(root.querySelector('[data-reader-line]')), code: sample(code), toolLine: sample(root.querySelector('[data-reader-tool-call] [data-reader-line]')),
-        user: sample(root.querySelector('[data-reader-user-bubble]')), anthropicSerifLoaded: document.fonts.check('16px anthropic-serif') },
+      fonts: { delta, prose: sample(prose), command: sample(command), line: sample(root.querySelector('[data-reader-line]')), code: sample(code), toolLine: sample(root.querySelector('[data-reader-tool-call] [data-reader-line]')),
+        user: sample(root.querySelector('[data-reader-user-bubble]')), serif: { fontSetCheck: document.fonts.check('16px anthropic-serif'), loaded: [...document.fonts].some(face => face.family.replace(/["']/g, '') === 'anthropic-serif' && face.status === 'loaded'), cssStack: prose ? cs(prose).fontFamily : null } },
       rootBackground: cs(root).backgroundColor, backdropBackground: backdrop ? cs(backdrop).backgroundColor : null,
       overflowX: { page: document.documentElement.scrollWidth > document.documentElement.clientWidth, scroller: scroller ? scroller.scrollWidth > scroller.clientWidth + 1 : null, root: root.scrollWidth > root.clientWidth + 1 },
       // Elements that stick out past the reader root's right edge (a horizontal-overflow culprit hunt).
@@ -226,8 +277,8 @@ try {
   const sessionRows = title => title.startsWith('#')
     ? `[...document.querySelectorAll('[role="treeitem"][data-row-key^="session:"]')].filter(node => node.dataset.rowKey.endsWith(${JSON.stringify(title.slice(1))}))`
     : `[...document.querySelectorAll('[role="treeitem"][data-row-key^="session:"]')].filter(node => node.textContent.trim().startsWith(${JSON.stringify(title)}))`;
-  // session/create beyond the host's own startup session means something created a session: stop at once.
-  const guardCreates = () => { if (report.sessionCreates > 1) throw new Error('a session was created during the run (' + report.sessionCreates + ' session/create requests)'); };
+  // No startup exception: any observed sent create means the request guard failed.
+  const guardCreates = () => { if (report.sessionCreates > 0) throw new Error('a session was created during the run (' + report.sessionCreates + ' session/create requests)'); };
   // Toggle the listed workspace rows open, then their 「展开其余」 buttons, until none is left.
   const expandWorkspaces = async () => {
     for (const workspace of expand) {
@@ -244,7 +295,9 @@ try {
   const clickSession = async title => {
     // The sidebar fills in after the page is ready; wait for the row instead of guessing a delay.
     if (!await until(`${sessionRows(title)}.length > 0`, 20000)) return false;
-    return evaluate(`(() => { ${sessionRows(title)}[0].click(); return true; })()`);
+    const matches = await evaluate(`${sessionRows(title)}.length`);
+    if (matches !== 1) return false;
+    return evaluate(`(() => { const row = ${sessionRows(title)}[0]; row.click(); return row.dataset.rowKey; })()`);
   };
   const clickTab = label => evaluate(`(() => { const tab = [...document.querySelectorAll('[role="tab"]')].find(node => node.textContent.trim() === ${JSON.stringify(label)}); tab?.click(); return !!tab; })()`);
   const selectedTab = () => evaluate(`[...document.querySelectorAll('[role="tab"]')].find(node => node.getAttribute('aria-selected') === 'true')?.textContent.trim() ?? null`);
@@ -267,11 +320,16 @@ try {
     const item = { title, opened: await clickSession(title) };
     guardCreates();
     report.sessions.push(item);
-    if (!item.opened) continue;
+    if (!item.opened) { report.uncovered.push({ kind: 'session', title, reason: 'Requested existing session row unavailable; no replacement session created' }); continue; }
     await delay(1500);
-    await clickTab('阅读');
+    item.sessionSelected = await evaluate(`(() => { const row = [...document.querySelectorAll('[role=treeitem][data-row-key]')].find(node => node.dataset.rowKey === ${JSON.stringify(item.opened)}); return row?.getAttribute('aria-selected') === 'true'; })()`);
+    if (!item.sessionSelected) { report.uncovered.push({ kind: 'session-selection', title, reason: 'Requested session could not be confirmed selected' }); continue; }
+    exceptionPhase = 'reader';
+    if (!await clickTab('阅读')) { report.uncovered.push({ kind: 'reader-tab', title, reason: 'Reader tab unavailable' }); continue; }
+    item.readerTabSelected = await selectedTab() === '阅读';
     item.readerMounted = await until("!!document.querySelector('[data-dsh-clearview] section[data-reader-turn]')");
     await delay(800);
+    if (!item.readerMounted) { report.uncovered.push({ kind: 'reader-mount', title, reason: 'Reader did not mount under the read-only guard' }); continue; }
     item.initial = await evaluate(collect);
     await shot(`${name}-bottom`);
     await evaluate("(() => { const scroller = document.querySelector('[data-conversation-scroll]'); if (scroller) scroller.scrollTop = 0; })()");
@@ -294,11 +352,12 @@ try {
       const button = document.querySelector('[data-dsh-clearview] [data-reader-tool-call] button[aria-expanded="false"]');
       if (!button) return false;
       button.scrollIntoView({ block: 'center' });
+      button.closest('[data-reader-tool-call]').setAttribute('data-live-check', 'tool');
       button.click();
       return true;
     })()`);
     await delay(700);
-    item.toolDetails = await evaluate("!!document.querySelector('[data-reader-tool-details]')");
+    item.toolDetails = await evaluate("(() => { const row = document.querySelector('[data-live-check=tool]'); const detail = row?.querySelector('[data-reader-tool-details]'); const box = detail?.getBoundingClientRect(); return !!box && box.height > 0 && detail.checkVisibility({ checkVisibilityCSS: true }) && row.getAttribute('data-expanded') === 'true'; })()");
     await shot(`${name}-group-tool-open`);
     item.measured = await evaluate(measure);
     // Prose / thought / bubble / plan close-ups: one crop each, from the first match.
@@ -339,11 +398,16 @@ try {
       const group = document.querySelector('[data-dsh-clearview] [data-reader-group]');
       const button = group?.querySelector(':scope > [data-reader-line] > button[aria-expanded]');
       if (!button) return null;
-      const before = button.getAttribute('aria-expanded');
+      const snap = () => {
+        const member = group.querySelector('[data-reader-tool-call], [data-reader-record-kind]');
+        return { expanded: button.getAttribute('aria-expanded'), dataExpanded: group.getAttribute('data-expanded'),
+          memberVisible: !!member && member.getBoundingClientRect().height > 0 && member.checkVisibility({ checkVisibilityCSS: true }) };
+      };
+      const before = snap();
       button.click(); await new Promise(done => setTimeout(done, 500));
-      const during = button.getAttribute('aria-expanded');
+      const during = snap();
       button.click(); await new Promise(done => setTimeout(done, 500));
-      return { before, during, after: button.getAttribute('aria-expanded') };
+      return { before, during, after: snap() };
     })()`);
     // Clamped user bubbles: the expand control is a plain local toggle.
     item.bubbleClamp = await evaluate(`(async () => {
@@ -351,7 +415,7 @@ try {
       if (!bubble) return null;
       bubble.scrollIntoView({ block: 'center' });
       // The toggle is a sibling of the bubble inside the same row, with no aria-expanded: its text carries the state.
-      const button = bubble.parentElement?.querySelector('button');
+      const button = bubble.parentElement?.querySelector(':scope > button');
       if (!button) return { clamped: true, button: false };
       const snap = () => ({ text: button.textContent.trim(), clamped: bubble.getAttribute('data-clamped'), height: Math.round(bubble.getBoundingClientRect().height * 10) / 10 });
       const before = snap();
@@ -366,12 +430,15 @@ try {
     const exceptionsBefore = report.exceptions.length;
     item.roundTrips = [];
     for (let trip = 0; trip < 2; trip++) {
-      await clickTab('对话');
+      exceptionPhase = 'native-chat';
+      const chatClicked = await clickTab('对话');
       await delay(1200);
+      const chatSelected = await selectedTab();
       const readerWhileOnChat = await evaluate("!!document.querySelector('[data-dsh-clearview]')");
-      await clickTab('阅读');
+      exceptionPhase = 'reader';
+      const readerClicked = await clickTab('阅读');
       await delay(1500);
-      item.roundTrips.push({ readerWhileOnChat, readerBack: await evaluate("!!document.querySelector('[data-dsh-clearview] section[data-reader-turn]')") });
+      item.roundTrips.push({ chatClicked, chatSelected, readerClicked, readerSelected: await selectedTab(), readerWhileOnChat, readerVersion: await evaluate("document.querySelector('[data-dsh-clearview]')?.getAttribute('data-dsh-clearview')"), readerBack: await evaluate("!!document.querySelector('[data-dsh-clearview] section[data-reader-turn]')") });
     }
     item.roundTripExceptions = report.exceptions.length - exceptionsBefore;
     // Conditions, while the reader still has the whole pane: host font size 13/14/16, dark / light,
@@ -382,14 +449,15 @@ try {
     };
     if (conditions) {
     item.fontSizes = {};
+    const savedDelta = await evaluate("({ value: document.querySelector('[data-dsh-clearview]').style.getPropertyValue('--dsh-content-font-delta'), priority: document.querySelector('[data-dsh-clearview]').style.getPropertyPriority('--dsh-content-font-delta') })");
     for (const size of ['13px', '14px', '16px']) {
-      await evaluate(`document.body.style.setProperty('--dsh-content-font-size', '${size}')`);
+      await evaluate(`document.querySelector('[data-dsh-clearview]').style.setProperty('--dsh-content-font-delta', '${Number.parseFloat(size) - 14}px')`);
       await delay(400);
       await focusGroup();
       item.fontSizes[size] = (await evaluate(measure))?.fonts;
       await shot(`${name}-font-${size}`);
     }
-    await evaluate("document.body.style.setProperty('--dsh-content-font-size', '14px')");
+    await evaluate(`(() => { const saved = ${JSON.stringify(savedDelta)}; if (saved.value) document.body.style.setProperty('--dsh-content-font-delta', saved.value, saved.priority); else document.querySelector('[data-dsh-clearview]').style.removeProperty('--dsh-content-font-delta'); })()`);
     await focusGroup();
     // Theme check. The host theme does not follow prefers-color-scheme, so the attribute is flipped on
     // document.body of this throwaway headless page only (no host setting is written) and restored after.
@@ -474,14 +542,17 @@ try {
     // Footer actions on the last closed turn. Fork is only checked for being
     // available: clicking it would create a session.
     const footer = "[...document.querySelectorAll('[data-dsh-clearview] [data-reader-turn-footer]')].at(-1)";
+    // An interrupted last turn can have no answer; test the latest copyable turn.
+    const copyFooter = "[...document.querySelectorAll('[data-dsh-clearview] [data-reader-turn-footer]')].reverse().find(node => node.querySelector('[aria-label=\"复制回答\"]'))";
     item.forkAvailable = await evaluate(`(() => { const button = ${footer}?.querySelector('[aria-label="从这里分支"]'); return button ? !button.disabled : null; })()`);
     item.copyReceipt = await evaluate(`(async () => {
-      const footer = ${footer};
+      const footer = ${copyFooter};
       const button = footer?.querySelector('[aria-label="复制回答"]');
       if (!button) return null;
+      const countBefore = globalThis.__clearviewClipboardStub.writes.length;
       button.click();
       await new Promise(done => setTimeout(done, 400));
-      return footer.querySelector('[data-reader-answer-actions] [role="status"]')?.textContent ?? '';
+      return { receipt: footer.querySelector('[data-reader-answer-actions] [role="status"]')?.textContent ?? '', writes: globalThis.__clearviewClipboardStub.writes.slice(countBefore), isolated: globalThis.__clearviewClipboardStub.ready };
     })()`);
     // Deliverable cards carry a title (the path); the 「展开其余」 button has none.
     // File mentions are inline-code buttons inside the answer. Both only open a read-only preview.
@@ -491,18 +562,35 @@ try {
     }
     item.final = await evaluate(collect);
     // Step 2 expectations, evaluated from the evidence above.
-    const overflowing = state => state ? Object.values(state.overflowX).some(value => value === true) : false;
+    const noOverflow = state => state ? !Object.values(state.overflowX).some(value => value === true) : null;
     const family = (item.measured?.fonts?.prose?.family ?? '').replace(/["']/g, '');
-    const serifLoaded = item.measured?.fonts?.anthropicSerifLoaded;
+    item.typography = [item.measured, item.narrow, item.narrowBottom].map(state => typographyGate(state?.fonts));
+    item.typographyMatrix = Object.fromEntries(Object.entries(item.fontSizes ?? {}).map(([size, fonts]) => [size, typographyGate(fonts)]));
+    const covered = (name, value) => interactionCoverage(name, value, { optional: name === 'bubbleToggle', title, skippedChecks: report.skippedChecks, uncovered: report.uncovered });
+    const toggle = item.groupToggle;
+    const bubble = item.bubbleClamp;
     item.checks = {
-      overflow1440: !overflowing(item.measured), overflow480: !overflowing(item.narrow) && !overflowing(item.narrowBottom),
-      proseFont: !item.measured?.fonts?.prose ? 'n/a' : family.startsWith('anthropic-serif') ? 'anthropic-serif' : serifLoaded === false ? 'fallback' : 'mismatch',
+      overflow1440: covered('geometry1440', noOverflow(item.measured)), overflow480: covered('geometry480', item.narrow && item.narrowBottom ? noOverflow(item.narrow) && noOverflow(item.narrowBottom) : null),
+      proseCssStack: !item.measured?.fonts?.prose ? 'n/a' : family.startsWith('anthropic-serif') ? 'declared' : 'fallback-stack',
+      // CSS stack and FontFace loaded status are evidence, never proof of the font used for a glyph.
+      fontLoaded: item.measured?.fonts?.serif?.loaded ?? null,
+      typography: item.typography.every(state => state.pass) && Object.values(item.typographyMatrix).every(state => state.pass),
+      groupToggle: covered('groupToggle', toggle ? toggle.before.expanded !== toggle.during.expanded && toggle.before.expanded === toggle.after.expanded && [toggle.before, toggle.during, toggle.after].every(state => ['true', 'false'].includes(state.expanded) && state.expanded === state.dataExpanded && state.memberVisible === (state.expanded === 'true')) : null),
+      groupOpened: covered('groupOpened', item.groupOpened ? item.groupAfter === 'true' : null),
+      toolDetails: covered('toolDetails', item.toolOpened ? item.toolDetails === true : null),
+      bubbleToggle: covered('bubbleToggle', bubble ? bubble.button === true && bubble.before?.clamped === 'true' && bubble.opened?.clamped === 'false' && bubble.after?.clamped === 'true' && bubble.opened.height > bubble.before.height + 1 && Math.abs(bubble.after.height - bubble.before.height) <= 1 && bubble.before.text === '展开全文' && bubble.opened.text === '收起' && bubble.after.text === '展开全文' : null),
+      roundTrips: item.roundTrips.length === 2 && item.roundTrips.every(trip => trip.chatClicked && trip.chatSelected === '对话' && !trip.readerWhileOnChat && trip.readerClicked && trip.readerSelected === '阅读' && trip.readerBack && trip.readerVersion === expectedVersion),
+      copy: covered('copy', item.copyReceipt ? item.copyReceipt.isolated && item.copyReceipt.receipt.includes('已复制') && item.copyReceipt.writes.length > 0 : null),
       themeBackground: item.theme ? item.theme.dark.matches && item.theme.light.matches : 'skipped',
     };
-    item.checks.pass = item.checks.overflow1440 && item.checks.overflow480 && item.checks.proseFont !== 'mismatch' && item.checks.themeBackground !== false;
+    item.checks.pass = item.checks.overflow1440 && item.checks.overflow480 && item.checks.themeBackground !== false
+      && item.checks.typography && item.checks.groupToggle && item.checks.groupOpened && item.checks.toolDetails && item.checks.bubbleToggle && item.checks.roundTrips && item.checks.copy;
     guardCreates();
   }
   report.sessionCountAfter = await sessionCount();
+} catch (error) {
+  if (report.uncovered.some(item => item.kind === 'host-startup')) report.incomplete = String(error?.stack ?? error);
+  else report.fatal = String(error?.stack ?? error);
 } finally {
   try { ws?.close(); } catch {}
   const exited = new Promise(done => chrome.once('exit', done));
@@ -512,12 +600,28 @@ try {
 }
 report.profileRemoved = !existsSync(profile);
 if (report.sessionCountAfter === undefined) report.sessionCountAfter = await sessionCount().catch(() => null);
-const readerErrors = report.exceptions.concat(report.consoleErrors).filter(text => /clearview|data-reader|dsh-clearview/i.test(text));
-report.pass = (!intercept || report.replacements + report.spliced > 0)
-  && report.sessions.every(item => item.opened && item.readerMounted && item.initial?.version === expectedVersion && item.initial.blockErrors.length === 0 && item.final?.blockErrors.length === 0 && item.initial.retired === 0 && item.final?.retired === 0 && item.checks?.pass === true)
-  && readerErrors.length === 0 && report.handlerErrors.length === 0 && report.profileRemoved
-  && report.sessionCreates <= 1 && report.sessionCountBefore === report.sessionCountAfter;
+const allErrors = report.exceptions.concat(report.consoleErrors);
+const nativeNoise = allErrors.filter(error => classifyBrowserError(error, report.blockedRequests) === 'nativeReact130');
+report.hostBackgroundErrors = allErrors.filter(error => classifyBrowserError(error, report.blockedRequests) === 'blockedPrerequisite');
+for (const error of nativeNoise) report.uncovered.push({ kind: 'nativeReact130', reason: error.text, phase: error.phase });
+const readerErrors = allErrors.filter(error => classifyBrowserError(error, report.blockedRequests) === 'failure');
+report.hostStartupErrors = allErrors.filter(error => classifyBrowserError(error, report.blockedRequests) === 'hostStartup');
+for (const error of report.hostStartupErrors) report.uncovered.push({ kind: 'hostStartup', phase: error.phase, reason: error.text.split('\n')[0] });
+if (report.sessionCountBefore === null || report.sessionCountAfter === null) report.uncovered.push({ kind: 'session-inventory', reason: 'Session counts unavailable' });
+report.blockedPrerequisite = report.blockedRequests.filter(request => request.blockedPrerequisite);
+report.blockedRequestCount = report.blockedRequests.reduce((sum, request) => sum + request.counter, 0);
+for (const request of report.blockedPrerequisite) report.uncovered.push({ kind: 'blockedPrerequisite', ...request });
 report.readerErrors = readerErrors;
+Object.assign(report, summarizeReaderGate(report, expectedVersion, { intercept }));
+report.wholeHostScope = { complete: report.uncovered.length === 0, uncovered: report.uncovered };
+report.pass = report.readerPass && report.readerScope.complete && report.wholeHostScope.complete
+  && report.sessionCountBefore !== null && report.sessionCountAfter !== null && report.sessionCountBefore === report.sessionCountAfter;
+const failedChecks = report.sessions.some(item =>
+  item.checks && Object.entries(item.checks).some(([key, value]) =>
+    (!['pass', 'fontLoaded'].includes(key) && value === false) || (key === 'proseCssStack' && value === 'mismatch'))
+  || [item.initial, item.final].some(state => state && (state.version !== expectedVersion || state.blockErrors.length > 0 || state.retired > 0)));
+const inventoryChanged = report.sessionCountBefore !== null && report.sessionCountAfter !== null && report.sessionCountBefore !== report.sessionCountAfter;
+report.status = report.pass ? 'pass' : report.fatal || readerErrors.length || report.handlerErrors.length || report.sessionCreates > 0 || inventoryChanged || failedChecks ? 'fail' : 'uncovered';
 writeFileSync(join(out, 'report.json'), JSON.stringify(report, null, 2));
-console.log(JSON.stringify({ pass: report.pass, replacements: report.replacements, spliced: report.spliced, comboPassedThrough: report.comboPassedThrough.length, sessions: report.sessions.map(item => ({ title: item.title, opened: item.opened, initial: item.initial, checks: item.checks })), readerErrors }, null, 2));
-process.exit(report.pass ? 0 : 1);
+console.log(JSON.stringify({ pass: report.pass, readerPass: report.readerPass, readerScope: report.readerScope, wholeHostScope: report.wholeHostScope, blockedRequestCount: report.blockedRequestCount, skippedChecks: report.skippedChecks, blockedPrerequisite: report.blockedPrerequisite, hostBackgroundErrors: report.hostBackgroundErrors, status: report.status, uncovered: report.uncovered, blockedRequests: report.blockedRequests, fatal: report.fatal, replacements: report.replacements, spliced: report.spliced, comboPassedThrough: report.comboPassedThrough.length, sessions: report.sessions.map(item => ({ title: item.title, opened: item.opened, initial: item.initial, checks: item.checks })), readerErrors }, null, 2));
+process.exit(report.pass ? 0 : report.status === 'uncovered' ? 2 : 1);

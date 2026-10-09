@@ -41,15 +41,16 @@ test('no install, unreadable css or missing files yield an empty result instead 
   try { assert.deepEqual(await locateClaudeFonts(root), {}); } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-function call(handler: ReturnType<typeof fontRouteHandler>, url: string) {
-  const res = Object.assign(new EventEmitter(), {
+function call(handler: ReturnType<typeof fontRouteHandler>, url: string, method = 'GET') {
+  const events = new EventEmitter();
+  const res = Object.assign(events, {
     statusCode: 0, headers: {} as Record<string, string>, body: Buffer.alloc(0),
     setHeader(name: string, value: string) { this.headers[name.toLowerCase()] = value; },
     writeHead(code: number, headers?: Record<string, string>) { this.statusCode = code; for (const [k, v] of Object.entries(headers ?? {})) this.headers[k.toLowerCase()] = v; return this; },
-    end(chunk?: Buffer | string) { if (chunk) this.body = Buffer.from(chunk); this.emit('done'); },
+    end(chunk?: Buffer | string) { if (chunk) this.body = Buffer.from(chunk); events.emit('done'); },
   });
   const done = new Promise(resolve => res.once('done', resolve));
-  return handler({ url, method: 'GET' } as never, res as never).then(() => done).then(() => res);
+  return handler({ url, method } as never, res as never).then(() => done).then(() => res);
 }
 
 test('the route serves only the three whitelisted names', async () => {
@@ -75,4 +76,74 @@ test('client font faces point at the route and inject once', () => {
   ensureClaudeFonts(doc as never); ensureClaudeFonts(doc as never);
   assert.equal(nodes.length, 1);
   assert.equal(nodes[0]!.id, 'dsh-clearview-fonts');
+});
+
+
+test('first empty discovery retries when the installation becomes available', async () => {
+  const root = fakeInstall(['1.0.0'], CSS);
+  let time = 0, scans = 0;
+  try {
+    const handler = fontRouteHandler(async () => ++scans === 1 ? {} : locateClaudeFonts(root), { now: () => time, ttlMs: 100, missingTtlMs: 10 });
+    assert.equal((await call(handler, `${FONT_ROUTE}/sans.woff2`)).statusCode, 404);
+    time = 9;
+    assert.equal((await call(handler, `${FONT_ROUTE}/sans.woff2`)).statusCode, 404);
+    assert.equal(scans, 1);
+    time = 10;
+    assert.equal((await call(handler, `${FONT_ROUTE}/sans.woff2`)).body.toString(), 'sans@1.0.0');
+    assert.equal(scans, 2);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a missing role is rediscovered without waiting for the successful cache lifetime', async () => {
+  const root = fakeInstall(['1.0.0'], CSS);
+  let time = 0, scans = 0;
+  try {
+    const all = await locateClaudeFonts(root);
+    const handler = fontRouteHandler(async () => ++scans === 1 ? { sans: all.sans } : all, { now: () => time, ttlMs: 100, missingTtlMs: 10 });
+    assert.equal((await call(handler, `${FONT_ROUTE}/sans.woff2`)).statusCode, 200);
+    assert.equal((await call(handler, `${FONT_ROUTE}/serif.woff2`)).statusCode, 404);
+    time = 10;
+    assert.equal((await call(handler, `${FONT_ROUTE}/serif.woff2`)).statusCode, 200);
+    assert.equal(scans, 2);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('successful discovery expires and sees a newer install', async () => {
+  const root = fakeInstall(['1.0.0', '2.0.0'], CSS);
+  let time = 0, scans = 0;
+  try {
+    const latest = await locateClaudeFonts(root);
+    const old = Object.fromEntries(Object.entries(latest).map(([role, path]) => [role, path!.replaceAll('2.0.0', '1.0.0')]));
+    const handler = fontRouteHandler(async () => ++scans === 1 ? old : latest, { now: () => time, ttlMs: 100 });
+    assert.equal((await call(handler, `${FONT_ROUTE}/sans.woff2`)).body.toString(), 'sans@1.0.0');
+    time = 99;
+    assert.equal((await call(handler, `${FONT_ROUTE}/sans.woff2`)).body.toString(), 'sans@1.0.0');
+    time = 100;
+    assert.equal((await call(handler, `${FONT_ROUTE}/sans.woff2`)).body.toString(), 'sans@2.0.0');
+    assert.equal(scans, 2);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('file read errors invalidate discovery immediately and do not cache the 404', async () => {
+  const root = fakeInstall(['1.0.0'], CSS);
+  let scans = 0;
+  try {
+    const all = await locateClaudeFonts(root);
+    const handler = fontRouteHandler(async () => ++scans === 1 ? { ...all, sans: join(root, 'gone.woff2') } : all);
+    const missing = await call(handler, `${FONT_ROUTE}/sans.woff2`);
+    assert.equal(missing.statusCode, 404);
+    assert.equal(missing.headers['cache-control'], 'no-store');
+    assert.equal((await call(handler, `${FONT_ROUTE}/sans.woff2`)).statusCode, 200);
+    assert.equal(scans, 2);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('non-GET methods and non-whitelisted paths never invoke discovery', async () => {
+  let scans = 0;
+  const handler = fontRouteHandler(async () => { scans++; return {}; });
+  for (const method of ['POST', 'PUT', 'DELETE', 'HEAD', 'OPTIONS']) {
+    assert.equal((await call(handler, `${FONT_ROUTE}/sans.woff2`, method)).statusCode, 404);
+  }
+  assert.equal((await call(handler, `${FONT_ROUTE}/other.woff2`)).statusCode, 404);
+  assert.equal(scans, 0);
 });

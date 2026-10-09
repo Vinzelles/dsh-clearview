@@ -14,7 +14,7 @@ Present a turn the way Claude Code Desktop does: one chronological transcript in
 
 ## Lifecycle
 
-During a turn, show its real process in chronological order. Starting body output, preparing tool input, finishing one tool, or entering another step is not whole-turn completion. Nothing folds when a turn ends: the closing narration and the answer continue the same column. Failures, interruptions, unknown terminal states and approval requests are shown by the status line (below) and stay in place.
+During a turn, show its real process in chronological order. Starting body output, preparing tool input, finishing one tool, or entering another step is not whole-turn completion. Prose never folds when a turn ends: the closing narration and the answer continue the same column. Operation groups follow their own settled-state rule below. Failures, interruptions, unknown terminal states and approval requests are shown by the status line (below) and stay in place.
 
 ## Transcript entries and grouping
 
@@ -23,11 +23,11 @@ A turn is one column with no container, header, counts or "earlier steps" row. N
 - User message: a right-hand bubble, six lines then clamped behind 展开全文 / 收起 (outside the rewind seat). Mid-turn input and command input are smaller bubbles at their chronological position; the rewind seat is always present.
 - Operation row: icon, Chinese verb and target ("运行 `npm run build`", "编辑 path +2 −1"), no durations. Opening it shows the detail block (output, arguments, search results, red/green diff for edits). A failure is marked red in the row only and never opens by itself.
 - Settled thought: one row, 「思考了 N 秒」, opening to the full text in grey serif italic. No preview and no character count.
-- Plan: when `todo_write` carries items, a checklist card updated in place; otherwise an ordinary operation row. `todo_write` and `dispatch` never join a group.
+- Plan: the first successful, parseable, nonempty `todo_write` creates a checklist card updated in place. Later successful updates replace its items, including an explicit empty list that clears it. Pending, failed or interrupted updates preserve the last successful checklist and remain inspectable in the original-call history. Before a card is established, malformed or empty calls remain ordinary operation rows; promotion preserves their open details, focus and selection. `todo_write` and `dispatch` never join a group.
 - Sub-agent (`dispatch`): its own 「子代理」 row, never merged into a group.
 - Notices, retries, compaction and other records: quiet one-line rows; turn triggers open the turn with a grey line and 「展开原文」.
 
-Grouping is pure derivation in `transcript-model.ts`. Consecutive operations (tool calls except `todo_write` / `dispatch`, plus command and manual-compaction records) merge into one line when there are two or more. The summary counts by kind, joined by "，" in order of first appearance: 运行了 N 条命令 / 读取了 N 个文件 / 写入了 N 个文件 / 编辑了 N 个文件 / 搜索了 N 次 / 访问了 N 次网页 / 使用了 N 个技能 / 调用了 N 次工具 / 执行了 N 个操作 (records). Failures add a red 「· N 次失败」. A group is open while any member runs and folds once settled, unless the reader opened or closed it. Thoughts, narration, user input, notices and other records break a group.
+Grouping is pure derivation in `transcript-model.ts`. Consecutive operations (tool calls except `todo_write` / `dispatch`, plus command and manual-compaction records) merge into one line when there are two or more. The summary counts by kind, joined by "，" in order of first appearance: 运行了 N 条命令 / 读取了 N 个文件 / 写入了 N 个文件 / 编辑了 N 个文件 / 搜索了 N 次 / 访问了 N 次网页 / 使用了 N 个技能 / 调用了 N 次工具 / 执行了 N 个操作 (records). Failures add a red 「· N 次失败」. A group is open while any member runs and folds once settled, unless the reader opened or closed it. Thoughts, narration, user input, notices and other records break a group. A singleton and the group it grows into share their keyed member seats, preserving open details, focus and selection. Tool-result media stays visible beside its call and does not split or hide inside the group.
 
 ## Status line and live thinking
 
@@ -35,7 +35,7 @@ An open (or just stopped) turn ends with one status line: an orange ✻ (slowly 
 
 Follow is continuous, not stepped: one rAF loop writes the viewport's native scroll offset per frame, driven by a velocity-matched controller. An EMA of the measured tail growth feeds the speed forward and a proportional term closes residual lag. Under steady streaming the viewport moves at exactly the content speed with zero visible lag; a burst or a resume closes the gap smoothly at a capped speed. The position is clamped to the live tail every frame, so the viewport never passes the transcript end, rolls back or loops old text; a shrinking tail re-aims instead of freezing. All metrics are cached from the resize signal, so the loop reads no layout; when the stream stops or the loop settles, it parks itself until the next growth. When the stream ends while following, the controller glides the residual lag to the end and stops; user interaction during the glide cancels it at the painted position.
 
-Wheel, touch, viewport focus or selection pause following. The explicit follow control resumes only when no text is selected. The full source text remains available.
+Wheel, touch, viewport focus or selection pause following. The explicit follow control resumes only when no text is selected. The page's 回到最新 control also resumes internal thought following, without clearing a valid selection. A settled thought being read keeps its existing DOM seat until focus or selection is released, even when a new live thought appears. The full source text remains available.
 
 ## Tokens
 

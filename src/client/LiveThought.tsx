@@ -1,6 +1,7 @@
 import { useCallback, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { followAdvance } from './reasoning-follow.js';
+import { useReaderActions } from './reader-context.js';
 import css from './LiveThought.module.css';
 
 /** Real scroll extent of the viewport (its own padding included): where following ends, and whether it overflows. */
@@ -10,6 +11,8 @@ export function scrollMetrics(port: { scrollHeight: number; clientHeight: number
 
 /** A streaming thought: a short viewport that follows the newest text until the reader takes over. */
 export function LiveThought({ follow, motion, children }: { follow: boolean; motion: boolean; children: ReactNode }) {
+  const { resumeSignal = 0 } = useReaderActions();
+  const seenResumeSignal = useRef(resumeSignal);
   const viewport = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const [following, setFollowing] = useState(true);
@@ -29,6 +32,25 @@ export function LiveThought({ follow, motion, children }: { follow: boolean; mot
     setFollowing(false);
   }, []);
 
+  const hasSelection = useCallback(() => {
+    const selection = document.getSelection();
+    const text = content.current;
+    return !!selection && !selection.isCollapsed && !!text
+      && (!!selection.anchorNode && text.contains(selection.anchorNode)
+        || !!selection.focusNode && text.contains(selection.focusNode)
+        || (selection.rangeCount > 0 && selection.getRangeAt(0).intersectsNode(text)));
+  }, []);
+  const resume = useCallback(() => {
+    if (hasSelection()) return;
+    finishRef.current?.cancel();
+    setFollowing(true);
+  }, [hasSelection]);
+  useLayoutEffect(() => {
+    if (seenResumeSignal.current === resumeSignal) return;
+    seenResumeSignal.current = resumeSignal;
+    resume();
+  }, [resumeSignal, resume]);
+
   useLayoutEffect(() => {
     const port = viewport.current;
     const text = content.current;
@@ -41,10 +63,6 @@ export function LiveThought({ follow, motion, children }: { follow: boolean; mot
     let tracking = false;
     let state = { pos: port.scrollTop, velocity: 0, lastTail: tail, lastAt: 0 };
     lastTop.current = state.pos;
-    const hasSelection = () => {
-      const selection = document.getSelection();
-      return !!selection && !selection.isCollapsed && !!selection.anchorNode && text.contains(selection.anchorNode);
-    };
     const cancel = () => { cancelAnimationFrame(frame); frame = 0; delete port.dataset.reasoningMoving; };
     const paint = (pos: number) => { port.scrollTop = pos; lastTop.current = port.scrollTop; };
     const refresh = () => {
@@ -124,7 +142,7 @@ export function LiveThought({ follow, motion, children }: { follow: boolean; mot
         glideFrame = requestAnimationFrame(glide);
       }
     };
-  }, [allowed, jumping, pause]);
+  }, [allowed, jumping, pause, hasSelection]);
 
   return <div className={css.live} data-reader-live-thought data-following={follow && following}>
     <div ref={viewport} id={viewportId} className={css.viewport} data-reader-reasoning-scroll role="region"
@@ -133,6 +151,6 @@ export function LiveThought({ follow, motion, children }: { follow: boolean; mot
       onPointerDown={pause} onFocus={pause}>
       <div ref={content} data-reader-reasoning-text>{children}</div>
     </div>
-    {!following && <button type="button" className={css.resume} aria-controls={viewportId} onClick={() => setFollowing(true)}>继续跟随</button>}
+    {!following && <button type="button" className={css.resume} aria-controls={viewportId} onClick={resume}>继续跟随</button>}
   </div>;
 }

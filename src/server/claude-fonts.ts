@@ -2,6 +2,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { join } from 'node:path';
+import type {} from '@deepseek-ai/cordis';
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -52,21 +53,43 @@ export async function locateClaudeFonts(localAppData: string | undefined): Promi
   }
 }
 
+/** Cache lifetimes are bounded; an incomplete installation is retried sooner. */
+export interface FontCacheOptions { ttlMs?: number; missingTtlMs?: number; now?: () => number }
+
 /** Read-only handler: `<FONT_ROUTE>/{sans,serif,mono}.woff2` -> the located file, anything else -> 404. */
-export function fontRouteHandler(locate: () => Promise<Partial<Record<FontRole, string>>>) {
-  let cached: Promise<Partial<Record<FontRole, string>>> | null = null;
+export function fontRouteHandler(locate: () => Promise<Partial<Record<FontRole, string>>>, options: FontCacheOptions = {}) {
+  const now = options.now ?? Date.now;
+  const ttlMs = Math.max(0, options.ttlMs ?? 60_000);
+  const missingTtlMs = Math.min(ttlMs, Math.max(0, options.missingTtlMs ?? 1_000));
+  type Cache = { expiresAt: number; value: Promise<Partial<Record<FontRole, string>>> };
+  let cached: Cache | null = null;
+  const notFound = (res: ServerResponse) => {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end('not found');
+  };
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const role = NAME.exec((req.url ?? '').split('?')[0]!)?.[1] as FontRole | undefined;
-    const path = role ? (await (cached ??= locate()))[role] : undefined;
-    if (!path || req.method !== 'GET') { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('not found'); return; }
+    if (!role || req.method !== 'GET') { notFound(res); return; }
+    if (!cached || now() >= cached.expiresAt) {
+      const snapshot: Cache = { expiresAt: Infinity, value: Promise.resolve({}) };
+      cached = snapshot;
+      snapshot.value = Promise.resolve().then(locate).then(found => {
+        const complete = (Object.keys(FAMILIES) as FontRole[]).every(key => !!found[key]);
+        snapshot.expiresAt = now() + (complete ? ttlMs : missingTtlMs);
+        return found;
+      });
+    }
+    const snapshot = cached;
     try {
+      const path = (await snapshot.value)[role];
+      if (!path) { notFound(res); return; }
       const body = await readFile(path);
-      res.writeHead(200, { 'Content-Type': 'font/woff2', 'Cache-Control': 'public, max-age=86400' });
+      res.writeHead(200, { 'Content-Type': 'font/woff2', 'Cache-Control': `public, max-age=${Math.floor(ttlMs / 1000)}` });
       res.end(body);
     } catch {
-      cached = null;
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end('not found');
+      // A stale concurrent read must not invalidate a newer discovery.
+      if (cached === snapshot) cached = null;
+      notFound(res);
     }
   };
 }

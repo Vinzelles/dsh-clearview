@@ -2,93 +2,95 @@
    Modules. Cite pills, header anchors, and thinking-small variants are
    intentionally absent (no matching DOM). Token names match that sheet. */
 
-.markdown {
+:global([data-dsh-clearview][data-motion]) .markdown {
   min-width: 0;
   overflow-wrap: anywhere;
   font-family: inherit;
   font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
   color: var(--cc-text-100);
 }
 
-.markdown strong {
+:global([data-dsh-clearview][data-motion]) .markdown strong {
   font-weight: 600;
 }
 
-.markdown :where(h1, h2, h3, h4, h5, h6) {
+:global([data-dsh-clearview][data-motion]) .markdown :where(h1, h2, h3, h4, h5, h6) {
   font-weight: 600;
   line-height: 1.4;
   margin: 1.1em 0 .5em;
   color: var(--cc-text-100);
 }
 
-.markdown h1 { font-size: 1.375em; }
-.markdown h2 { font-size: 1.25em; }
-.markdown h3 { font-size: 1.125em; }
-.markdown :where(h4, h5, h6) { font-size: 1em; }
+:global([data-dsh-clearview][data-motion]) .markdown h1 { font-size: 1.375em; }
+:global([data-dsh-clearview][data-motion]) .markdown h2 { font-size: 1.25em; }
+:global([data-dsh-clearview][data-motion]) .markdown h3 { font-size: 1.125em; }
+:global([data-dsh-clearview][data-motion]) .markdown :where(h4, h5, h6) { font-size: 1em; }
 
-.markdown :where(h1, h2, h3, h4, h5, h6) strong {
+:global([data-dsh-clearview][data-motion]) .markdown :where(h1, h2, h3, h4, h5, h6) strong {
   font-weight: inherit;
 }
 
-.markdown p {
+:global([data-dsh-clearview][data-motion]) .markdown p {
   margin: 0 0 .75em;
 }
 
-.markdown a {
+:global([data-dsh-clearview][data-motion]) .markdown a {
   color: var(--cc-link);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
-.markdown a:hover,
-.markdown a:focus {
+:global([data-dsh-clearview][data-motion]) .markdown a:hover,
+:global([data-dsh-clearview][data-motion]) .markdown a:focus {
   outline: none;
 }
 
-.markdown a:focus-visible {
+:global([data-dsh-clearview][data-motion]) .markdown a:focus-visible {
   box-shadow: 0 0 0 2px var(--cc-link);
 }
 
-.markdown :where(ul, ol) {
+:global([data-dsh-clearview][data-motion]) .markdown :where(ul, ol) {
   margin: 0 0 .75em;
   padding-left: 1.4em;
 }
 
-.markdown li:not(:first-child) {
+:global([data-dsh-clearview][data-motion]) .markdown li:not(:first-child) {
   margin-top: .25em;
 }
 
-.markdown li > :where(ul, ol) {
+:global([data-dsh-clearview][data-motion]) .markdown li > :where(ul, ol) {
   margin-top: .25em;
 }
 
-.markdown li::marker {
+:global([data-dsh-clearview][data-motion]) .markdown li::marker {
   color: var(--cc-text-300);
 }
 
 /* Nested ol under ul/ol: markers inside (models sometimes emit this shape). */
-.markdown :where(ul, ol) ol {
+:global([data-dsh-clearview][data-motion]) .markdown :where(ul, ol) ol {
   list-style-position: inside;
   padding-left: 0;
 }
 
-.markdown :where(ul, ol) ol li p {
+:global([data-dsh-clearview][data-motion]) .markdown :where(ul, ol) ol li p {
   display: inline;
 }
 
-.markdown li > p {
+:global([data-dsh-clearview][data-motion]) .markdown li > p {
   margin: .25em 0;
 }
 
-.markdown li > *:first-child {
+:global([data-dsh-clearview][data-motion]) .markdown li > *:first-child {
   margin-top: 0;
 }
 
-.markdown li > *:last-child:not(:global(.md-code-block)) {
+:global([data-dsh-clearview][data-motion]) .markdown li > *:last-child:not(:global(.md-code-block)) {
   margin-bottom: 0;
 }
 
-.markdown hr {
+:global([data-dsh-clearview][data-motion]) .markdown hr {
   display: block;
   border: none;
   height: 1px;
@@ -96,14 +98,14 @@
   background: var(--cc-border);
 }
 
-.markdown blockquote {
+:global([data-dsh-clearview][data-motion]) .markdown blockquote {
   border-left: 2px solid var(--cc-border-strong);
   margin: 0 0 .75em;
   padding-left: 12px;
   color: var(--cc-text-300);
 }
 
-.markdown pre {
+:global([data-dsh-clearview][data-motion]) .markdown pre {
   margin: 0 0 .75em;
   padding: 10px 12px;
   border: 1px solid var(--cc-border);
@@ -115,7 +117,7 @@
   overflow: auto;
 }
 
-.markdown :not(pre) > code {
+:global([data-dsh-clearview][data-motion]) .markdown :not(pre) > code {
   display: inline-flex;
   align-items: center;
   box-sizing: border-box;
@@ -128,21 +130,21 @@
   color: var(--cc-danger);
 }
 
-.markdown a > code {
+:global([data-dsh-clearview][data-motion]) .markdown a > code {
   color: inherit;
 }
 
-.markdown :where(h1, h2, h3, h4, h5, h6) code {
+:global([data-dsh-clearview][data-motion]) .markdown :where(h1, h2, h3, h4, h5, h6) code {
   font-size: .85em;
 }
 
-.markdown :global(.katex-display) {
+:global([data-dsh-clearview][data-motion]) .markdown :global(.katex-display) {
   max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
 }
 
-.markdown input[type='checkbox'] {
+:global([data-dsh-clearview][data-motion]) .markdown input[type='checkbox'] {
   margin: 0 8px 0 0;
   accent-color: var(--cc-text-300);
 }
@@ -238,13 +240,13 @@
   font-size: var(--cc-size-code);
 }
 
-.markdown > *:first-child,
-.markdown p:first-child {
+:global([data-dsh-clearview][data-motion]) .markdown > *:first-child,
+:global([data-dsh-clearview][data-motion]) .markdown p:first-child {
   margin-top: 0 !important;
 }
 
-.markdown > *:last-child,
-.markdown p:last-child {
+:global([data-dsh-clearview][data-motion]) .markdown > *:last-child,
+:global([data-dsh-clearview][data-motion]) .markdown p:last-child {
   margin-bottom: 0 !important;
 }
 

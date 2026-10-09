@@ -3,18 +3,20 @@ import type { TurnLocation } from '@deepseek-ai/dsh-client-ui-conversation/clien
 import { assistantSegments, hasVisibleBody, type TurnBoundary } from './projection.js';
 import { preparingLabel, type ReaderFlowEntry, type ToolActivityEntry } from './tool-activity.js';
 
-/** One chronological row of a turn's process panel. */
+/** One chronological item in a turn, including visible results at their source positions. */
 export type PanelItem =
   | { kind: 'reasoning'; key: string; nodeKey: string; start: number; step: number | null }
-  | { kind: 'narration'; key: string; nodeKey: string; start: number; step: number | null }
+  | { kind: 'narration'; key: string; nodeKey: string; start: number; step: number | null; answer?: boolean }
   | { kind: 'tool'; key: string; entry: ToolActivityEntry; step: number | null }
-  | { kind: 'record' | 'input'; key: string; nodeKey: string; step: number | null };
+  | { kind: 'record' | 'input'; key: string; nodeKey: string; step: number | null }
+  | { kind: 'media'; key: string; entry: ToolActivityEntry; step: number | null }
+  | { kind: 'output' | 'notice'; key: string; nodeKey: string; step: number | null };
 
 export type ReasoningItem = Extract<PanelItem, { kind: 'reasoning' }>;
 
 export interface AnswerSegment { key: string; nodeKey: string; start: number }
 /** `outputs` are successful /command results: their text belongs beside the answer, the row stays in the panel. */
-export interface TurnLayout { panel: PanelItem[]; answer: AnswerSegment[]; notices: string[]; media: ToolActivityEntry[]; outputs: string[] }
+export interface TurnLayout { transcript: PanelItem[]; panel: PanelItem[]; answer: AnswerSegment[]; notices: string[]; media: ToolActivityEntry[]; outputs: string[] }
 
 type Getter = (key: string) => ChatConversationViewNode | undefined;
 
@@ -38,56 +40,86 @@ export function commandOutputText(node: ChatConversationViewNode): string | null
   return outcome?.kind === 'success' && typeof outcome.text === 'string' && outcome.text.trim() !== '' ? outcome.text : null;
 }
 
-/**
- * Route one turn's flow into the process panel, the answer zone, turn-level
- * notices and tool media. A completed turn answers with its closing step (and
- * keeps media bodies visible); any other turn treats body text as the answer
- * only while no process row follows it.
- */
+/** Preserve source order. Answer classification adds semantics, never relocates content. */
 export function layoutTurn(flow: readonly ReaderFlowEntry[], get: Getter, boundary: TurnBoundary): TurnLayout {
   const panel: PanelItem[] = [];
   const notices: string[] = [];
   const media: ToolActivityEntry[] = [];
   const outputs: string[] = [];
-  const bodies: { item: PanelItem & { kind: 'narration' }; position: number; media: boolean }[] = [];
+  const transcript: PanelItem[] = [];
+  const bodies: { item: PanelItem & { kind: 'narration' }; position: number }[] = [];
+  const calls = new Map(flow.filter((entry): entry is ToolActivityEntry => entry.kind === 'tool').map(entry => [entry.callId, entry]));
+  const emitted = new Set<string>();
+  const appendTool = (entry: ToolActivityEntry) => {
+    if (emitted.has(entry.callId)) return;
+    emitted.add(entry.callId);
+    const item = { kind: 'tool' as const, key: entry.key, entry, step: entry.step >= 0 ? entry.step : null };
+    panel.push(item);
+    transcript.push(item);
+    if (carriesMedia(entry.block)) {
+      media.push(entry);
+    }
+  };
   for (const entry of flow) {
     if (entry.kind === 'tool') {
-      panel.push({ kind: 'tool', key: entry.key, entry, step: entry.step > 0 ? entry.step : null });
-      if (carriesMedia(entry.block)) media.push(entry);
+      appendTool(entry);
       continue;
     }
     const node = get(entry.nodeKey);
     if (!node || node.visibility === 'hidden' || SKIPPED_KINDS.has(node.kind)) continue;
-    if (NOTICE_KINDS.has(node.kind)) { notices.push(entry.nodeKey); continue; }
     const step = stepOf(node);
+    if (NOTICE_KINDS.has(node.kind)) {
+      notices.push(entry.nodeKey);
+      transcript.push({ kind: 'notice', key: entry.key, nodeKey: entry.nodeKey, step });
+      continue;
+    }
     if (node.kind === 'assistant-step') {
-      for (const segment of assistantSegments((node.data as AssistantChatData).blocks)) {
+      const blocks = (node.data as AssistantChatData).blocks;
+      const segments = new Map(assistantSegments(blocks).map(segment => [segment.start, segment]));
+      for (const [index, block] of blocks.entries()) {
+        if (block.kind === 'tool-call') {
+          const call = calls.get(block.callId);
+          if (call) appendTool(call);
+          else appendTool({ kind: 'tool', key: `reader-tool:${block.callId}`, callId: block.callId, step: step ?? 0, order: entry.order + (index + 1) / 10000, draft: block });
+          continue;
+        }
+        const segment = segments.get(index);
+        if (!segment) continue;
         const key = `${entry.nodeKey}:${segment.start}`;
         if (segment.kind === 'reasoning') {
           if (segment.blocks.some(block => block.kind === 'reasoning' && block.text.trim() !== '')) {
-            panel.push({ kind: 'reasoning', key, nodeKey: entry.nodeKey, start: segment.start, step });
+            const thought = { kind: 'reasoning' as const, key, nodeKey: entry.nodeKey, start: segment.start, step };
+            panel.push(thought);
+            transcript.push(thought);
           }
           continue;
         }
         if (!hasVisibleBody(segment.blocks)) continue;
         const item = { kind: 'narration' as const, key, nodeKey: entry.nodeKey, start: segment.start, step };
-        bodies.push({ item, position: panel.length, media: segment.blocks.some(block => block.kind === 'image' || block.kind === 'other') });
+        bodies.push({ item, position: panel.length });
         panel.push(item);
+        transcript.push(item);
       }
       continue;
     }
-    if (node.kind === 'command' && commandOutputText(node) !== null) outputs.push(entry.nodeKey);
-    panel.push({ kind: INPUT_KINDS.has(node.kind) ? 'input' : 'record', key: entry.key, nodeKey: entry.nodeKey, step });
+    const item: PanelItem = { kind: INPUT_KINDS.has(node.kind) ? 'input' : 'record', key: entry.key, nodeKey: entry.nodeKey, step };
+    panel.push(item);
+    transcript.push(item);
+    if (node.kind === 'command' && commandOutputText(node) !== null) {
+      outputs.push(entry.nodeKey);
+      transcript.push({ kind: 'output', key: `${entry.key}:output`, nodeKey: entry.nodeKey, step });
+    }
   }
   const completed = boundary.status === 'closed' && boundary.reason === 'completed' && boundary.closingStep !== null;
   const answerKeys = new Set<string>();
   for (const body of bodies) {
     const isAnswer = completed
-      ? body.media || (body.item.step !== null && body.item.step >= boundary.closingStep!)
+      ? body.item.step !== null && body.item.step >= boundary.closingStep!
       : !panel.slice(body.position + 1).some(item => PROCESS_KINDS.has(item.kind));
     if (isAnswer) answerKeys.add(body.item.key);
   }
   return {
+    transcript: transcript.map(item => item.kind === 'narration' && answerKeys.has(item.key) ? { ...item, answer: true } : item),
     panel: panel.filter(item => !answerKeys.has(item.key)),
     answer: bodies.filter(body => answerKeys.has(body.item.key)).map(({ item }) => ({ key: item.key, nodeKey: item.nodeKey, start: item.start })),
     notices,

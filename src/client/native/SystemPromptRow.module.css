@@ -24,7 +24,7 @@
   border-radius: 8px;
   background: var(--cc-bg-200);
   color: var(--cc-text-500);
-  font: 400 11px/16px var(--ds-font-family-code);
+  font: 400 11px/16px var(--cc-font-mono);
 }
 
 .text {

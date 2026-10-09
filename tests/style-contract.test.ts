@@ -225,4 +225,9 @@ test('answer prose uses the Claude response font and code uses the mono stack', 
   assert.match(markdown, /var\(--cc-font-mono\)/);
   assert.match(markdown, /var\(--cc-link\)/);
   assert.match(sheet('TurnSection'), /font-family:\s*var\(--cc-font-response\)/);
+  for (const file of ['native/ContextInjectionRow.module.css', 'native/SystemPromptRow.module.css']) {
+    const css = readFileSync(new URL(file, CLIENT), 'utf8');
+    assert.match(css, /var\(--cc-font-mono\)/, `${file} uses the same code font as the reader`);
+    assert.doesNotMatch(css, /--ds-font-family-code/, `${file} must not revert to the host font`);
+  }
 });

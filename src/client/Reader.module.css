@@ -52,10 +52,16 @@
   --dsw-alias-markdown-code-block: var(--cc-bg-200);
   --dsw-alias-markdown-code-block-banner: var(--cc-bg-300);
   --dsw-alias-markdown-inline-code: var(--cc-bg-300);
+  --ds-font-family-code: var(--cc-font-mono);
+  --dsw-font-family: var(--cc-font-ui);
+  --dsh-claude-font-prose: var(--cc-font-response);
+  --dsh-claude-font-serif: var(--cc-font-response);
+  --dsh-claude-font-code: var(--cc-font-mono);
   /* host-remap:end */
   background: var(--cc-bg-100);
   color: var(--cc-text-100);
   font-family: var(--cc-font-ui);
+  font-weight: 400;
   font-size: var(--cc-size-ui);
   line-height: 1.5;
   min-width: 0;
@@ -133,13 +139,10 @@
   .thinkText[data-reader-status-copy=outgoing] { display: none !important; }
 }
 
-.disclosureBody { overflow: hidden; height: 0; }
 /* Clipped only while closed or while the height animation runs (data-clip, set in CollapseBody): a settled-open body must not
    cut off the 6px side-shadow hover bleed of the rows inside. flow-root keeps child margins inside the measured height. */
 .collapseBody { display: flow-root; }
 .collapseBody[data-open=false], .collapseBody[data-clip] { overflow: hidden; }
-.processFrame { min-width: 0; }
-.processContents { display: flow-root; min-width: 0; }
 
 .notice { padding: 10px 14px; border: 1px solid var(--cc-border); border-radius: 10px; corner-shape: round; background: var(--cc-bg-200); color: var(--cc-text-300); font-size: var(--cc-size-small); line-height: 21px; overflow-wrap: anywhere; }
 .error { padding: 10px 14px; border: 1px solid var(--cc-border); border-radius: 10px; corner-shape: round; background: var(--cc-bg-200); color: var(--cc-danger); font-size: var(--cc-size-small); line-height: 21px; overflow-wrap: anywhere; }

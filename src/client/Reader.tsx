@@ -42,16 +42,25 @@ export function Reader(rawProps: ReaderProps) {
   const conversationIdle = !activity.key && pending.length === 0 && !loading;
   const streamMotion = useMemo(() => ({ enabled: motion, activatedAt: activatedAt.current }), [motion]);
   const scroll = useReadingScroll(root, motion, props.sessionId);
+  const [resumeSignal, setResumeSignal] = useState(0);
+  const jumpToLatest = () => {
+    // Do not clear a live text selection to resume scrolling.
+    const selection = document.getSelection();
+    if (selection && !selection.isCollapsed) return;
+    scroll.jump();
+    setResumeSignal(value => value + 1);
+  };
   const { openFile, fork, fileMentions, inspectCall, openView } = props;
   // One value for every row: motion, host file/fork/inspect/view actions.
   const actions = useMemo<ReaderActions>(() => ({
     motion,
+    resumeSignal,
     openFile: openFile ? path => { void openFile(path).catch(() => {}); } : undefined,
     fork,
     fileMentions,
     inspectCall,
     showInChat: focus => openView('chat', focus),
-  }), [motion, openFile, fork, fileMentions, inspectCall, openView]);
+  }), [motion, resumeSignal, openFile, fork, fileMentions, inspectCall, openView]);
   const { viewRequest, completeViewRequest } = props;
   useEffect(() => { ensureClaudeFonts(); }, []);
   useEffect(() => {
@@ -130,7 +139,7 @@ export function Reader(rawProps: ReaderProps) {
             <strong>{pending.some(item => item.kind === 'question') ? '需要你回答一个问题' : '需要你的确认'}</strong>
             <span>请在下方原生操作区处理。此提示不会收进执行过程。</span>
           </div>}</MountFade>}
-        <JumpButton detached={scroll.detached} onJump={scroll.jump} motion={motion} />
+        <JumpButton detached={scroll.detached} onJump={jumpToLatest} motion={motion} />
       </div>
     </div>
   </ReaderActionsContext.Provider></StreamMotionContext.Provider>;

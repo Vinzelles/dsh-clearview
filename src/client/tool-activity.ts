@@ -137,10 +137,22 @@ export function activityPhase(entry: Pick<ToolActivityEntry, 'block' | 'draft'>,
   return 'returned';
 }
 
+// Weak keys release the derived model with the host's immutable call payload.
+const summaries = new WeakMap<object, { name: string; raw: string; view: Record<string, unknown> | null; model: ReturnType<typeof deriveActivitySummary> }>();
+
 export function activitySummary(entry: Pick<ToolActivityEntry, 'block' | 'draft'>) {
   const { name, raw } = toolIdentity(entry);
-  const args = inputFields(raw);
   const view = entry.block ? objectValue(Reflect.get(entry.block, 'callView')) : null;
+  const source = entry.block ?? entry.draft;
+  const previous = source && summaries.get(source);
+  if (previous && previous.name === name && previous.raw === raw && previous.view === view) return previous.model;
+  const model = deriveActivitySummary(name, raw, view);
+  if (source) summaries.set(source, { name, raw, view, model });
+  return model;
+}
+
+function deriveActivitySummary(name: string, raw: string, view: Record<string, unknown> | null) {
+  const args = inputFields(raw);
   const target = stringValue(args, 'file_path', 'path', 'filename', 'filePath');
   const command = (view?.card === 'terminal' ? stringValue(view, 'title') : undefined) ?? stringValue(args, 'command', 'cmd', 'script');
   const description = (view?.card === 'terminal' ? stringValue(view, 'description') : undefined) ?? stringValue(args, 'description');
@@ -159,7 +171,7 @@ export function activitySummary(entry: Pick<ToolActivityEntry, 'block' | 'draft'
     : category === 'terminal' ? description || '运行命令'
     : category === 'search' ? name === 'glob' ? '查找文件' : '搜索内容'
     : category === 'web' ? name === 'web_search' ? '搜索网页' : '读取网页'
-    : view?.title || name;
+    : stringValue(view, 'title') || name;
   return { name, raw, args, category, title, target: target ?? command ?? stringValue(args, 'query', 'pattern', 'url'), command,
     cwd: (view?.card === 'terminal' ? stringValue(view, 'cwd') : undefined) ?? stringValue(args, 'workdir', 'cwd'), content: stringValue(args, 'content', 'new_string', 'newText') };
 }

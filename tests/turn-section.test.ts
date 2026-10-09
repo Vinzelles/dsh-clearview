@@ -160,6 +160,19 @@ test('tool images render below the flow, ahead of the answer', () => {
   assert.ok(media < html.indexOf('data-reader-answer'), 'media precedes the answer');
 });
 
+test('media from a standalone subagent remains visible without opening its details', () => {
+  const turn = turnLocation({ status: 'closed', reason: 'completed', steps: [1, 2], closingStep: 2 });
+  const first = assistantNode(turn, 1, [toolCall('agent', 'dispatch', { description: '截图任务' })]);
+  const image = { type: 'image', attachment: { attachmentId: 'subimage', mime: 'image/png' } };
+  const child = settledTool('child', 'screenshot', {}, { content: [image] });
+  const tool = chatNode('tool-call', { root: settledTool('agent', 'dispatch', { description: '截图任务' }, { subCalls: [child] }) }, turn, 1);
+  const answer = assistantNode(turn, 2, [text('子任务完成')]);
+  const html = renderTurn([first, tool, answer], turn);
+  assert.match(html, /data-reader-tool-call="agent"[^>]*data-expanded="false"/);
+  assert.match(html, /data-reader-tool-media/);
+  assert.ok(html.indexOf('data-reader-tool-media') < html.indexOf('data-reader-answer'));
+});
+
 test('closing-reply file mentions are resolved once per turn and closing seq', () => {
   const { turn, nodes } = completedTurn();
   const calls: unknown[][] = [];
@@ -184,6 +197,39 @@ test('a failed command keeps its text out of the answer zone', () => {
   const answer = assistantNode(turn, 1, [text('已处理')]);
   const html = renderTurn([user, command, answer], turn);
   assert.doesNotMatch(html, /data-reader-command-output/);
+});
+
+test('earlier media, a command result and subsequent narration remain in source order', () => {
+  const turn = turnLocation({ status: 'closed', reason: 'completed', steps: [1, 2], closingStep: 2 });
+  const first = assistantNode(turn, 1, [text('第一段说明'), { kind: 'image', attachment: { attachmentId: 'a1', mime: 'image/png' } }]);
+  const command = chatNode('command', { name: 'status', outcome: { kind: 'success', text: '中途命令结果' } }, turn, 1);
+  const later = assistantNode(turn, 1, [text('命令之后的说明'), toolCall('later', 'read', { path: 'a.ts' })]);
+  const tool = chatNode('tool-call', { root: settledTool('later', 'read', { path: 'a.ts' }) }, turn, 1);
+  const answer = assistantNode(turn, 2, [text('最终回答')]);
+  const html = renderTurn([first, command, later, tool, answer], turn);
+  const positions = ['第一段说明', 'data-reader-command-output', '命令之后的说明', 'data-reader-tool-call', 'data-reader-answer'].map(value => html.indexOf(value));
+  assert.ok(positions.every((value, index) => value >= 0 && (index === 0 || value > positions[index - 1]!)), `chronological positions: ${positions}`);
+});
+
+test('plan updates reuse one card and retain failed calls and the last successful checklist', () => {
+  const turn = turnLocation({ status: 'closed', reason: 'completed', steps: [1, 2, 3], closingStep: 3 });
+  const saved = { todos: [{ content: '已保存任务', status: 'pending' }] };
+  const rejected = { todos: [{ content: '被拒绝的新任务', status: 'completed' }] };
+  const first = assistantNode(turn, 1, [toolCall('plan1', 'todo_write', saved)]);
+  const ok = chatNode('tool-call', { root: settledTool('plan1', 'todo_write', saved) }, turn, 1);
+  const next = assistantNode(turn, 2, [toolCall('plan2', 'todo_write', rejected)]);
+  const failure = chatNode('tool-call', { root: settledTool('plan2', 'todo_write', rejected, { isError: true, content: [{ type: 'text', text: '清单验证失败' }] }) }, turn, 2);
+  const answer = assistantNode(turn, 3, [text('结束')]);
+  const html = renderTurn([first, ok, next, failure, answer], turn);
+  assert.equal(html.match(/data-reader-plan="true"/g)?.length, 1);
+  assert.match(html, /data-reader-plan="true"[^>]*data-tone="failed"/);
+  assert.match(html, /计划更新失败 · 显示上次成功清单/);
+  assert.match(html, /已保存任务/);
+  assert.doesNotMatch(html.split('<details')[0]!, /被拒绝的新任务/, 'the rejected data is never presented as the saved checklist');
+  assert.match(html, /被拒绝的新任务/, 'the original failed call remains inspectable');
+  assert.match(html, /data-reader-plan-calls/);
+  assert.match(html, /data-reader-tool-call="plan1"/);
+  assert.match(html, /data-reader-tool-call="plan2"/);
 });
 
 test('the opening is the first user input even when a context record precedes it', () => {

@@ -59,12 +59,34 @@ test('tools whose results carry images are also listed as media', () => {
   assert.equal(layout.panel.length, 1);
 });
 
-test('a media-bearing body before the closing step stays visible as answer', () => {
+test('a media-bearing body before the closing step stays at its narration position', () => {
   const turn = turnLocation({ status: 'closed', reason: 'completed', steps: [1, 2], closingStep: 2 });
   const first = assistantNode(turn, 1, [{ kind: 'image', attachment: { attachmentId: 'a1' } }]);
   const second = assistantNode(turn, 2, [text('完成')]);
   const layout = layoutTurn([nodeEntry(first), nodeEntry(second)], getter(first, second), boundaryOf(turn));
-  assert.deepEqual(layout.answer.map(segment => segment.nodeKey), [first.key, second.key]);
+  assert.deepEqual(layout.answer.map(segment => segment.nodeKey), [second.key]);
+  assert.deepEqual(layout.transcript.filter(item => item.kind === 'narration').map(item => [item.nodeKey, item.answer === true]), [[first.key, false], [second.key, true]]);
+});
+
+test('media, successful command output and notices retain their chronological seats', () => {
+  const turn = turnLocation({ status: 'closed', reason: 'completed', steps: [1, 2], closingStep: 2 });
+  const first = assistantNode(turn, 1, [text('先截图'), { kind: 'image', attachment: { attachmentId: 'a1' } }, toolCall('shot', 'screenshot')]);
+  const image = settledTool('shot', 'screenshot', {}, { content: [{ type: 'image', attachment: { attachmentId: 'a2' } }] });
+  const command = chatNode('command', { outcome: { kind: 'success', text: '命令输出' } }, turn, 1);
+  const notice = chatNode('turn-error', { message: '提示原文' }, turn);
+  const second = assistantNode(turn, 2, [text('最终说明')]);
+  const layout = layoutTurn([nodeEntry(first), toolEntry('shot', 1, image), nodeEntry(command), nodeEntry(notice), nodeEntry(second)], getter(first, command, notice, second), boundaryOf(turn));
+  assert.deepEqual(kinds(layout.transcript), ['narration', 'tool', 'record', 'output', 'notice', 'narration']);
+  assert.equal(layout.media[0]?.callId, 'shot', 'media is rendered beside its fixed tool seat without splitting a group');
+  assert.equal(layout.transcript.filter(item => item.kind === 'tool').length, 1, 'a referenced call and its result occupy one seat');
+});
+
+test('body, tool call and later body within one assistant message preserve block order', () => {
+  const turn = turnLocation({ status: 'closed', reason: 'completed', steps: [1], closingStep: 1 });
+  const step = assistantNode(turn, 1, [text('工具之前'), toolCall('c1', 'bash', { command: 'ls' }), text('工具之后')]);
+  const layout = layoutTurn([nodeEntry(step), toolEntry('c1', 1, settledTool('c1', 'bash', { command: 'ls' }))], getter(step), boundaryOf(turn));
+  assert.deepEqual(kinds(layout.transcript), ['narration', 'tool', 'narration']);
+  assert.deepEqual(layout.transcript.filter(item => item.kind === 'narration').map(item => item.start), [0, 2]);
 });
 
 function tool(callId: string, step: number, name = 'bash'): PanelItem {

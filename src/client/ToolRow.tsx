@@ -54,6 +54,11 @@ export function editStat(block: ToolCallBlock | undefined): { added: number; rem
 export function toolRowTitle(entry: ToolActivityEntry, known?: { model: ReturnType<typeof activitySummary>; native: { title: string } | null }): string {
   const model = known?.model ?? activitySummary(entry);
   if (model.name === 'skill') return '使用技能';
+  if (model.name === 'str_replace_editor') {
+    if (model.args.command === 'create') return '写入';
+    if (model.args.command === 'view') return '读取';
+    if (model.args.command === 'str_replace' || model.args.command === 'insert') return '编辑';
+  }
   const native = known ? known.native : entry.block ? toolRowModel(model.name, entry.block) : null;
   return native?.title ?? VARIANT_TITLES[classifyTool(model.name)];
 }
@@ -81,7 +86,8 @@ export const ToolRow = memo(function ToolRow({ entry, turnClosed, onRead, onOpen
   const Icon = skill ? IconSkillOutlineRegular : model.name === 'code' ? IconCodeOutlineRegular : ICONS[model.category];
   const title = toolRowTitle(entry, { model, native });
   const skillName = typeof model.args?.name === 'string' ? model.args.name.split('\n')[0] : model.raw.split('\n')[0];
-  const summary = skill ? skillName : native?.summary
+  const command = model.category === 'terminal' && typeof model.args.command === 'string' ? model.args.command : undefined;
+  const summary = skill ? skillName : command ?? (model.name === 'str_replace_editor' ? model.target : undefined) ?? native?.summary
     ?? (classifyTool(model.name) === 'others' ? `${model.name} · ${model.target ?? model.title}` : model.target ?? model.title);
   const active = phase === 'preparing' || phase === 'running';
   const failed = phase === 'failed';
@@ -91,14 +97,18 @@ export const ToolRow = memo(function ToolRow({ entry, turnClosed, onRead, onOpen
   const stat = model.category === 'write' ? editStat(block) : null;
   const end = toolTrailing(phase, exitCode, stat);
   return <div className={css.tool} data-reader-tool-call={entry.callId} data-tool-phase={phase} data-tool-category={model.category} data-expanded={open}>
-    <Line icon={<Icon size={14} />} label={title} target={classifyTool(model.name) === 'bash' ? <code className={css.command}>{summary}</code> : summary} title={summary}
+    <Line icon={<Icon size={14} />} label={title} target={model.category === 'terminal' ? <code className={css.command}>{summary}</code> : summary} title={summary}
       tone={failed || phase === 'interrupted' ? 'failed' : active ? 'running' : 'idle'} shimmer={active && motion}
       trailing={end && (stat && end.tone === 'idle' ? <><span data-add>+{stat.added}</span> <span data-del>−{stat.removed}</span></> : end.text)}
       open={open} onToggle={toggle} controls={detailId} />
-    <CollapseBody open={open} motion={motion}><div id={detailId} className={css.detail}><ToolDetails entry={entry} model={model} phase={phase} {...render} /></div></CollapseBody>
-    {!!block?.subCalls.length && <div className={css.children} aria-label="子调用">{block.subCalls.map((child, index) => <ToolRow key={child.callId} {...render}
-      entry={{ kind: 'tool', key: `reader-tool:${child.callId}`, callId: child.callId, step: entry.step, order: index, block: child }}
-      turnClosed={turnClosed} onRead={onRead} depth={depth + 1} />)}</div>}
+    <CollapseBody open={open} motion={motion}>
+      <div id={detailId} className={css.detail}>
+        <ToolDetails entry={entry} model={model} phase={phase} {...render} />
+        {!!block?.subCalls.length && <div className={css.children} aria-label="子调用">{block.subCalls.map((child, index) => <ToolRow key={child.callId} {...render}
+          entry={{ kind: 'tool', key: `reader-tool:${child.callId}`, callId: child.callId, step: entry.step, order: index, block: child }}
+          turnClosed={turnClosed} onRead={onRead} depth={depth + 1} />)}</div>}
+      </div>
+    </CollapseBody>
   </div>;
 }, (previous, next) => previous.entry.callId === next.entry.callId && previous.entry.block === next.entry.block
   && previous.entry.draft === next.entry.draft && previous.entry.step === next.entry.step

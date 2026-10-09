@@ -1,7 +1,7 @@
 import './support/dom.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createElement, type ComponentType } from 'react';
+import React, { createElement, type ComponentType } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { InspectButton, ToolDetails } from '../src/client/ToolDetails.tsx';
 import { activitySummary } from '../src/client/tool-activity.ts';
@@ -41,6 +41,24 @@ test('a settled command shows the verb and the command, never a duration', () =>
   assert.doesNotMatch(html, /Bash|工具调用/);
 });
 
+test('a command target shows the literal command even when the host supplies an English description', () => {
+  const block = settledTool('command-description', 'bash', { command: 'npm run build', description: 'Build project artifacts' });
+  const html = renderIn({ motion: true }, ToolRow, { entry: toolEntry('command-description', 1, block), turnClosed: true, onRead: () => {}, ...render });
+  assert.match(html, /运行[\s\S]*npm run build/);
+  assert.doesNotMatch(html, /Build project artifacts/);
+});
+
+test('legacy editor calls use the actual operation verb and file target', () => {
+  for (const [command, title] of [['create', '写入'], ['str_replace', '编辑'], ['insert', '编辑'], ['view', '读取']]) {
+    const block = settledTool(`editor-${command}`, 'str_replace_editor', { command, path: 'src/scene.ts', old_str: 'a', new_str: 'b' });
+    const entry = toolEntry(`editor-${command}`, 1, block);
+    assert.equal(toolRowTitle(entry), title);
+    const html = renderIn({ motion: true }, ToolRow, { entry, turnClosed: true, onRead: () => {}, ...render });
+    assert.match(html, /src\/scene\.ts/);
+    assert.doesNotMatch(html, /调用工具|str_replace_editor ·/);
+  }
+});
+
 test('a preparing call shimmers its verb only when motion is on', () => {
   const entry = toolEntry('c2', 1, undefined, toolCall('c2', 'bash', { command: 'ls' }));
   const on = renderIn({ motion: true }, ToolRow, { entry, turnClosed: false, onRead: () => {}, ...render });
@@ -50,11 +68,12 @@ test('a preparing call shimmers its verb only when motion is on', () => {
   assert.doesNotMatch(off, /data-shimmer/);
 });
 
-test('sub-calls render as nested tool rows', () => {
+test('sub-calls stay inside the closed parent details', () => {
   const child = settledTool('c4', 'read', { path: 'a.ts' });
   const parent = settledTool('c3', 'code', {}, { subCalls: [child] });
   const html = renderIn({ motion: true }, ToolRow, { entry: toolEntry('c3', 1, parent), turnClosed: true, onRead: () => {}, ...render });
-  assert.match(html, /data-reader-tool-call="c3"[\s\S]*data-reader-tool-call="c4"/);
+  assert.match(html, /data-reader-tool-call="c3"[^>]*data-expanded="false"/);
+  assert.doesNotMatch(html, /data-reader-tool-call="c4"/);
 });
 
 test('tool images stay visible as media blocks', () => {
@@ -70,7 +89,9 @@ test('only the failed row is a failed line, not its healthy sub-calls', () => {
   const parent = settledTool('c7', 'bash', { command: 'npm run build' }, { isError: true, content: [{ type: 'text', text: 'Error: exit code: 2' }], subCalls: [child] });
   const html = renderIn({ motion: true }, ToolRow, { entry: toolEntry('c7', 1, parent), turnClosed: true, onRead: () => {}, ...render });
   assert.equal(html.match(/data-tone="failed"/g)?.length, 1);
-  assert.match(html, /退出码 2[\s\S]*data-reader-tool-call="c8"/);
+  assert.match(html, /退出码 2/);
+  assert.match(html, /data-expanded="false"/);
+  assert.doesNotMatch(html, /data-reader-tool-call="c8"/);
 });
 
 test('a failed call with text output marks its detail for the danger colour', () => {
@@ -101,4 +122,41 @@ test('the row title and the merged-row suffix come from one function', () => {
   assert.match(html, />运行</);
   assert.equal(toolRowTitle(toolEntry('t2', 1, settledTool('t2', 'skill', { name: 'x' }))), '使用技能');
   assert.equal(toolRowTitle(toolEntry('t3', 1, settledTool('t3', 'mystery', {}))), '调用工具');
+});
+
+test('dispatch children appear only after the parent opens and fold with the parent', () => {
+  const slots: unknown[] = [];
+  let cursor = 0;
+  const internals = (React as any).__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+  const dispatcher = {
+    useContext: () => ({ motion: false }),
+    useState(initial: unknown) {
+      const i = cursor++;
+      if (!(i in slots)) slots[i] = initial;
+      return [slots[i], (value: unknown) => { slots[i] = value; }];
+    },
+    useCallback: (callback: unknown) => callback,
+    useMemo: (factory: () => unknown) => factory(),
+    useId: () => 'parent-details',
+  };
+  const block = settledTool('dispatch-parent', 'dispatch', {}, { isError: true, subCalls: [settledTool('dispatch-child', 'read', { path: 'a.ts' })] });
+  const changes: [string, boolean][] = [];
+  const draw = () => {
+    cursor = 0;
+    const previous = internals.ReactCurrentDispatcher.current;
+    internals.ReactCurrentDispatcher.current = dispatcher;
+    try { return (ToolRow as any).type({ entry: toolEntry('dispatch-parent', 1, block), turnClosed: true, onRead: () => {}, onOpenChange: (key: string, open: boolean) => changes.push([key, open]), ...render }); }
+    finally { internals.ReactCurrentDispatcher.current = previous; }
+  };
+  let row = draw();
+  assert.equal(row.props['data-expanded'], false);
+  row.props.children[0].props.onToggle();
+  row = draw();
+  assert.equal(row.props.children[1].props.open, true);
+  const html = renderToStaticMarkup(row);
+  assert.match(html, /id="parent-details"[\s\S]*aria-label="子调用"[\s\S]*data-reader-tool-call="dispatch-child"/);
+  assert.equal(html.match(/data-tone="failed"/g)?.length, 1);
+  row.props.children[0].props.onToggle();
+  assert.doesNotMatch(renderToStaticMarkup(draw()), /data-reader-tool-call="dispatch-child"/);
+  assert.deepEqual(changes, [['reader-tool:dispatch-parent', true], ['reader-tool:dispatch-parent', false]]);
 });

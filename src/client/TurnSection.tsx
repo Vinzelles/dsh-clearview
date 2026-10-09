@@ -18,10 +18,10 @@ import type { RewindSpan } from './rewind-hidden.js';
 import { StatusLine } from './StatusLine.js';
 import { RevealLedgerContext, type RevealLedger } from './streaming.js';
 import { ThoughtRow } from './ThoughtRow.js';
-import { readerFlow } from './tool-activity.js';
+import { activitySummary, readerFlow } from './tool-activity.js';
 import { ToolGroupRow } from './ToolGroupRow.js';
 import { ToolImages, ToolRow } from './ToolRow.js';
-import { buildTranscript, liveThoughtKey, type TranscriptEntry } from './transcript-model.js';
+import { buildTranscript, liveThoughtKey, planStatus, type TranscriptEntry } from './transcript-model.js';
 import { TurnFooter } from './TurnFooter.js';
 import { closingOf } from './turn-meta.js';
 import { formatSeconds } from './turn-activity.js';
@@ -65,33 +65,25 @@ const LiveSegment = memo(function LiveSegment({ useSession, nodeKey, start, pinn
   const { data, part } = useSegment(useSession, nodeKey, start);
   if (!data || !part) return null;
   return <LiveThought follow={follow} motion={motion}>
-    <Blocks {...render} blocks={part.blocks} streaming holdFormatting={pinned} startedAt={data.time} liveText />
+    <Blocks {...render} blocks={part.blocks} streaming={data.status === 'running' && data.blocks.at(-1)?.kind === 'reasoning'} holdFormatting={pinned} startedAt={data.time} liveText />
   </LiveThought>;
 });
 
-const NarrationSegment = memo(function NarrationSegment({ useSession, nodeKey, start, pinned, ...render }: SegmentProps) {
-  const { data, part } = useSegment(useSession, nodeKey, start);
-  if (!data || !part) return null;
-  return <div className={css.prose} data-reader-key={nodeKey}>
-    <Blocks {...render} blocks={part.blocks} streaming={data.status === 'running'} holdFormatting={pinned} startedAt={data.time} interrupted={data.status === 'interrupted'} liveText revealKey={revealKeyOf(nodeKey, start)} />
-  </div>;
-});
-
-const AnswerSegment = memo(function AnswerSegment({ useSession, nodeKey, start, pinned, fileMentions, ...render }: SegmentProps & { fileMentions?: MarkdownFileMentions }) {
+const BodySegment = memo(function BodySegment({ useSession, nodeKey, start, pinned, answer = false, fileMentions, ...render }: SegmentProps & { answer?: boolean; fileMentions?: MarkdownFileMentions }) {
   const { data, part, last } = useSegment(useSession, nodeKey, start);
   if (!data || !part) return null;
-  return <article className={css.prose} data-reader-answer data-reader-anchor data-reader-key={nodeKey} data-reader-source-start={start} data-answer-status={data.status}>
+  return <article className={css.prose} data-reader-answer={answer || undefined} data-reader-anchor={answer || undefined} data-reader-key={nodeKey} data-reader-source-start={start} data-answer-status={data.status}>
     <Blocks {...render} blocks={part.blocks} streaming={data.status === 'running'} holdFormatting={pinned} startedAt={data.time} interrupted={data.status === 'interrupted'} liveText revealKey={revealKeyOf(nodeKey, start)} fileMentions={fileMentions} />
-    {last && data.status === 'interrupted' && <span className={css.stopped}>已停止</span>}
+    {answer && last && data.status === 'interrupted' && <span className={css.stopped}>已停止</span>}
   </article>;
 });
 
-/** A successful /command result reads as Markdown beside the answer; its lifecycle row stays in the panel. */
+/** A successful command result reads as Markdown at its source position. */
 const CommandOutput = memo(function CommandOutput({ useSession, nodeKey, ...render }: BlockRenderProps & Pick<ReaderProps, 'useSession'> & { nodeKey: string }) {
   const node = useChatSelector(useSession, chat => chat.nodes.get(nodeKey));
   const text = node && node.visibility !== 'hidden' ? commandOutputText(node) : null;
   if (text === null) return null;
-  return <div className={css.output} data-reader-command-output data-reader-key={nodeKey}>
+  return <div className={`${css.output} ${css.prose}`} data-reader-command-output data-reader-key={nodeKey}>
     <Blocks {...render} blocks={[{ kind: 'text', text }]} />
   </div>;
 });
@@ -150,32 +142,57 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
   const status = panelStatus(boundary, pendingCount);
   const closed = boundary.status === 'closed';
   const open = boundary.status === 'open';
-  const entries = useMemo(() => buildTranscript(layout.panel, get, closed), [layout.panel, get, closed]);
+  const entries = useMemo(() => buildTranscript(layout.transcript, get, closed), [layout.transcript, get, closed]);
   const liveKey = useMemo(() => liveThoughtKey(entries, get, open), [entries, get, open]);
   const live = liveKey ? entries.at(-1) as Extract<TranscriptEntry, { kind: 'thought' }> : null;
+  const [focusedLive, setFocusedLive] = useState<string | null>(null);
+  const selectedLive = entries.filter((entry): entry is Extract<TranscriptEntry, { kind: 'thought' }> => entry.kind === 'thought' && pinnedKeys.includes(entry.key));
+  const flowPinned = pinnedKeys.includes(group.key) || selectedLive.length > 0;
+  // Keep the selected/focused thought's existing DOM until reading ends, even when a new step starts.
+  const liveSeats = entries.filter((entry): entry is Extract<TranscriptEntry, { kind: 'thought' }> => entry.kind === 'thought'
+    && (entry.key === liveKey || entry.key === focusedLive || pinnedKeys.includes(entry.key)));
   const now = useNow(status === 'running' || status === 'waiting');
   const liveData = live ? get(live.item.nodeKey)?.data as AssistantChatData | undefined : undefined;
   const thinking = live && typeof liveData?.time === 'number' ? formatSeconds(Math.max(0, Math.round((now - liveData.time) / 1000))) : null;
-  const flowPinned = pinnedKeys.includes(group.key);
   const closingSeq = closingOf(turn)?.seq;
   // The host hands back a fresh resolver per call; keep one per turn and closing reply so the answer's Blocks stay memoised.
   const mentions = useMemo(() => status === 'done' && turn && closingSeq !== undefined ? fileMentions?.(turn, closingSeq) : undefined, [status, turn, closingSeq, fileMentions]);
   const shared = useMemo(() => ({ renderSlotChain: props.renderSlotChain, loadImage: props.loadImage }), [props.renderSlotChain, props.loadImage]);
   const noop = useCallback(() => {}, []);
-  const renderItem = useCallback((item: PanelItem): ReactNode => {
+  const lastAnswerKey = layout.answer.at(-1)?.key;
+  const renderItem = useCallback((item: PanelItem, onOpenChange?: (key: string, open: boolean) => void): ReactNode => {
     switch (item.kind) {
-      case 'tool': return <BlockBoundary><ToolRow {...shared} entry={item.entry} turnClosed={closed} onRead={noop} /></BlockBoundary>;
-      case 'record': return <BlockBoundary><RecordRow {...shared} useSession={props.useSession} nodeKey={item.nodeKey} t={props.contextT} onRead={noop} turnClosed={closed} /></BlockBoundary>;
+      case 'tool': return <BlockBoundary><ToolRow {...shared} entry={item.entry} turnClosed={closed} onRead={noop} onOpenChange={onOpenChange} /></BlockBoundary>;
+      case 'record': return <BlockBoundary><RecordRow {...shared} useSession={props.useSession} nodeKey={item.nodeKey} t={props.contextT} onRead={noop} onOpenChange={onOpenChange} turnClosed={closed} /></BlockBoundary>;
       case 'input': return <BlockBoundary><InputBubble {...shared} useSession={props.useSession} nodeKey={item.nodeKey} /></BlockBoundary>;
-      case 'narration': return <BlockBoundary><NarrationSegment {...shared} useSession={props.useSession} nodeKey={item.nodeKey} start={item.start} pinned={flowPinned} /></BlockBoundary>;
+      case 'narration': return <BlockBoundary><BodySegment {...shared} useSession={props.useSession} nodeKey={item.nodeKey} start={item.start} answer={item.answer}
+        pinned={flowPinned || pinnedKeys.includes(item.nodeKey)} fileMentions={item.answer && item.key === lastAnswerKey ? mentions : undefined} /></BlockBoundary>;
       case 'reasoning': return <BlockBoundary><ThoughtSegment {...shared} useSession={props.useSession} nodeKey={item.nodeKey} start={item.start} pinned={flowPinned} onRead={noop} /></BlockBoundary>;
+      case 'media': return <BlockBoundary><ToolImages {...shared} entries={[item.entry]} /></BlockBoundary>;
+      case 'output': return <BlockBoundary><CommandOutput {...shared} useSession={props.useSession} nodeKey={item.nodeKey} /></BlockBoundary>;
+      case 'notice': return <BlockBoundary><TurnNotice useSession={props.useSession} nodeKey={item.nodeKey} /></BlockBoundary>;
     }
-  }, [shared, props.useSession, props.contextT, closed, noop, flowPinned]);
+  }, [shared, props.useSession, props.contextT, closed, noop, flowPinned, pinnedKeys, mentions, lastAnswerKey]);
+  const renderMedia = useCallback((item: PanelItem): ReactNode => item.kind === 'tool'
+    ? <BlockBoundary><ToolImages {...shared} entries={[item.entry]} /></BlockBoundary> : null, [shared]);
   const renderEntry = (entry: TranscriptEntry): ReactNode => {
     switch (entry.kind) {
-      case 'group': return <ToolGroupRow key={entry.key} group={entry} motion={motion} onRead={noop} renderItem={renderItem} />;
-      case 'plan': return <PlanCard key={entry.key} todos={entry.todos} />;
+      case 'group': return <ToolGroupRow key={entry.key} group={entry} motion={motion} onRead={noop} renderItem={renderItem} renderMedia={renderMedia} />;
+      case 'plan': return <BlockBoundary key={entry.key}><PlanCard key="plan" todos={entry.todos} {...planStatus(entry, closed)}>
+        {entry.calls.map(call => <Fragment key={call.key}>{renderItem(call)}</Fragment>)}
+      </PlanCard>{entry.calls.map(call => <Fragment key={call.key}>{renderMedia(call)}</Fragment>)}</BlockBoundary>;
       case 'input': return <div key={entry.key} className={css.input}>{renderItem(entry.item)}</div>;
+      case 'item': {
+        if (entry.facts) {
+          const key = `group:${entry.key}`;
+          return <ToolGroupRow key={key} group={{ kind: 'group', key, items: [entry.item], facts: entry.facts }} motion={motion} onRead={noop} renderItem={renderItem} renderMedia={renderMedia} />;
+        }
+        if (entry.item.kind === 'tool' && activitySummary(entry.item.entry).name === 'todo_write') return <BlockBoundary key={entry.key}>
+          <PlanCard key="plan" todos={[]} hasChecklist={false}>{<Fragment key={entry.item.key}>{renderItem(entry.item)}</Fragment>}</PlanCard>
+          {[entry.item].map(call => <Fragment key={call.key}>{renderMedia(call)}</Fragment>)}
+        </BlockBoundary>;
+        return <Fragment key={entry.key}>{renderItem(entry.item)}{renderMedia(entry.item)}</Fragment>;
+      }
       default: return <Fragment key={entry.key}>{renderItem(entry.item)}</Fragment>;
     }
   };
@@ -191,18 +208,14 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
     {preambleKeys.map(key => <BlockBoundary key={key}><PromptPreamble useSession={props.useSession} nodeKey={key} /></BlockBoundary>)}
     {leading.opening && <BlockBoundary><Opening {...shared} useSession={props.useSession} nodeKey={leading.opening} /></BlockBoundary>}
     {entries.length > 0 && <div className={css.flow} data-reader-flow data-reader-process-key={group.key}>
-      {entries.filter(entry => entry.key !== liveKey).map(renderEntry)}
+      {entries.filter(entry => !liveSeats.some(seat => seat.key === entry.key)).map(renderEntry)}
     </div>}
-    {layout.media.length > 0 && <BlockBoundary><ToolImages {...shared} entries={layout.media} /></BlockBoundary>}
-    {layout.outputs.map(key => <BlockBoundary key={key}><CommandOutput {...shared} useSession={props.useSession} nodeKey={key} /></BlockBoundary>)}
-    {layout.answer.map((segment, index) => <BlockBoundary key={segment.key}>
-      <AnswerSegment {...shared} useSession={props.useSession} nodeKey={segment.nodeKey} start={segment.start}
-        pinned={pinnedKeys.includes(segment.nodeKey)} fileMentions={index === layout.answer.length - 1 ? mentions : undefined} />
-    </BlockBoundary>)}
-    {layout.notices.map(key => <BlockBoundary key={key}><TurnNotice useSession={props.useSession} nodeKey={key} /></BlockBoundary>)}
     {open && <StatusLine phase={status === 'waiting' ? 'waiting' : 'running'} label={status === 'waiting' ? '等待你的操作' : runningLabel(turn, group.keys, get)}
       elapsed={elapsedLabel(turn, now, status)} thinking={thinking} motion={motion} />}
-    {live && <BlockBoundary><LiveSegment {...shared} useSession={props.useSession} nodeKey={live.item.nodeKey} start={live.item.start} pinned={flowPinned} follow={boundary.latestStep === liveData?.step} /></BlockBoundary>}
+    {liveSeats.map(seat => <div key={seat.key} data-reader-live-seat data-reader-key={seat.key} data-reader-process-key={group.key}
+      onFocusCapture={() => setFocusedLive(seat.key)} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusedLive(null); }}>
+      <BlockBoundary><LiveSegment {...shared} useSession={props.useSession} nodeKey={seat.item.nodeKey} start={seat.item.start} pinned={flowPinned} follow={seat.key === liveKey && boundary.latestStep === liveData?.step} /></BlockBoundary>
+    </div>)}
     {stopped && <StatusLine phase={status === 'interrupted' ? 'interrupted' : 'error'} label={terminal ?? statusLabel(status, boundary.reason, '')} elapsed={elapsedLabel(turn, now, status)} thinking={null} motion={motion} />}
     {closed && <BlockBoundary><TurnFooter turn={turn} answerText={answerText} /></BlockBoundary>}
     {flowTail}

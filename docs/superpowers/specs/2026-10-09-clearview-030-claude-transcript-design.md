@@ -1,8 +1,8 @@
 # dsh-clearview 0.3.0: Claude Code Desktop 对话流
 
 日期：2026-10-09
-状态：已获用户确认方向与原型，待审规格
-原型：`prototype/cc-flow.prototype.html`（截图 `prototype/shot-*.png`），只作参考，不进 main。
+状态：规格与实施计划已获用户确认，实施后验收中
+原型：`proto/clearview-030-cc-flow` 分支（80d89f9）中的 `prototype/cc-flow.prototype.html` 和 `prototype/shot-*.png`，只作参考，不进 main。
 
 ## 1. 背景与证据
 
@@ -38,7 +38,7 @@
 
 - 无「过程面板」：一轮是一条按时间顺序的单列，没有容器、外框、头部和「前 N 步」。
 - 列宽沿用宿主阅读列（约 742px），底部 24px 留白保留。
-- 一轮结束后不收起任何内容（取消 0.2.x「成功后收成一条、只留回答」）。工具组默认收起，见 3.2。
+- 一轮结束后不收起正文（取消 0.2.x「成功后收成一条、只留回答」）。工具组默认收起，见 3.2。
 
 ### 3.2 行语法
 

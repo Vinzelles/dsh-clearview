@@ -5,16 +5,11 @@
 全面美化DSH对话流，使界面看起来更美观、现代、流畅。插件为会话流提供一个独立的 **「阅读」** 页签：按真实顺序把一轮呈现为 Claude Code Desktop 式的对话流：说明、合并后的操作行、思考和最终回答连续排列，运行中底部有状态行与实时思考。原版「对话 / 轨迹」、输入框、模型选择、工具与审批系统全部保留。
 > 本插件基于 https://github.com/aa2246740/dsh-better-display 改造，以前端工程师的理解进行重新优化。
 
-<img width="1727" height="869" alt="comp_clean_text" src="https://github.com/user-attachments/assets/c8378763-17a3-4cc5-ae67-0421bc193519" />
-<img width="1818" height="1098" alt="comparison_dark_off_on_clean" src="https://github.com/user-attachments/assets/74a9b25e-02ec-462c-80e1-0b28813484f8" />
-
-
-
 **只改展示，不改 Agent、SDK、提示词、模型设置或会话记录。**
 
 ## 功能亮点
 
-- **Claude Code Desktop 式对话流**：一轮是一条按时间顺序的单列，没有过程面板、头部计数和「前 N 步」；轮次结束后不收起任何内容，中途说明与最终回答共用同一套衬线正文。
+- **Claude Code Desktop 式对话流**：一轮是一条按时间顺序的单列，没有过程面板、头部计数和「前 N 步」；轮次结束后不收起正文，中途说明与最终回答共用同一套衬线正文。
 - **连续操作合并为一行**：工具调用（`todo_write`、`dispatch` 除外）与 `/命令`、手动压缩记录，满两条合成「运行了 N 条命令，写入了 N 个文件」这类摘要（运行了 / 读取了 / 写入了 / 编辑了 / 搜索了 / 访问了 / 使用了 / 调用了 / 执行了），有失败时行尾红色「· N 次失败」。运行中展开，结束后自动收起，你手动展开过的不收。
 - **单行语法**：图标 + 中文动词 + 目标，编辑显示 +a −d，不显示用时；失败只在行内标红，不自动展开。点开是细节块（命令输出、参数、搜索结果、红绿 diff），可「在轨迹中查看」。
 - **思考**：已完成的思考是一行「思考了 N 秒」，点开看灰色衬线斜体全文。运行中的思考在状态行下方实时流式显示，rAF 连续跟随（EMA 速度匹配 + 比例项收敛），滚动、聚焦或选字暂停，点击「回到最新」恢复；减少动态效果时直接跳到末尾。跟随控制器与 0.1.x 相同。
@@ -63,7 +58,7 @@ npm test
 npm run typecheck
 DSHX_HARNESS=/absolute/path/to/deepseek-harness npm run build
 
-# 3. 检查并激活（无需重启宿主，刷新页面即生效）
+# 3. 检查激活方式（纯客户端改动可刷新页面；首次启用字体路由涉及服务端）
 dshx check dsh-clearview --harness "$DSHX_HARNESS"
 dshx activation-plan dsh-clearview --change new-client --harness "$DSHX_HARNESS"
 dshx activate-new-client dsh-clearview --profile web --port "$DSH_WEB_PORT" --harness "$DSHX_HARNESS"
@@ -73,7 +68,7 @@ dshx activate-new-client dsh-clearview --profile web --port "$DSH_WEB_PORT" --ha
 
 ### 更新与回退
 
-更新已有客户端时，拉取源码、重新构建，用 `dshx activation-plan --change client` 核对更新方式，再验证实际页面。不要为客户端动效更新重启宿主。想立即对照原版，直接选择「对话」；记录、模型和输入框一直由 DSH 持有。
+更新已有客户端时，拉取源码、重新构建，用 `dshx activation-plan --change client` 核对更新方式，再验证实际页面。纯客户端动效更新只需刷新；0.3.0 新增字体服务路由，首次安装需按宿主给出的服务端激活计划处理。使用 dsh-env 管理的环境，应通过候选审核、发布与运行时应用流程更新，不能改写正在运行的 generation。想立即对照原版，直接选择「对话」；记录、模型和输入框一直由 DSH 持有。
 
 ## 不支持
 
@@ -93,7 +88,7 @@ dshx activate-new-client dsh-clearview --profile web --port "$DSH_WEB_PORT" --ha
 
 ## 测试
 
-`npm test` 当前共 293 项，全部通过。覆盖：流式顺序与轮次边界、异常保留、思考行与实时思考跟随、Unicode/组合 emoji、Markdown/GFM/公式、流式缓冲、阅读保护守卫（选区/焦点暂停与「回到最新」浮现）、`dsh-rewind` 隐藏契约、操作分组与合并、状态行、用户气泡、轮次尾部数据、turn-trigger 与记录行、视图请求与阅读位置、样式契约、浏览器语法与运行时外部依赖门禁。安装后仍需在真实宿主验证，不能把单元测试通过当作页面已加载。
+`npm test` 当前共 364 项，全部通过。覆盖：流式顺序与轮次边界、异常保留、思考行与实时思考跟随、Unicode/组合 emoji、Markdown/GFM/公式、流式缓冲、阅读保护守卫（选区/焦点暂停与「回到最新」浮现）、`dsh-rewind` 隐藏契约、操作分组与合并、计划更新与失败、字体路由恢复、浏览器只读请求拦截、状态行、用户气泡、轮次尾部数据、turn-trigger 与记录行、视图请求与阅读位置、样式契约、浏览器语法与运行时外部依赖门禁。安装后仍需在真实宿主验证，不能把单元测试通过当作页面已加载。
 
 ## 许可与致谢
 

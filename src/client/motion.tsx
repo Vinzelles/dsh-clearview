@@ -21,7 +21,7 @@ export function useMotionAllowed(enabled: boolean): boolean {
   return enabled && !reduced;
 }
 
-export function usePinnedSelection(root: RefObject<HTMLElement>, selector = '[data-reader-answer], [data-reader-flow]'): readonly string[] {
+export function usePinnedSelection(root: RefObject<HTMLElement>, selector = '[data-reader-answer], [data-reader-flow], [data-reader-live-seat]'): readonly string[] {
   const [keys, setKeys] = useState<readonly string[]>([]);
   useEffect(() => {
     const update = () => {
@@ -92,50 +92,7 @@ export function StatusText({ text, motion, shimmer = false, className }: { text:
   </span>;
 }
 
-/** Supplemental details stay in source order beside their own narration. */
-export function ProcessFragment({ open, motion, onRead, returnFocusTo, nodeKey, children, framed = false }: {
-  open: boolean; motion: boolean; onRead: () => void; nodeKey: string;
-  returnFocusTo: RefObject<HTMLElement>; children: ReactNode; framed?: boolean;
-}) {
-  const body = useRef<HTMLDivElement>(null);
-  const running = useRef<Animation | null>(null);
-  const previous = useRef(open);
-  const [present, setPresent] = useState(open);
-  useLayoutEffect(() => {
-    const element = body.current;
-    if (!element) return;
-    const from = running.current ? element.getBoundingClientRect().height : previous.current ? element.scrollHeight : 0;
-    running.current?.cancel();
-    running.current = null;
-    const changed = previous.current !== open;
-    previous.current = open;
-    if (open) setPresent(true);
-    if (!open && element.contains(document.activeElement)) returnFocusTo.current?.focus();
-    element.style.height = open ? 'auto' : '0px';
-    const target = open ? element.scrollHeight : 0;
-    if (!motion || !changed || Math.abs(from - target) < 1) {
-      setPresent(open);
-      return;
-    }
-    const animation = element.animate([{ height: `${from}px`, opacity: from < 1 ? 0 : 1 }, { height: `${target}px`, opacity: open ? 1 : 0 }], { duration: MOTION.size, easing: EASING, fill: 'both' });
-    running.current = animation;
-    animation.onfinish = () => {
-      if (running.current !== animation) return;
-      running.current = null;
-      animation.cancel();
-      setPresent(open);
-    };
-  }, [open, motion, returnFocusTo]);
-  useEffect(() => () => { running.current?.cancel(); }, []);
-  if (!open && !present) return null;
-  return <div ref={body} className={css.disclosureBody} data-reader-process data-reader-process-key={nodeKey} data-ud-motion="reader-process-size"
-    aria-hidden={!open} onPointerDown={() => { if (open) onRead(); }} onFocusCapture={() => { if (open) onRead(); }} {...(!open ? { inert: '' } : {})}>
-    <div className={framed ? css.processFrame : css.processContents}>{children}</div>
-  </div>;
-}
-
-/** Inner expand/collapse that stays mounted: same WAAPI height+opacity language as
- *  ProcessFragment, but without the reader selection markers / process framing. */
+/** Inner expand/collapse with the reader's shared height and opacity transition. */
 export function CollapseBody({ open, motion, children, className }: {
   open: boolean; motion: boolean; children: ReactNode; className?: string;
 }) {
@@ -276,8 +233,13 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, 
     let lastWrittenTop: number | null = null;
     // ResizeObserver runs after layout. Cache geometry there rather than
     // asking for scrollHeight/clientHeight again in every animation frame.
-    let maxTop = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
-    let currentTop = scroll.scrollTop;
+    // The first RO delivery supplies already-laid-out geometry. Reading it during
+    // the mount commit forces the entire transcript to lay out before sibling
+    // observers and font/style changes can be batched by the browser.
+    let maxTop = 0;
+    let currentTop = 0;
+    let initialized = false;
+    let initialGesture = false;
     const measure = () => { maxTop = Math.max(0, scroll.scrollHeight - scroll.clientHeight); currentTop = scroll.scrollTop; };
     // A downward reader gesture (wheel / key / touch / scrollbar drag) that
     // is still pending. It survives scroll events that land outside the
@@ -312,6 +274,7 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, 
       if (following.current) { following.current = false; setDetached(true); }
     };
     const onScroll = () => {
+      if (!initialized) return;
       currentTop = scroll.scrollTop;
       // Our easing frames must not be mistaken for a reader leaving the bottom.
       if (lastWrittenTop !== null && Math.abs(currentTop - lastWrittenTop) < 1) return;
@@ -328,6 +291,7 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, 
       setDetached(!following.current);
     };
     const onWheel = (event: WheelEvent) => {
+      if (event.deltaY !== 0) initialGesture = true;
       // The wheel takes the scroll over from our easing frames; the down
       // gesture records intent, the up gesture leaves the bottom explicitly
       // before the position is even known.
@@ -338,6 +302,7 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, 
     const onKey = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLElement && event.target.closest('textarea,input,[contenteditable=true]')) return;
       if (['PageUp', 'Home', 'ArrowUp'].includes(event.key)) {
+        initialGesture = true;
         cancelAnimationFrame(followFrame); followFrame = 0; lastWrittenTop = null;
         wantDown = false; releaseFollow();
         return;
@@ -345,13 +310,14 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, 
       // Downward keys count only when no focused control in the reader is
       // about to handle them (Space on a button toggles it, not the scroll).
       if (event.target instanceof HTMLElement && event.target.closest('button,a,select,summary,[role="button"],[role="switch"]')) return;
-      if (['PageDown', 'End', 'ArrowDown', ' '].includes(event.key)) wantDown = true;
+      if (['PageDown', 'End', 'ArrowDown', ' '].includes(event.key)) { initialGesture = true; wantDown = true; }
     };
     const onTouchStart = (event: TouchEvent) => { touchY = event.touches[0]?.clientY ?? null; };
     const onTouchMove = (event: TouchEvent) => {
       const y = event.touches[0]?.clientY;
       if (touchY === null || y === undefined) return;
       const dy = y - touchY;
+      if (Math.abs(dy) > 1) initialGesture = true;
       if (dy > 1) { wantDown = false; releaseFollow(); }
       else if (dy < -1) wantDown = true;
       touchY = y;
@@ -368,6 +334,7 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, 
     const onPointerMove = (event: PointerEvent) => {
       if (pointerY === null) return;
       const dy = event.clientY - pointerY;
+      if (Math.abs(dy) > 1) initialGesture = true;
       if (dy > 1) { wantDown = false; releaseFollow(); }
       else if (dy < -1) wantDown = true;
       pointerY = event.clientY;
@@ -387,8 +354,16 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, 
       writeTop(currentTop + gap * (1 - Math.exp(-delta / 52)));
       followFrame = requestAnimationFrame(follow);
     };
-    const firstFrame = requestAnimationFrame(() => {
-      measure();
+    const initializePosition = () => {
+      initialized = true;
+      if (initialGesture || selected() || focused()) {
+        // A gesture/reading guard established since mount wins over an old anchor.
+        const action = readingScrollAction(false, wantDown, maxTop - currentTop < READING_SURFACE_GAP);
+        following.current = !selected() && !focused() && action.following;
+        wantDown = action.wantDown;
+        setDetached(!following.current);
+        return;
+      }
       const saved = sessionId ? recallPosition(sessionId) : null;
       const anchor = saved ? content.querySelector<HTMLElement>(`[data-reader-key="${cssEscape(saved.anchorKey)}"]`) : null;
       if (saved && anchor) {
@@ -396,9 +371,10 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, 
         following.current = false;
         setDetached(true);
       } else if (following.current && !selected()) writeTop(maxTop);
-    });
+    };
     const observer = new ResizeObserver(() => {
       measure();
+      if (!initialized) { initializePosition(); return; }
       const action = readingFollowAction(
         { selected: !!selected(), focused: focused() },
         following.current,
@@ -433,7 +409,7 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, 
     scroll.addEventListener('pointerup', onPointerEnd);
     scroll.addEventListener('pointercancel', onPointerEnd);
     return () => {
-      if (sessionId) {
+      if (sessionId && initialized) {
         if (following.current) rememberPosition(sessionId, null);
         else {
           const viewportTop = scroll.getBoundingClientRect().top;
@@ -444,7 +420,7 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, 
           rememberPosition(sessionId, pickAnchor(anchors, viewportTop));
         }
       }
-      cancelAnimationFrame(firstFrame); cancelAnimationFrame(followFrame); observer.disconnect();
+      cancelAnimationFrame(followFrame); observer.disconnect();
       scroll.removeEventListener('scroll', onScroll); scroll.removeEventListener('wheel', onWheel);
       scroll.removeEventListener('keydown', onKey);
       scroll.removeEventListener('touchstart', onTouchStart); scroll.removeEventListener('touchmove', onTouchMove);

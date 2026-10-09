@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-09-clearview-030-claude-transcript-design.md` (read it before every task).
 
+**Continuation decisions (2026-10-09):** The user transferred this session to Codex and explicitly removed the Sonnet requirement; subsequent agents use the available model at Medium effort. Preserve earlier task attribution, but do not attribute new Codex changes to Claude. The normal host is now Desktop 0.22.4 with DSH 0.2.0-rc.2. Acceptance browsers must block write requests before transmission, including startup `session/create`; the accepted create count is zero. The interrupted session belongs to the `dsh` workspace, so expand both `0923 5.5` and `dsh`. Performance comparison must preserve motion and full text, use identical workloads, run serially and report three-run medians; a regression blocks candidate preparation.
+
 ## Global Constraints
 
 - Work only in the worktree `D:/Khabarovsk/K.Develop/dsh/staging/dsh-clearview-0200-20261005`, branch `feat/clearview-030-claude-transcript`. Never touch the main checkout `D:/Khabarovsk/K.Develop/dsh/dsh-clearview`, `dsh-env`, or any running DSH state.
@@ -1629,7 +1631,7 @@ git commit -m "feat: Claude typography and tokens for answers, footer, file chan
 
 **Files:**
 - Modify: `scripts/verify-live-reader.mjs`
-- Create: `scripts/record-compare.mjs` (copy of `C:/Users/Administrator/AppData/Local/Temp/claude/D--Khabarovsk-K-Develop-dsh/da930cb7-5e1f-4a6f-a57f-36b1cd3d2e14/scratchpad/record.mjs`, with its header comment kept: read-only, clicks only workspace rows / 「展开其余」 / the session row / the tab; one Chrome per tab via `REC_TAB=对话|阅读`; aborts on more than one `session/create`)
+- Create: `scripts/record-compare.mjs` (copy of `C:/Users/Administrator/AppData/Local/Temp/claude/D--Khabarovsk-K-Develop-dsh/da930cb7-5e1f-4a6f-a57f-36b1cd3d2e14/scratchpad/record.mjs`, with its header comment kept: read-only, clicks only workspace rows / 「展开其余」 / the session row / the tab; one Chrome per tab via `REC_TAB=对话|阅读`; block write requests before transmission and fail if any `session/create` was sent)
 - Evidence: `D:/Khabarovsk/K.Develop/dsh/.planning/clearview-0200-redesign-20261005/verification.md` (append a `0.3.0` section), screenshots under `.perf-results/live-030/`
 
 **Interfaces:**
@@ -1640,10 +1642,10 @@ git commit -m "feat: Claude typography and tokens for answers, footer, file chan
 - [ ] **Step 2: Run against the built bundle with interception** (cwd `D:/Khabarovsk/K.Develop/dsh/staging/dsh-clearview-0200-20261005`, DSH running on 3193):
 
 ```bash
-READER_SESSIONS='#c78af51c|#13af9644|#db871dc5' READER_EXPAND='0923 5.5' READER_LIVE_OUTPUT=.perf-results/live-030 node scripts/verify-live-reader.mjs
+READER_SESSIONS='#c78af51c|#13af9644|#db871dc5' READER_EXPAND='0923 5.5,dsh' READER_LIVE_OUTPUT=.perf-results/live-030 node scripts/verify-live-reader.mjs
 ```
 
-Expected: every session `version` = package version, `blockErrors` = [], `retired` = 0, `exceptions` = [], `sessionCreates` ≤ 1, session count unchanged, no horizontal overflow at 1440 and 480 widths, font family of `.prose` starts with `anthropic-serif` (or the fallback when the route 404s — record which), root background equals `hsl(60 2.7% 14.5%)` in dark and `hsl(48 33.3% 97.1%)` in light (as computed rgb).
+Expected: all three sessions covered, every session `version` = package version, `blockErrors` = [], `retired` = 0, `readerErrors` = [], `sessionCreates` = 0, session count unchanged, no horizontal overflow at 1440 and 480 widths, actual prose paragraph size/line-height = 16px/25.6px plus the host font delta, font CSS stack starts with `anthropic-serif` (record separately whether its FontFace loaded), root background equals `hsl(60 2.7% 14.5%)` in dark and `hsl(48 33.3% 97.1%)` in light (as computed rgb). Blocked host background writes and their correlated errors remain explicitly uncovered; they do not count as reader errors and must not be silently suppressed to obtain a whole-host pass.
 
 - [ ] **Step 3: Compare against the prototype** — open the screenshots next to `prototype/shot-*.png`; note differences in `verification.md` (spacing, colours, fonts). Fix CSS-only differences in the owning task's files and re-run Step 2.
 
@@ -1705,4 +1707,3 @@ This task is run by the controller, not a task implementer.
 - [ ] **Step 4: Candidate** — with cwd `D:/Khabarovsk/K.Develop/dsh`: write `release/update.json` for the new package dir (same shape as the 0.2.1 one), `node staging/input-clipboard-fix-20260921/ipc.mjs plugins.update .planning/clearview-0200-redesign-20261005/release/update.json`, then `node staging/input-clipboard-fix-20260921/wait-operation.mjs plugin-operation` until it settles; verify the candidate's hashes match Step 3. Give the user the publish / apply commands (publish is theirs to run).
 
 - [ ] **Step 5: After the user installs** — read-only checks: applied revision equals the candidate, port 3193 owned by the new generation with no orphan core, served bundle equals `lib/client.js`, `READER_NO_INTERCEPT=1` verifier run on the three sessions; then ask the user to start a task and run `scripts/record-compare.mjs` for both tabs (7 minutes, 10 s) and compare against spec §2 success criteria 1 and 4. Report in Chinese.
-

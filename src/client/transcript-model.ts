@@ -7,15 +7,26 @@ type Getter = (key: string) => ChatConversationViewNode | undefined;
 export type GroupKind = 'command' | 'read' | 'write' | 'edit' | 'search' | 'web' | 'skill' | 'tool' | 'operation';
 export interface GroupFacts { counts: Partial<Record<GroupKind, number>>; order: GroupKind[]; running: boolean; failed: number }
 export interface PlanTodo { content: string; status: 'pending' | 'in_progress' | 'completed' }
-type ToolItem = Extract<PanelItem, { kind: 'tool' }>;
+export type ToolItem = Extract<PanelItem, { kind: 'tool' }>;
+export type PlanTone = 'idle' | 'running' | 'failed' | 'interrupted';
+/** One card per turn, at the first nonempty plan call's position. Calls retain their original args/results. */
+export interface PlanEntry {
+  kind: 'plan'; key: string;
+  /** Latest call, including malformed, failed and unfinished updates. */
+  item: ToolItem;
+  calls: ToolItem[];
+  /** Only a successfully returned, parseable call can replace the checklist. */
+  successfulCall: ToolItem | null;
+  todos: PlanTodo[];
+}
 // PanelItem declares record and input as one variant (kind: 'record' | 'input'), so Extract on 'input' alone would be never.
 export type InputItem = Extract<PanelItem, { kind: 'record' | 'input' }>;
 export type TranscriptEntry =
   | { kind: 'narration'; key: string; item: Extract<PanelItem, { kind: 'narration' }> }
   | { kind: 'thought'; key: string; item: ReasoningItem }
   | { kind: 'input'; key: string; item: InputItem }
-  | { kind: 'plan'; key: string; item: ToolItem; todos: PlanTodo[] }
-  | { kind: 'item'; key: string; item: PanelItem }
+  | PlanEntry
+  | { kind: 'item'; key: string; item: PanelItem; facts?: GroupFacts }
   | { kind: 'group'; key: string; items: PanelItem[]; facts: GroupFacts };
 
 const STANDALONE_TOOLS = new Set(['todo_write', 'dispatch']);
@@ -29,7 +40,8 @@ export function parseTodos(argsRaw: string): PlanTodo[] | null {
   let parsed: unknown;
   try { parsed = JSON.parse(argsRaw); } catch { return null; }
   const list = objectValue(parsed)?.todos;
-  if (!Array.isArray(list) || list.length === 0) return null;
+  // The host treats [] as a successful whole-list replacement (clear), not a missing payload.
+  if (!Array.isArray(list)) return null;
   const todos: PlanTodo[] = [];
   for (const raw of list) {
     const item = objectValue(raw);
@@ -107,11 +119,40 @@ export function groupSummary(facts: GroupFacts): string {
   return facts.order.map(kind => WORDS[kind](facts.counts[kind]!)).join('，');
 }
 
+/** Presentation derived from the latest call; a rejected update never masquerades as a saved checklist. */
+export function planStatus(plan: PlanEntry, turnClosed: boolean): { tone: PlanTone; detail: string } {
+  const phase = activityPhase(plan.item.entry, turnClosed);
+  const retained = plan.successfulCall ? '显示上次成功清单' : '尚无成功清单';
+  if (phase === 'preparing') return { tone: 'running', detail: `正在生成计划更新 · ${retained}` };
+  if (phase === 'running') return { tone: 'running', detail: `正在更新计划 · ${retained}` };
+  if (phase === 'failed') return { tone: 'failed', detail: `计划更新失败 · ${retained}` };
+  if (phase === 'interrupted') return { tone: 'interrupted', detail: `计划更新已中断 · ${retained}` };
+  if (plan.successfulCall !== plan.item) return { tone: 'idle', detail: `计划条目无法解析 · ${retained}` };
+  return { tone: 'idle', detail: plan.todos.length === 0 ? '计划已清空' : '计划已更新' };
+}
+
 export function buildTranscript(items: readonly PanelItem[], get: Getter, turnClosed: boolean): TranscriptEntry[] {
   const entries: TranscriptEntry[] = [];
+  const calls = items.filter((item): item is ToolItem => item.kind === 'tool' && activitySummary(item.entry).name === 'todo_write');
+  // Earlier empty/malformed calls keep their own seats. History starts at the first nonempty,
+  // parseable call, so establishing a later card never unmounts those earlier disclosures.
+  const firstPlanIndex = calls.findIndex(call => (parseTodos(activitySummary(call.entry).raw)?.length ?? 0) > 0);
+  const firstPlanCall = calls[firstPlanIndex];
+  const history = firstPlanIndex < 0 ? [] : calls.slice(firstPlanIndex);
+  const plan: PlanEntry | null = firstPlanCall
+    ? { kind: 'plan', key: firstPlanCall.key, item: history.at(-1)!, calls: history, successfulCall: null, todos: [] }
+    : null;
+  for (const call of calls) {
+    const todos = parseTodos(activitySummary(call.entry).raw);
+    const phase = activityPhase(call.entry, turnClosed);
+    if (plan && todos && (phase === 'returned' || phase === 'succeeded')) {
+      plan.todos = todos;
+      plan.successfulCall = call;
+    }
+  }
   let run: PanelItem[] = [];
   const flush = () => {
-    if (run.length === 1) entries.push({ kind: 'item', key: run[0]!.key, item: run[0]! });
+    if (run.length === 1) entries.push({ kind: 'item', key: run[0]!.key, item: run[0]!, facts: factsOf(run, get, turnClosed) });
     else if (run.length > 1) entries.push({ kind: 'group', key: `group:${run[0]!.key}`, items: run, facts: factsOf(run, get, turnClosed) });
     run = [];
   };
@@ -122,8 +163,8 @@ export function buildTranscript(items: readonly PanelItem[], get: Getter, turnCl
     else if (item.kind === 'reasoning') entries.push({ kind: 'thought', key: item.key, item });
     else if (item.kind === 'input') entries.push({ kind: 'input', key: item.key, item });
     else if (item.kind === 'tool' && activitySummary(item.entry).name === 'todo_write') {
-      const todos = parseTodos(activitySummary(item.entry).raw);
-      entries.push(todos ? { kind: 'plan', key: item.key, item, todos } : { kind: 'item', key: item.key, item });
+      if (!plan || !history.includes(item)) entries.push({ kind: 'item', key: item.key, item });
+      else if (item === firstPlanCall) entries.push(plan);
     } else entries.push({ kind: 'item', key: item.key, item });
   }
   flush();

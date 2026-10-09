@@ -1,5 +1,13 @@
 .card { margin: 4px 0 6px; padding: 8px 12px; border: 1px solid var(--cc-border); border-radius: 10px; font-size: var(--cc-size-ui); }
+.fallback { min-width: 0; }
+.fallback .history { margin-top: 0; }
+.fallback .calls { padding-top: 0; }
 .title { color: var(--cc-text-500); font-size: var(--cc-size-small); margin-bottom: 4px; }
+.status { color: var(--cc-text-300); font-size: var(--cc-size-small); overflow-wrap: anywhere; }
+.card[data-tone="failed"] .status, .card[data-tone="interrupted"] .status { color: var(--cc-danger); }
+.history { margin-top: 8px; min-width: 0; }
+.history summary { color: var(--cc-text-500); cursor: pointer; font-size: var(--cc-size-small); }
+.calls { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding-top: 4px; }
 .item { display: flex; gap: 8px; align-items: center; line-height: 1.9; }
 .box { width: 13px; height: 13px; flex: none; display: inline-grid; place-items: center; border: 1.5px solid var(--cc-text-500); border-radius: 3px; font-size: 10px; }
 .item[data-status="completed"] .box { background: var(--cc-text-500); color: var(--cc-bg-100); }

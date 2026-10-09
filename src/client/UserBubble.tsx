@@ -11,11 +11,16 @@ export function UserBubble({ children, small = false, label, data }: { children:
     const node = text.current;
     if (!node || open) return;
     const check = () => setClamped(node.scrollHeight > node.clientHeight + 1);
-    check();
+    // CSS clips immediately. Initial RO delivery batches measurement after layout, rather
+    // than forcing geometry synchronously for every bubble during the mount commit.
     const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(check) : null;
-    observer?.observe(node);
-    return () => observer?.disconnect();
-  }, [open]);
+    if (observer) observer.observe(node);
+    else check();
+    // The clipped box may keep the same height while its nested content or loaded fonts change.
+    if (node.firstElementChild) observer?.observe(node.firstElementChild);
+    document.fonts?.addEventListener('loadingdone', check);
+    return () => { observer?.disconnect(); document.fonts?.removeEventListener('loadingdone', check); };
+  }, [open, children]);
   return <UserBubbleView text={text} clamped={clamped} open={open} onToggle={() => setOpen(value => !value)} small={small} label={label} data={data}>{children}</UserBubbleView>;
 }
 
