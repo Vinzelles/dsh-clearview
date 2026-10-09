@@ -47,8 +47,7 @@ test('role=button rows keep a focus ring and user bubbles keep the tight block g
   const reader = sheet('Reader');
   assert.match(reader, /\.root \[role=button\]:not\(button\):focus-visible \{ outline: 2px solid/);
   assert.match(reader, /\.blocks \{[^}]*gap: var\(--cv-blocks-gap, 16px\)/);
-  assert.match(sheet('Opening'), /\.user \{[^}]*--cv-blocks-gap: 10px/);
-  assert.match(sheet('RecordRows'), /\.input \{[^}]*--cv-blocks-gap: 10px/);
+  assert.match(sheet('UserBubble'), /\.bubble \{[^}]*--cv-blocks-gap: 10px/);
 });
 
 test('the collapsed file-changes header cannot widen the reader (no negative side margin or width overshoot)', () => {
@@ -76,8 +75,7 @@ test('the turn-trigger opening is a 24px row, not a padded card', () => {
   const opening = sheet('Opening');
   const button = /\.triggerButton \{([^}]*)\}/.exec(opening)?.[1] ?? '';
   assert.match(button, /height: var\(--cv-row-height\)/);
-  assert.match(button, /font-weight: 500/);
-  assert.match(button, /color: var\(--dsw-alias-label-secondary\)/);
+  assert.match(button, /color: var\(--cc-text-300\)/);
   assert.doesNotMatch(button, /padding:\s*10px/);
   assert.doesNotMatch(/\.trigger \{([^}]*)\}/.exec(opening)?.[1] ?? '', /background|box-shadow|border-radius/);
 });
@@ -237,7 +235,7 @@ test('reader root defines Claude tokens for light and dark', () => {
   assert.match(text, /\.root\s*\{[^}]*background:\s*var\(--cc-bg-100\)/s);
 });
 
-const MIGRATED = new Set(['Reader.module.css', 'Line.module.css', 'ToolRow.module.css', 'ToolDetails.module.css', 'ToolGroupRow.module.css', 'ThoughtRow.module.css', 'LiveThought.module.css']);
+const MIGRATED = new Set(['Reader.module.css', 'Line.module.css', 'ToolRow.module.css', 'ToolDetails.module.css', 'ToolGroupRow.module.css', 'ThoughtRow.module.css', 'LiveThought.module.css', 'RecordRows.module.css', 'UserBubble.module.css', 'PlanCard.module.css', 'StatusLine.module.css', 'Opening.module.css']);
 
 test('only the remap block in Reader.module.css names host colour tokens', () => {
   const names = readdirSync(CLIENT).filter(name => name.endsWith('.module.css') && MIGRATED.has(name));

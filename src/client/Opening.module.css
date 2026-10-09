@@ -1,38 +1,24 @@
-.group { align-self: flex-end; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; max-width: 100%; }
-.user {
-  --cv-blocks-gap: 10px;
-  max-width: min(calc(var(--dsh-chat-content-width, 748px) * .702), 82%);
-  padding: 10px 16px;
-  border-radius: var(--dsw-radius-xl);
-  corner-shape: round;
-  background: var(--dsw-specific-bubble);
-  color: var(--dsw-alias-label-primary);
-  font-size: var(--cv-font-body);
-  line-height: calc(22px + var(--dsh-content-font-delta, 0px));
-  overflow-wrap: anywhere;
-}
-.meta { margin: 0 0 2px; color: var(--dsw-alias-label-caption); font-size: 12px; line-height: 18px; }
-.labels { color: var(--dsw-alias-label-tertiary); font-size: var(--cv-font-secondary); line-height: 18px; }
+.group { align-self: stretch; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 0; }
+.labels { color: var(--cc-text-500); font-size: var(--cc-size-small); line-height: 18px; }
 .trigger { min-width: 0; }
 .triggerButton {
   display: flex; align-items: center; gap: 8px;
-  width: 100%; height: var(--cv-row-height); margin: 0; padding: 0;
-  border: 0; border-radius: var(--dsw-radius-sm); corner-shape: round; background: transparent;
+  box-sizing: border-box; width: 100%; height: var(--cv-row-height); margin: 0; padding: 0;
+  border: 0; border-radius: 6px; background: transparent;
   box-shadow: 6px 0 0 transparent, -6px 0 0 transparent;
-  color: var(--dsw-alias-label-secondary); font: inherit; font-size: var(--cv-font-secondary); font-weight: 500; text-align: left; cursor: pointer;
+  color: var(--cc-text-300); font: inherit; font-size: var(--cc-size-ui); text-align: left; cursor: pointer;
   transition: color var(--cv-fast) ease, background-color var(--cv-fast) ease, box-shadow var(--cv-fast) ease;
 }
 /* The hover fill bleeds 6px past the row as side shadows, so it never widens the scrollable area (see FileChanges .header). */
-.triggerButton:hover { background: var(--dsw-alias-interactive-bg-hover); box-shadow: 6px 0 0 var(--dsw-alias-interactive-bg-hover), -6px 0 0 var(--dsw-alias-interactive-bg-hover); }
-.triggerButton:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: -2px; }
-.triggerIcon { display: inline-flex; flex: none; justify-content: center; width: 16px; color: var(--dsw-alias-label-tertiary); }
+.triggerButton:hover { background: var(--cc-hover); box-shadow: 6px 0 0 var(--cc-hover), -6px 0 0 var(--cc-hover); }
+.triggerButton:focus-visible { outline: 2px solid var(--cc-link); outline-offset: -2px; }
+.triggerIcon { display: inline-flex; flex: none; justify-content: center; width: 16px; color: var(--cc-text-500); }
 .triggerTitle { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.triggerTime { flex: none; margin-left: auto; color: var(--dsw-alias-label-caption); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
-.triggerAction { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 12px; font-weight: 400; }
+.triggerTime { flex: none; margin-left: auto; color: var(--cc-text-500); font-size: var(--cc-size-small); font-weight: 400; font-variant-numeric: tabular-nums; }
+.triggerAction { flex: none; color: var(--cc-text-500); font-size: var(--cc-size-small); font-weight: 400; }
 .triggerTime + .triggerAction { margin-left: 0; }
 .triggerTitle + .triggerAction { margin-left: auto; }
-.triggerBody { white-space: pre-wrap; }
-.triggerNote { margin: 0 0 6px; color: var(--dsw-alias-label-caption); font-size: 12px; line-height: 18px; }
+.triggerBody { padding: 8px 12px; border: 1px solid var(--cc-border); border-radius: 10px; background: var(--cc-bg-200); color: var(--cc-text-300); white-space: pre-wrap; }
+.triggerNote { margin: 0 0 6px; color: var(--cc-text-500); font-size: var(--cc-size-small); line-height: 18px; }
 [data-motion=off] .triggerButton { transition: none; }
 @media (prefers-reduced-motion: reduce) { .triggerButton { transition: none; } }
-@media (max-width: 600px) { .user { max-width: 90%; } }

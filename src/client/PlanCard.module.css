@@ -1,0 +1,7 @@
+.card { margin: 4px 0 6px; padding: 8px 12px; border: 1px solid var(--cc-border); border-radius: 10px; font-size: var(--cc-size-ui); }
+.title { color: var(--cc-text-500); font-size: var(--cc-size-small); margin-bottom: 4px; }
+.item { display: flex; gap: 8px; align-items: center; line-height: 1.9; }
+.box { width: 13px; height: 13px; flex: none; display: inline-grid; place-items: center; border: 1.5px solid var(--cc-text-500); border-radius: 3px; font-size: 10px; }
+.item[data-status="completed"] .box { background: var(--cc-text-500); color: var(--cc-bg-100); }
+.item[data-status="completed"] .content { color: var(--cc-text-500); text-decoration: line-through; }
+.item[data-status="in_progress"] .content { color: var(--cc-text-100); font-weight: 600; }

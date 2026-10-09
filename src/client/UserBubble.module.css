@@ -1,0 +1,8 @@
+.row { display: flex; justify-content: flex-end; min-width: 0; }
+.bubble { --cv-blocks-gap: 10px; max-width: 82%; min-width: 0; padding: 10px 16px; border-radius: 12px; background: var(--cc-bg-300); color: var(--cc-text-100); font-family: var(--cc-font-ui); font-size: calc(15px + var(--dsh-content-font-delta, 0px)); line-height: 1.6; }
+.bubble[data-small="true"] { padding: 8px 14px; font-size: var(--cc-size-ui); }
+.meta { margin: 0 0 2px; color: var(--cc-text-500); font-size: var(--cc-size-small); }
+.text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; overflow: hidden; overflow-wrap: anywhere; }
+.text[data-open="true"] { display: block; -webkit-line-clamp: unset; }
+.more { margin-top: 4px; padding: 0; border: 0; background: none; color: var(--cc-text-300); font: inherit; font-size: var(--cc-size-small); cursor: pointer; }
+@container (max-width: 480px) { .bubble { max-width: 90%; } }

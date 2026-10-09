@@ -15,6 +15,7 @@ import { SystemPromptRow } from './native/SystemPromptRow.js';
 import { nodeText, workflowRunSummary, workflowStatusLabel } from './node-payloads.js';
 import { Line } from './Line.js';
 import { useReaderActions } from './reader-context.js';
+import { UserBubble } from './UserBubble.js';
 import { contentBlocks } from './user-content.js';
 import type { BlockRenderProps, ReaderProps } from './types.js';
 import css from './RecordRows.module.css';
@@ -193,11 +194,10 @@ export const InputBubble = memo(function InputBubble({ useSession, nodeKey, ...r
   const label = node.kind === 'steering' ? '补充消息' : '命令输入';
   const blocks = node.kind === 'command-input' ? [{ kind: 'text' as const, text: nodeText(node.data) ?? '' }] : contentBlocks(record(node.data)?.content);
   const labeled = node.kind === 'steering' || node.kind === 'command-input';
-  // The seat (anchor + key, first child a .meta paragraph) is what compat/rewind-bridge reads to classify steering inputs.
-  return <div className={css.input} data-reader-input={node.kind} data-reader-anchor data-reader-key={nodeKey}>
-    {labeled && <p className={css.meta}>{label}</p>}
+  // The seat (anchor + key on the UserBubble, first child its .meta label paragraph) is what compat/rewind-bridge reads to classify steering inputs.
+  return <UserBubble small label={labeled ? label : undefined} data={{ 'data-reader-input': node.kind, 'data-reader-anchor': true, 'data-reader-key': nodeKey }}>
     <Blocks {...render} blocks={blocks} source="user" />
-  </div>;
+  </UserBubble>;
 });
 
 /** Turn-level failure or output-cap notice, kept beside the answer. */

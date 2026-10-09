@@ -58,7 +58,9 @@ test('a user opening keeps the rewind seat contract and shows its labels', () =>
   const turn = turnLocation({ status: 'open' });
   const user = chatNode('user', { content: [{ type: 'text', text: '你好' }], skillNames: ['design'] }, turn);
   const html = render(Opening, { useSession: sessionHook(chatOf([user], [turn])), nodeKey: user.key, ...blocks });
-  assert.match(html, new RegExp(`<div class="user" data-reader-anchor="true" data-reader-key="${user.key}"`));
+  assert.match(html, /data-reader-user-bubble/);
+  assert.match(html, new RegExp(`data-reader-anchor="true"[^>]*data-reader-key="${user.key}"`));
+  assert.match(html, /你好/);
   assert.match(html, /技能 design/);
 });
 
@@ -124,7 +126,7 @@ test('a steering input keeps the seat the rewind bridge reads', () => {
   const steering = chatNode('steering', { content: [{ type: 'text', text: '换个方案' }] }, turn, 1);
   const html = render(InputBubble, { useSession: sessionHook(chatOf([steering], [turn])), nodeKey: steering.key, ...blocks });
   // The bridge matches div[data-reader-anchor][data-reader-key] (not article) and reads a first-child <p> whose class contains "meta".
-  assert.match(html, new RegExp(`^<div class="input" data-reader-input="steering" data-reader-anchor="true" data-reader-key="${steering.key}"><p class="meta">补充消息</p>`));
+  assert.match(html, new RegExp(`data-reader-user-bubble[^>]*data-reader-input="steering"[^>]*data-reader-anchor="true"[^>]*data-reader-key="${steering.key}"[^>]*><p class="meta">补充消息</p>`));
 });
 
 test('once the turn is closed an in-flight lifecycle record settles to idle with neutral wording', () => {

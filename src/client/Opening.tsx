@@ -11,6 +11,7 @@ import { CollapseBody } from './motion.js';
 import { nodeText } from './node-payloads.js';
 import { Chevron, Inset } from './ProcessRow.js';
 import { useReaderActions } from './reader-context.js';
+import { UserBubble } from './UserBubble.js';
 import { fmtClock } from './turn-meta.js';
 import { TRIGGER_EXPLANATION, triggerDetails, type TriggerIcon } from './turn-trigger.js';
 import { contentBlocks } from './user-content.js';
@@ -72,10 +73,9 @@ export const Opening = memo(function Opening({ useSession, nodeKey, ...render }:
   const blocks = command ? [{ kind: 'text' as const, text: nodeText(node.data) ?? '' }] : contentBlocks((node.data as { content?: unknown }).content);
   const labels = node.kind === 'user' ? labelsLine(node.data) : '';
   return <div className={css.group}>
-    <div className={css.user} data-reader-anchor data-reader-key={nodeKey} {...(command ? { 'data-reader-command-input': '' } : {})}>
-      {command && <p className={css.meta}>命令输入</p>}
+    <UserBubble label={command ? '命令输入' : undefined} data={{ 'data-reader-anchor': true, 'data-reader-key': nodeKey, ...(command ? { 'data-reader-command-input': '' } : {}) }}>
       <Blocks {...render} blocks={blocks} source="user" />
-    </div>
+    </UserBubble>
     {labels && <div className={css.labels} data-reader-user-labels>{labels}</div>}
   </div>;
 });
