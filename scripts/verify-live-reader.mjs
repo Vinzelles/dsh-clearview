@@ -5,6 +5,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 
 import { readonlyDecision, readonlyRequestSummary, classifyBrowserError, interactionCoverage, recordBlockedRequest, summarizeReaderGate } from './browser-readonly.mjs';
 
@@ -94,7 +95,7 @@ const bail = error => { console.error(error); killChrome(); removeProfile(); pro
 process.on('unhandledRejection', bail);
 process.on('uncaughtException', bail);
 const sessionCountBefore = await sessionCount().catch(() => null);
-const report = { base, entry: entry.url, sessions: [], exceptions: [], consoleErrors: [], replacements: 0, spliced: 0, sessionCreates: 0, comboPassedThrough: [], handlerErrors: [], sessionCountBefore, blockedRequests: [], skippedChecks: [], blockedPrerequisite: [], hostBackgroundErrors: [], uncovered: [], fatal: null };
+const report = { base, entry: entry.url, previewBundleHash: intercept ? createHash('sha256').update(bundle).digest('hex') : null, sessions: [], exceptions: [], consoleErrors: [], replacements: 0, spliced: 0, sessionCreates: 0, comboPassedThrough: [], handlerErrors: [], sessionCountBefore, blockedRequests: [], skippedChecks: [], blockedPrerequisite: [], hostBackgroundErrors: [], uncovered: [], fatal: null };
 let exceptionPhase = 'startup';
 let ws;
 try {
@@ -239,7 +240,7 @@ try {
     for (const line of lines) { const height = Math.round(line.getBoundingClientRect().height * 10) / 10; heights[height] = (heights[height] ?? 0) + 1; }
     const summaries = all('[data-reader-tool-call] [data-reader-line] span[title]');
     const clipped = summaries.filter(node => node.scrollWidth > node.clientWidth + 1);
-    const sample = node => node ? { tag: node.tagName, size: cs(node).fontSize, line: cs(node).lineHeight, weight: cs(node).fontWeight, family: cs(node).fontFamily.slice(0, 120) } : null;
+    const sample = node => node ? { tag: node.tagName, size: cs(node).fontSize, line: cs(node).lineHeight, weight: cs(node).fontWeight, color: cs(node).color, family: cs(node).fontFamily.slice(0, 120) } : null;
     // Measure rendered prose paragraphs, not the outer article/Block root.
     const prose = root.querySelector('[data-reader-answer] p') ?? root.querySelector('[data-reader-flow] article[data-reader-key] p');
     const code = root.querySelector('[data-reader-answer] code, [data-reader-flow] code');
@@ -249,8 +250,12 @@ try {
     deltaProbe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none';
     deltaProbe.style.setProperty('font-size', 'calc(100px + var(--dsh-content-font-delta, 0px))', 'important');
     root.appendChild(deltaProbe);
-    let delta;
-    try { delta = Number.parseFloat(cs(deltaProbe).fontSize) - 100; }
+    let delta, primaryColor;
+    try {
+      delta = Number.parseFloat(cs(deltaProbe).fontSize) - 100;
+      deltaProbe.style.color = 'var(--cc-text-100)';
+      primaryColor = cs(deltaProbe).color;
+    }
     finally { deltaProbe.remove(); }
     let backdrop = root; while (backdrop && /^rgba\\(0, 0, 0, 0\\)$|^transparent$/.test(cs(backdrop).backgroundColor)) backdrop = backdrop.parentElement;
     const scroller = document.querySelector('[data-conversation-scroll]');
@@ -261,6 +266,21 @@ try {
       fonts: { delta, prose: sample(prose), command: sample(command), line: sample(root.querySelector('[data-reader-line]')), code: sample(code), toolLine: sample(root.querySelector('[data-reader-tool-call] [data-reader-line]')),
         user: sample(root.querySelector('[data-reader-user-bubble]')), serif: { fontSetCheck: document.fonts.check('16px anthropic-serif'), loaded: [...document.fonts].some(face => face.family.replace(/["']/g, '') === 'anthropic-serif' && face.status === 'loaded'), cssStack: prose ? cs(prose).fontFamily : null } },
       rootBackground: cs(root).backgroundColor, backdropBackground: backdrop ? cs(backdrop).backgroundColor : null,
+      hierarchy: (() => {
+        const thoughts = all('[data-reader-reasoning]');
+        const label = root.querySelector('[data-reader-reasoning] > [data-reader-line] [data-reader-line-label]');
+        const groups = all('[data-reader-group][data-group-state="settled"] > [data-reader-line] > button');
+        const thoughtAndToolMixed = thoughts.filter(node => node.querySelector('[data-reader-tool-call], [data-reader-group]') || node.closest('[data-reader-tool-call], [data-reader-group]')).length;
+        const groupAffordance = groups.map(button => ({
+          expanded: button.getAttribute('aria-expanded'), hint: button.querySelector('[data-reader-group-hint]')?.textContent,
+          background: cs(button).backgroundColor, border: cs(button).borderTopWidth, minHeight: cs(button).minHeight,
+        }));
+        const bodyPrimary = !!prose && cs(prose).color === primaryColor;
+        const bodyDistinct = !!prose && !!label && cs(prose).color !== cs(label).color && Number.parseFloat(cs(prose).fontSize) > Number.parseFloat(cs(label).fontSize);
+        const groupsDistinct = groupAffordance.length > 0 && groupAffordance.every(row => row.background !== 'rgba(0, 0, 0, 0)' && row.background !== cs(root).backgroundColor && Number.parseFloat(row.border) >= 1 && Number.parseFloat(row.minHeight) >= 32 && row.hint === (row.expanded === 'true' ? '收起详情' : '展开详情'));
+        return { body: sample(prose), process: sample(label), primaryColor, bodyPrimary, bodyDistinct, thoughts: thoughts.length, thoughtAndToolMixed, groupAffordance, groupsDistinct,
+          pass: bodyPrimary && bodyDistinct && thoughts.length > 0 && thoughtAndToolMixed === 0 && groupsDistinct };
+      })(),
       overflowX: { page: document.documentElement.scrollWidth > document.documentElement.clientWidth, scroller: scroller ? scroller.scrollWidth > scroller.clientWidth + 1 : null, root: root.scrollWidth > root.clientWidth + 1 },
       // Elements that stick out past the reader root's right edge (a horizontal-overflow culprit hunt).
       overflowing: (() => { const edge = root.getBoundingClientRect().right + 1; return all('*').filter(node => node.getBoundingClientRect().right > edge && node.getBoundingClientRect().width > 0).slice(0, 6)
@@ -335,6 +355,24 @@ try {
     await evaluate("(() => { const scroller = document.querySelector('[data-conversation-scroll]'); if (scroller) scroller.scrollTop = 0; })()");
     await delay(500);
     await shot(`${name}-top`);
+    const closedGroup = await evaluate(`(() => {
+      const button = document.querySelector('[data-dsh-clearview] [data-reader-group][data-group-state="settled"] > [data-reader-line] > button[aria-expanded="false"]');
+      if (!button) return false;
+      button.scrollIntoView({ block: 'center' });
+      return true;
+    })()`);
+    if (closedGroup) {
+      await delay(400);
+      item.closedGroupVisible = await evaluate(`(() => {
+        const button = document.querySelector('[data-dsh-clearview] [data-reader-group][data-group-state="settled"] > [data-reader-line] > button[aria-expanded="false"]');
+        if (!button) return null;
+        const box = button.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return { width: box.width, height: box.height, visible: button.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }),
+          inViewport: box.top >= 0 && box.bottom <= innerHeight && box.left >= 0 && box.right <= innerWidth, hit: !!hit && button.contains(hit) };
+      })()`);
+      await shot(`${name}-closed-group`);
+    }
     // Open the first closed group (clicking an already open one would collapse it), then the first
     // closed tool row. Only local disclosure state is toggled.
     item.groupOpened = await evaluate(`(() => {
@@ -468,7 +506,7 @@ try {
       await focusGroup();
       const measured = await evaluate(measure);
       const expected = await evaluate(`(() => { const probe = document.createElement('span'); probe.style.backgroundColor = ${JSON.stringify(mode === 'dark' ? 'hsl(60 2.7% 14.5%)' : 'hsl(48 33.3% 97.1%)')}; document.body.appendChild(probe); const color = getComputedStyle(probe).backgroundColor; probe.remove(); return color; })()`);
-      item.theme[mode] = { attribute: await evaluate("document.body.hasAttribute('data-ds-dark-theme')"), rootBackground: measured?.rootBackground, backdropBackground: measured?.backdropBackground, expected,
+      item.theme[mode] = { attribute: await evaluate("document.body.hasAttribute('data-ds-dark-theme')"), rootBackground: measured?.rootBackground, backdropBackground: measured?.backdropBackground, hierarchy: measured?.hierarchy, expected,
         matches: [measured?.rootBackground, measured?.backdropBackground].includes(expected) };
       await shot(`${name}-theme-${mode}`);
     }
@@ -575,6 +613,8 @@ try {
       // CSS stack and FontFace loaded status are evidence, never proof of the font used for a glyph.
       fontLoaded: item.measured?.fonts?.serif?.loaded ?? null,
       typography: item.typography.every(state => state.pass) && Object.values(item.typographyMatrix).every(state => state.pass),
+      hierarchy: [item.measured, item.narrow, item.narrowBottom].every(state => state?.hierarchy?.pass) && Object.values(item.theme ?? {}).every(theme => theme.hierarchy?.pass)
+        && !!item.closedGroupVisible?.visible && item.closedGroupVisible.inViewport && item.closedGroupVisible.hit && item.closedGroupVisible.width > 0 && item.closedGroupVisible.height >= 32,
       groupToggle: covered('groupToggle', toggle ? toggle.before.expanded !== toggle.during.expanded && toggle.before.expanded === toggle.after.expanded && [toggle.before, toggle.during, toggle.after].every(state => ['true', 'false'].includes(state.expanded) && state.expanded === state.dataExpanded && state.memberVisible === (state.expanded === 'true')) : null),
       groupOpened: covered('groupOpened', item.groupOpened ? item.groupAfter === 'true' : null),
       toolDetails: covered('toolDetails', item.toolOpened ? item.toolDetails === true : null),
@@ -584,7 +624,7 @@ try {
       themeBackground: item.theme ? item.theme.dark.matches && item.theme.light.matches : 'skipped',
     };
     item.checks.pass = item.checks.overflow1440 && item.checks.overflow480 && item.checks.themeBackground !== false
-      && item.checks.typography && item.checks.groupToggle && item.checks.groupOpened && item.checks.toolDetails && item.checks.bubbleToggle && item.checks.roundTrips && item.checks.copy;
+      && item.checks.typography && item.checks.hierarchy && item.checks.groupToggle && item.checks.groupOpened && item.checks.toolDetails && item.checks.bubbleToggle && item.checks.roundTrips && item.checks.copy;
     guardCreates();
   }
   report.sessionCountAfter = await sessionCount();

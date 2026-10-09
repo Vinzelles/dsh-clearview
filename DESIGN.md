@@ -18,6 +18,8 @@ During a turn, show its real process in chronological order. Starting body outpu
 
 ## Transcript entries and grouping
 
+Settled operation summaries use a subtle bg-200 fill, a 1px border, a 32px minimum height and a stronger chevron. A persistent 「展开详情 / 收起详情」 hint explains the disclosure; long summaries wrap on narrow screens. This is a local operation control: prose remains fully visible, in the primary color and larger body type, and thoughts never share an operation row.
+
 A turn is one column with no container, header, counts or "earlier steps" row. Narration between operations and the final answer share one serif `.prose` style. Entries:
 
 - User message: a right-hand bubble, six lines then clamped behind 展开全文 / 收起 (outside the rewind seat). Mid-turn input and command input are smaller bubbles at their chronological position; the rewind seat is always present.

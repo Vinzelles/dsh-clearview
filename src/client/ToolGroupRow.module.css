@@ -1,4 +1,13 @@
 .group { min-width: 0 }
+.group > [data-reader-line] > button > [data-reader-line-label] { flex: 1 1 auto; min-width: 0; white-space: normal; }
+.group[data-group-state="settled"] > [data-reader-line] > button {
+  min-height: 32px; padding: 3px 8px;
+  background: var(--cc-bg-200); border: 1px solid var(--cc-border);
+  box-shadow: none; font-weight: 500;
+}
+.group[data-group-state="settled"] > [data-reader-line] > button:hover { background: var(--cc-hover); border-color: var(--cc-border-strong); box-shadow: none; }
+.group[data-group-state="settled"] > [data-reader-line] > button > svg { stroke: var(--cc-text-300); stroke-width: 1.8; }
+.disclosureHint { margin-left: 8px; color: var(--cc-text-300); font-weight: 400; }
 .members { margin: 2px 0 6px 7px; padding-left: 14px; border-left: 1px solid var(--cc-border); min-width: 0 }
 .members:empty { display: none }
 .members[data-single="true"] { margin: 0; padding-left: 0; border-left: 0 }

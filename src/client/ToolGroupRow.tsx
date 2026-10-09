@@ -69,7 +69,10 @@ export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedi
   const { running, failed } = group.facts;
   return <div className={css.group} data-reader-group={grouped ? group.key : undefined} data-group-state={grouped ? running ? 'running' : 'settled' : undefined} data-expanded={open}>
     {grouped && <Line icon={<IconFlatListOutlineRegular size={14} />} label={groupSummary(group.facts)} tone={failed > 0 ? 'failed' : running ? 'running' : 'idle'}
-      shimmer={running && motion} trailing={failed > 0 ? `· ${failed} 次失败` : undefined} open={open} onToggle={toggle} controls={id} />}
+      shimmer={running && motion} trailing={<>
+        {failed > 0 && <span>· {failed} 次失败</span>}
+        <span className={css.disclosureHint} data-reader-group-hint>{open ? '收起详情' : '展开详情'}</span>
+      </>} open={open} onToggle={toggle} controls={id} />}
     <div id={id} className={css.members} data-single={!grouped}>
       {group.items.map(item => <Fragment key={item.key}>
         <CollapseBody open={open} motion={motion}>{renderItem(item, memberOpenChange)}</CollapseBody>
