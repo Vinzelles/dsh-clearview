@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ensureClaudeFonts } from './cc-fonts.js';
 import { cssEscape } from './css-escape.js';
 import { FileChangesPanel } from './FileChanges.js';
 import { FloatingStatus } from './FloatingStatus.js';
@@ -53,6 +54,7 @@ export function Reader(rawProps: ReaderProps) {
     showInChat: focus => openView('chat', focus),
   }), [motion, openFile, fork, fileMentions, inspectCall, openView]);
   const { viewRequest, completeViewRequest } = props;
+  useEffect(() => { ensureClaudeFonts(); }, []);
   useEffect(() => {
     if (!viewRequest || viewRequest.view !== 'reader') return;
     const focus = cssEscape(viewRequest.focus);
