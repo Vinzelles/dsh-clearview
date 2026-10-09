@@ -73,6 +73,13 @@ test('only the failed row is a failed line, not its healthy sub-calls', () => {
   assert.match(html, /退出码 2[\s\S]*data-reader-tool-call="c8"/);
 });
 
+test('a failed call with text output marks its detail for the danger colour', () => {
+  const block = settledTool('ce', 'mystery', {}, { isError: true, content: [{ type: 'text', text: 'boom' }] });
+  const entry = toolEntry('ce', 1, block);
+  const html = renderIn({ motion: true }, ToolDetails, { entry, model: activitySummary(entry), phase: 'failed' as const, ...render });
+  assert.match(html, /class="document errorOutput" data-error="true"/);
+});
+
 test('the inspect button renders only when the host can inspect a call, and calls it with the call id', () => {
   const entry = toolEntry('c9', 1, settledTool('c9', 'bash', { command: 'ls' }));
   const props = { entry, model: activitySummary(entry), phase: 'succeeded' as const, ...render };

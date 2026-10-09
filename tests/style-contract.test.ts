@@ -136,8 +136,6 @@ test('no stylesheet under src/client widens its box with a negative horizontal m
     // An inline anchor: its 3px transparent hit-area border is cancelled by the -3px margin, so the box is net zero width and
     // it sits in text flow that already wraps at the container edge.
     ['markdown/MarkdownText.module.css .markdown a', 'inline, net-zero width (3px border cancelled by -3px margin)'],
-    // Claude Code line grammar: the hover plate bleeds 6px each side of the text; the reader column carries the matching gutter.
-    ['Line.module.css .button', 'row hover plate bleed, net 6px each side inside the column gutter'],
   ]);
   const sources: { name: string; text: string }[] = [];
   for (const entry of readdirSync(CLIENT, { recursive: true }) as string[]) {
@@ -167,10 +165,11 @@ test('no stylesheet under src/client widens its box with a negative horizontal m
 });
 
 test('hover bleed on process rows is drawn with side shadows in the hover colour', () => {
-  for (const [file, selector] of [['ClusterRow', '.row'], ['ReasoningRow', '.row'], ['ProcessPanel', '.headerButton'], ['FileChanges', '.header']] as const) {
+  for (const [file, selector] of [['Line', 'button.button'], ['ClusterRow', '.row'], ['ReasoningRow', '.row'], ['ProcessPanel', '.headerButton'], ['FileChanges', '.header']] as const) {
     const css = sheet(file);
     const hover = new RegExp(String.raw`${selector.replace('.', String.raw`\.`)}:hover[^{]*\{([^}]*)\}`).exec(css)?.[1] ?? '';
-    assert.match(hover, /box-shadow: 6px 0 0 var\(--dsw-alias-interactive-bg-hover\), -6px 0 0 var\(--dsw-alias-interactive-bg-hover\)/, `${file} ${selector}`);
+    const colour = file === 'Line' ? '--cc-hover' : '--dsw-alias-interactive-bg-hover';
+    assert.ok(hover.includes(`box-shadow: 6px 0 0 var(${colour}), -6px 0 0 var(${colour})`), `${file} ${selector}`);
   }
 });
 

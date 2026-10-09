@@ -53,7 +53,7 @@ function ResultView({ entry, model, phase, ...render }: BlockRenderProps & { ent
     const output = terminal?.card.output ?? text;
     const exitCode = facts.exitCode ?? (phase === 'failed' ? exitCodeFromOutput(output, true) : undefined);
     const command = terminal?.copy.kind === 'shell' ? terminal.copy.command : model.command ?? model.name;
-    return <div data-reader-tool-terminal><TerminalBlockL command={command} cwd={terminal?.card.cwd ?? model.cwd}
+    return <div data-reader-tool-terminal data-error={phase === 'failed' || undefined}><TerminalBlockL command={command} cwd={terminal?.card.cwd ?? model.cwd}
       output={output} exitCode={exitCode} signal={facts.signal}
       labels={phase === 'failed' && exitCode === undefined ? { done: '失败' } : undefined} maxLines={18} /></div>;
   }
@@ -70,7 +70,7 @@ function ResultView({ entry, model, phase, ...render }: BlockRenderProps & { ent
     {generatedInput(model.content, model.target, false)}
   </>;
   const content: ToolResultNode['content'] = block.content;
-  if (content.some(item => item.type === 'text')) return <div className={css.document}><Blocks {...render} blocks={contentBlocks(content).filter(item => item.kind === 'text')} source="tool" /></div>;
+  if (content.some(item => item.type === 'text')) return <div className={block.isError ? `${css.document} ${css.errorOutput}` : css.document} data-error={block.isError || undefined}><Blocks {...render} blocks={contentBlocks(content).filter(item => item.kind === 'text')} source="tool" /></div>;
   if (content.length) return <p className={css.note}>图片或扩展内容已在下方单独展示。</p>;
   return <p className={css.note}>工具没有返回可展示的内容。</p>;
 }

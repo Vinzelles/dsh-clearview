@@ -13,6 +13,7 @@
 .rawSection { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .rawLabel { margin: 0; color: var(--cc-text-300); font-family: var(--cc-font-ui); font-size: var(--cc-size-small); font-weight: 500; }
 .raw { margin: 0; max-height: 360px; overflow: auto; padding: 10px 12px; border-radius: 6px; background: var(--cc-bg-300); color: var(--cc-text-300); font: var(--cc-size-code)/18px var(--cc-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.errorOutput, [data-reader-tool-terminal][data-error] { color: var(--cc-danger); }
 .document { font-family: var(--cc-font-response); font-size: var(--cc-size-body); line-height: 21px; }
 .detail > summary { margin: 0; padding: 2px 0; border-radius: 6px; color: var(--cc-text-500); font-family: var(--cc-font-ui); font-size: var(--cc-size-small); cursor: pointer; }
 .detail > summary:hover { background: var(--cc-hover); }

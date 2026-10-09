@@ -1,7 +1,7 @@
 .line { min-width: 0; }
-.button { display: flex; align-items: center; gap: 8px; width: calc(100% + 12px); min-height: 28px; margin: 0 -6px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--cc-text-300); font: inherit; font-size: var(--cc-size-ui); line-height: 20px; text-align: left; }
+.button { display: flex; align-items: center; gap: 8px; box-sizing: border-box; width: 100%; min-height: 28px; margin: 0; padding: 0; border: 0; border-radius: 6px; background: transparent; box-shadow: 6px 0 0 transparent, -6px 0 0 transparent; color: var(--cc-text-300); font: inherit; font-size: var(--cc-size-ui); line-height: 20px; text-align: left; }
 button.button { cursor: pointer; }
-button.button:hover { background: var(--cc-hover); }
+button.button:hover { background: var(--cc-hover); box-shadow: 6px 0 0 var(--cc-hover), -6px 0 0 var(--cc-hover); }
 .chevron { width: 12px; height: 12px; flex: none; fill: none; stroke: var(--cc-text-500); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; transition: transform var(--cv-fast) var(--cv-ease); }
 .chevron[data-open="true"] { transform: rotate(90deg); }
 .icon { display: inline-flex; width: 16px; height: 16px; flex: none; align-items: center; justify-content: center; color: var(--cc-text-500); }
