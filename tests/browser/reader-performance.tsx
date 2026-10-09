@@ -284,7 +284,7 @@ async function focusedLifecycles(chat: any, sess: any, prefs: any, props: any) {
                 check(!!button && document.activeElement === button, 'todo fallback focus was not established');
             }
             check(!!history?.open && !!row && !!plan, `${intent} todo fallback: original call/history missing`);
-            const raw = JSON.stringify({ todos: [{ content: '验证原始计划调用', status: 'pending' }] });
+            const raw = JSON.stringify({ todos: [{ content: '验证原始计划调用', status: 'pending' }, { content: '完成项的勾需要在框内居中', status: 'completed' }] });
             value = tool(value, call('todo', 'todo_write', raw, true, [{ type: 'text', text: '计划已保存。' }])); await publish(value);
             const checklist = scope().querySelector<HTMLElement>('[data-reader-plan] [data-status="pending"]');
             const facts = { samePlan: !!plan && plan.isConnected && scope().querySelector('[data-reader-plan]') === plan,
@@ -299,6 +299,60 @@ async function focusedLifecycles(chat: any, sess: any, prefs: any, props: any) {
                 `${intent} todo fallback -> card: original raw call/detail DOM, checklist, or selection was lost`);
             check(facts.historyOpen === (intent !== 'untouched'), `${intent} todo promotion did not respect real reading intent`);
         }
+        const tick = scope().querySelector<SVGSVGElement>('[data-reader-plan] [data-status="completed"] > span > svg');
+        const tickBox = tick?.parentElement;
+        const tickRect = tick?.getBoundingClientRect(), boxRect = tickBox?.getBoundingClientRect();
+        evidence.planTick = { present: !!tick && !!tickBox && visible(tickBox),
+            dx: tickRect && boxRect ? Math.abs(tickRect.left + tickRect.width / 2 - boxRect.left - boxRect.width / 2) : null,
+            dy: tickRect && boxRect ? Math.abs(tickRect.top + tickRect.height / 2 - boxRect.top - boxRect.height / 2) : null };
+        check(evidence.planTick.present && evidence.planTick.dx <= .5 && evidence.planTick.dy <= .5, 'completed plan SVG tick is not centered in its actual box');
+
+        // Whole-turn folding keeps the final answer visible and preserves the same process DOM.
+        let processValue = seed([{ kind: 'text', text: '保留这段过程正文，折叠只改变可见性。'.repeat(5) }]);
+        processValue = tool(processValue, call('fold', 'read_file', JSON.stringify({ path: 'C:/synthetic/fold.ts' }), true, [{ type: 'text', text: '原始工具输出仍可查看。' }]));
+        await mount(processValue);
+        const processArticle = scope().querySelector<HTMLElement>('article[data-reader-key="life-a"]');
+        const processText = processArticle?.textContent;
+        const finish = (source: any) => {
+            const next = assistant(source, 'life-final', [{ kind: 'text', text: '这是始终可见的最终回答。' }], 'settled', 1);
+            const oldTurn = next.timeline.turns.get(1);
+            const end = { time: Date.now(), data: { reason: { kind: 'completed' } } };
+            const turn = { ...oldTurn, status: 'closed', end, data: new Map([['turn-tail', { closing: { step: 1, time: end.time, finalNode: { seq: 900 } } }]]) };
+            return { ...next, timeline: { ...next.timeline, turns: new Map([[1, turn]]) } };
+        };
+        await publish(finish(processValue)); await wait(350);
+        let processButton = scope().querySelector<HTMLButtonElement>('[data-reader-turn-disclosure]');
+        const finalAnswer = scope().querySelector<HTMLElement>('[data-reader-answer][data-reader-key="life-final"]');
+        const collapsed = processButton?.getAttribute('aria-expanded') === 'false' && !!processArticle && !visible(processArticle) && !!finalAnswer && visible(finalAnswer);
+        check(collapsed, 'completed turn did not fold process independently of its final answer');
+        processButton?.click(); await wait(350);
+        const processExpanded = processButton?.getAttribute('aria-expanded') === 'true' && !!processArticle && visible(processArticle) && processArticle.isConnected
+            && scope().querySelector('article[data-reader-key="life-a"]') === processArticle && processArticle.textContent === processText;
+        check(processExpanded, 'process expansion replaced or failed to reveal original prose');
+        processButton?.click(); await wait(350);
+        const refolded = !!processArticle && processArticle.isConnected && !visible(processArticle) && !!finalAnswer && visible(finalAnswer);
+        check(refolded, 'process re-fold removed its DOM or hid the final answer');
+        await publish(processValue); // Resume without clearing the saved closed choice.
+        const selectedProcess = await select(scope().querySelector('article[data-reader-key="life-a"]'), 'process completion selection');
+        await publish(finish(processValue)); await wait(350);
+        processButton = scope().querySelector<HTMLButtonElement>('[data-reader-turn-disclosure]');
+        const heldBySelection = processButton?.getAttribute('aria-expanded') === 'true' && retained(selectedProcess);
+        check(heldBySelection, 'completion collapsed or replaced selected process prose');
+        await clear(); await wait(350);
+        const foldedAfterRead = processButton?.getAttribute('aria-expanded') === 'false';
+        check(foldedAfterRead, 'completed process did not fold after reading ended');
+        await publish(processValue);
+        const processControl = scope().querySelector<HTMLButtonElement>('[data-reader-tool-call] button');
+        processControl?.focus(); await wait(80);
+        await publish(finish(processValue)); await wait(100);
+        processButton = scope().querySelector<HTMLButtonElement>('[data-reader-turn-disclosure]');
+        const heldByProcessFocus = processButton?.getAttribute('aria-expanded') === 'true';
+        processButton?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
+        processButton?.focus(); await wait(80);
+        processButton?.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 })); await wait(350);
+        const focusTransferClose = heldByProcessFocus && processButton?.getAttribute('aria-expanded') === 'false';
+        check(focusTransferClose, 'moving focus to the process summary reversed a close click');
+        evidence.turnProcess = { collapsed, expanded: processExpanded, refolded, heldBySelection, foldedAfterRead, focusTransferClose };
         const userText = Array.from({ length: 20 }, (_, index) => `第 ${index + 1} 行：完整用户内容必须保留，初始截断仍可展开和收起。`).join('\n');
         value = seed([]);
         const user = value.nodes.get('life-user');
@@ -695,7 +749,11 @@ async function reader() {
         if (__TRANSCRIPT__) {
             check(facts.groups === 2 && facts.runningGroups === 1 && facts.thoughts === 2 && facts.statusLines === 1, `${theme}/${innerWidth}: screenshot grammar missing`);
             check(facts.clamped, `${theme}/${innerWidth}: long user bubble was not clamped`);
-            check(facts.prose?.size === '16px' && facts.prose?.lineHeight === '25.6px', `${theme}/${innerWidth}: prose size/line-height differs from spec`);
+            const hostBody = getComputedStyle(scope).getPropertyValue('--dsh-content-font-size').trim() || '14px';
+            const probe = document.createElement('span'); probe.style.fontSize = hostBody; scope.appendChild(probe);
+            const expectedBody = getComputedStyle(probe).fontSize; probe.remove();
+            check(facts.prose?.size === expectedBody && Math.abs(parseFloat(facts.prose?.lineHeight ?? '') - parseFloat(expectedBody) * 1.6) < .12, `${theme}/${innerWidth}: prose differs from host size/reader line-height`);
+            check(facts.background === 'rgba(0, 0, 0, 0)', `${theme}/${innerWidth}: reader background is not transparent`);
             check(facts.prose?.weight === '400' && /anthropic-serif|Georgia/.test(facts.prose?.font ?? ''), `${theme}/${innerWidth}: actual prose weight/family differs from spec`);
             check(facts.commandCode?.size === '13px', `${theme}/${innerWidth}: actual command code is not 13px`);
             check(/anthropic-mono|Cascadia Mono|monospace/.test(facts.commandCode?.font ?? ''), `${theme}/${innerWidth}: actual command code is not mono`);

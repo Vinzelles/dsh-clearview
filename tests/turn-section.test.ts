@@ -13,6 +13,7 @@ function renderTurn(nodes: ReturnType<typeof chatNode>[], turn: ReturnType<typeo
   const chat = chatOf(nodes, turn ? [turn] : []);
   const group = { key: 'turn:1', turn: options.groupTurn === undefined ? 1 : options.groupTurn, keys: nodes.map(node => node.key) };
   const props = {
+    sessionId: 'test-session',
     useSession: sessionHook(chat, {}, options.pending),
     useStore: (selector: (state: unknown) => unknown) => selector({ expanded: options.expanded ?? {}, motion: true }),
     actions: { setExpanded: () => {}, setMotion: () => {} },
@@ -37,17 +38,30 @@ function completedTurn() {
   return { turn, nodes: [user, first, tool, second], second };
 }
 
-test('a completed turn keeps its narration, groups operations into one line and shows the answer', () => {
+test('a completed turn folds its process without discarding it and keeps the answer visible', () => {
   const { turn, nodes, second } = completedTurn();
   const html = renderTurn(nodes, turn);
   assert.match(html, /data-reader-turn="1" data-reader-turn-state="closed" data-reader-turn-result="completed"/);
   assert.match(html, /我先检查一下。/);
   assert.match(html, /data-reader-flow/);
   assert.match(html, new RegExp(`<article[^>]*data-reader-answer="true"[^>]*data-reader-key="${second.key}"`));
-  for (const retired of ['data-reader-panel', 'data-reader-process=', 'data-reader-earlier', 'data-reader-cluster', '前 \\d+ 步', '次工具', '毫秒']) {
+  assert.match(html, /data-reader-turn-disclosure="true"[^>]*aria-expanded="false"/);
+  assert.match(html, /data-reader-process-entry="true"[^>]*data-folded="true"/);
+  const answerAt = html.indexOf('data-reader-answer="true"');
+  const seatAt = html.lastIndexOf('data-reader-process-entry=', answerAt);
+  assert.match(html.slice(seatAt, answerAt), /data-reader-process-entry="false"[^>]*data-folded="false"/);
+  for (const retired of ['data-reader-panel', 'data-reader-process=', 'data-reader-earlier', 'data-reader-cluster', '前 \\d+ 步', '毫秒']) {
     assert.doesNotMatch(html, new RegExp(retired), retired);
   }
   assert.doesNotMatch(html, /data-reader-status-line/);
+});
+
+test('the saved completed-process choice keeps its contents expanded', () => {
+  const { turn, nodes } = completedTurn();
+  const html = renderTurn(nodes, turn, { expanded: { 'process:test-session:turn:1': true } });
+  assert.match(html, /data-reader-turn-disclosure="true"[^>]*aria-expanded="true"/);
+  assert.doesNotMatch(html, /data-folded="true"/);
+  assert.match(html, /收起过程/);
 });
 
 test('an open turn ends with the status line and renders live thinking exactly once, below it', () => {

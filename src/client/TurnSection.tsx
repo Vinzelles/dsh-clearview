@@ -1,5 +1,5 @@
-import { Fragment, memo, useCallback, useEffect, useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
+import { Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
 import type { AssistantChatData } from '@deepseek-ai/dsh-client-ui-chat/client';
 import { BlockBoundary, Blocks } from './Blocks.js';
 import { useChatSelector, usePendingSelector } from './compat/session-snapshot.js';
@@ -23,6 +23,8 @@ import { ToolGroupRow } from './ToolGroupRow.js';
 import { ToolImages, ToolRow } from './ToolRow.js';
 import { buildTranscript, liveThoughtKey, planStatus, type TranscriptEntry } from './transcript-model.js';
 import { TurnFooter } from './TurnFooter.js';
+import { TurnDisclosure } from './TurnDisclosure.js';
+import { isProcessEntry, processCounts, transcriptSeatKey, turnProcessOpen } from './turn-process.js';
 import { closingOf } from './turn-meta.js';
 import { formatSeconds } from './turn-activity.js';
 import type { BlockRenderProps, ReaderProps } from './types.js';
@@ -151,6 +153,29 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
   // Keep the selected/focused thought's existing DOM until reading ends, even when a new step starts.
   const liveSeats = entries.filter((entry): entry is Extract<TranscriptEntry, { kind: 'thought' }> => entry.kind === 'thought'
     && (entry.key === liveKey || entry.key === focusedLive || pinnedKeys.includes(entry.key)));
+  const processId = useId();
+  const choiceKey = `process:${props.sessionId}:${group.key}`;
+  const processChoice = props.useStore(state => state.expanded[choiceKey]);
+  const [processFocused, setProcessFocused] = useState(false);
+  const selectedProcess = flowPinned || entries.some(entry => isProcessEntry(entry) && 'item' in entry
+    && 'nodeKey' in entry.item && pinnedKeys.includes(entry.item.nodeKey));
+  const readingProcess = selectedProcess || processFocused || liveSeats.length > 0;
+  const [dismissReading, setDismissReading] = useState(false);
+  useEffect(() => { if (dismissReading && (!closed || !readingProcess)) setDismissReading(false); }, [closed, readingProcess, dismissReading]);
+  const processOpen = turnProcessOpen(processChoice, closed, boundary.reason, readingProcess && !dismissReading);
+  const hasProcess = entries.some(isProcessEntry);
+  const counts = useMemo(() => processCounts(turn, layout.panel), [turn, layout.panel]);
+  const pointerChoice = useRef<boolean | null>(null);
+  const captureProcessToggle = useCallback(() => { pointerChoice.current = !processOpen; }, [processOpen]);
+  const toggleProcess = useCallback((event: MouseEvent<HTMLButtonElement>) => {
+    // Focus leaves a process control before click. Preserve the intent at pointer-down;
+    // keyboard/programmatic activation uses the state currently announced by the button.
+    const next = event.detail > 0 ? pointerChoice.current ?? !processOpen : !processOpen;
+    pointerChoice.current = null;
+    setDismissReading(!next && readingProcess);
+    setProcessFocused(false);
+    props.actions.setExpanded(choiceKey, next);
+  }, [props.actions, choiceKey, processOpen, readingProcess]);
   const now = useNow(status === 'running' || status === 'waiting');
   const liveData = live ? get(live.item.nodeKey)?.data as AssistantChatData | undefined : undefined;
   const thinking = live && typeof liveData?.time === 'number' ? formatSeconds(Math.max(0, Math.round((now - liveData.time) / 1000))) : null;
@@ -207,8 +232,20 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
   return <RevealLedgerContext.Provider value={revealLedger}><section className={css.turn} data-reader-turn={group.turn ?? 'unresolved'} data-reader-turn-state={boundary.status} data-reader-turn-result={boundary.reason ?? undefined}>
     {preambleKeys.map(key => <BlockBoundary key={key}><PromptPreamble useSession={props.useSession} nodeKey={key} /></BlockBoundary>)}
     {leading.opening && <BlockBoundary><Opening {...shared} useSession={props.useSession} nodeKey={leading.opening} /></BlockBoundary>}
-    {entries.length > 0 && <div className={css.flow} data-reader-flow data-reader-process-key={group.key}>
-      {entries.filter(entry => !liveSeats.some(seat => seat.key === entry.key)).map(renderEntry)}
+    {closed && hasProcess && <TurnDisclosure label={statusLabel(status, boundary.reason, '')} elapsed={elapsedLabel(turn, now, status)}
+      {...counts} open={processOpen} onToggle={toggleProcess} onPointerDown={captureProcessToggle} controls={processId} danger={status !== 'done'} />}
+    {entries.length > 0 && <div id={processId} className={css.flow} data-reader-flow data-reader-process-key={group.key} data-process-open={processOpen}
+      onFocusCapture={event => setProcessFocused(!!(event.target as Element).closest('[data-reader-process-entry="true"]'))}
+      onBlurCapture={event => setProcessFocused(event.relatedTarget instanceof Element && event.currentTarget.contains(event.relatedTarget)
+        && !!event.relatedTarget.closest('[data-reader-process-entry="true"]'))}>
+      {entries.filter(entry => !liveSeats.some(seat => seat.key === entry.key)).map(entry => {
+        const process = isProcessEntry(entry);
+        const folded = process && !processOpen;
+        return <div key={transcriptSeatKey(entry)} className={css.entry} data-reader-process-entry={process} data-reader-process-key={process ? group.key : undefined}
+          data-folded={folded} aria-hidden={folded || undefined} {...(folded ? { inert: '' } : {})}>
+          <div className={css.entryContent}>{renderEntry(entry)}</div>
+        </div>;
+      })}
     </div>}
     {open && <StatusLine phase={status === 'waiting' ? 'waiting' : 'running'} label={status === 'waiting' ? '等待你的操作' : runningLabel(turn, group.keys, get)}
       elapsed={elapsedLabel(turn, now, status)} thinking={thinking} motion={motion} />}

@@ -193,7 +193,7 @@ test('reader root defines Claude tokens for light and dark', () => {
   assert.match(text, /60 2\.7% 14\.5%/, 'dark bg-100');
   assert.match(text, /:global\(body\[data-ds-dark-theme\]\)\s*\.root/, 'dark override keyed on the host attribute');
   assert.match(text, /anthropic-serif/);
-  assert.match(text, /\.root\s*\{[^}]*background:\s*var\(--cc-bg-100\)/s);
+  assert.match(text, /\.root\s*\{[^}]*background:\s*transparent/s);
 });
 
 const stylesheets = (): string[] => {

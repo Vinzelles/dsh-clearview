@@ -25,7 +25,7 @@
   --cc-font-ui: anthropic-sans, ui-sans-serif, -apple-system, "Segoe UI", var(--cc-font-cjk), sans-serif;
   --cc-font-response: anthropic-serif, Georgia, "Times New Roman", var(--cc-font-cjk), serif;
   --cc-font-mono: anthropic-mono, ui-monospace, "Cascadia Mono", Consolas, monospace;
-  --cc-size-body: calc(16px + var(--dsh-content-font-delta, 0px));
+  --cc-size-body: var(--dsh-content-font-size, calc(14px + var(--dsh-content-font-delta, 0px)));
   --cc-size-ui: calc(14px + var(--dsh-content-font-delta, 0px));
   --cc-size-small: calc(12.5px + var(--dsh-content-font-delta, 0px));
   --cc-size-code: calc(13px + var(--dsh-content-font-delta, 0px));
@@ -63,7 +63,7 @@
   --dsh-claude-font-serif: var(--cc-font-response);
   --dsh-claude-font-code: var(--cc-font-mono);
   /* host-remap:end */
-  background: var(--cc-bg-100);
+  background: transparent;
   color: var(--cc-text-100);
   font-family: var(--cc-font-ui);
   font-weight: 400;

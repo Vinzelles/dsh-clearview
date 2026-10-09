@@ -1,5 +1,11 @@
 .turn { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.flow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.flow { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+.entry { display: grid; grid-template-rows: 1fr; min-width: 0; opacity: 1; visibility: visible; transition: grid-template-rows var(--cv-size) var(--cv-ease), opacity var(--cv-swap) var(--cv-ease), margin-top var(--cv-size) var(--cv-ease), visibility 0s; }
+.entry + .entry { margin-top: 2px; }
+.entryContent { min-height: 0; min-width: 0; display: flow-root; overflow: clip; overflow-clip-margin: 6px; }
+.entry[data-folded=true] { grid-template-rows: 0fr; margin-top: 0; opacity: 0; visibility: hidden; transition-delay: 0s, 0s, 0s, var(--cv-size); }
+[data-motion=off] .entry { transition: none; }
+@media (prefers-reduced-motion: reduce) { .entry { transition: none; } }
 .input { margin: 6px 0; min-width: 0; }
 .prose { margin: 8px 0; min-width: 0; color: var(--cc-text-100); font-family: var(--cc-font-response); font-size: var(--cc-size-body); line-height: 1.6; overflow-wrap: anywhere; }
 .output { min-width: 0; overflow-wrap: anywhere; }

@@ -13,7 +13,7 @@ import { readonlyDecision, readonlyRequestSummary, classifyBrowserError, interac
 function typographyGate(fonts) {
   const px = value => typeof value === 'string' && value.trim().endsWith('px') && value.trim().slice(0, -2).trim() !== '' ? Number(value.trim().slice(0, -2)) : NaN;
   const delta = fonts?.delta;
-  const expectedBody = 16 + delta;
+  const expectedBody = px(fonts?.hostBodySize);
   const expectedCommand = 13 + delta;
   const size = px(fonts?.prose?.size);
   const line = px(fonts?.prose?.line);
@@ -250,11 +250,15 @@ try {
     deltaProbe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none';
     deltaProbe.style.setProperty('font-size', 'calc(100px + var(--dsh-content-font-delta, 0px))', 'important');
     root.appendChild(deltaProbe);
-    let delta, primaryColor;
+    let delta, hostBodySize, primaryColor, secondaryColor;
     try {
       delta = Number.parseFloat(cs(deltaProbe).fontSize) - 100;
+      deltaProbe.style.setProperty('font-size', 'var(--dsh-content-font-size, calc(14px + var(--dsh-content-font-delta, 0px)))', 'important');
+      hostBodySize = cs(deltaProbe).fontSize;
       deltaProbe.style.color = 'var(--cc-text-100)';
       primaryColor = cs(deltaProbe).color;
+      deltaProbe.style.color = 'var(--cc-text-300)';
+      secondaryColor = cs(deltaProbe).color;
     }
     finally { deltaProbe.remove(); }
     let backdrop = root; while (backdrop && /^rgba\\(0, 0, 0, 0\\)$|^transparent$/.test(cs(backdrop).backgroundColor)) backdrop = backdrop.parentElement;
@@ -263,7 +267,7 @@ try {
       viewport: { width: innerWidth, height: innerHeight },
       lineCount: lines.length, lineHeights: heights,
       toolSummaries: summaries.length, clippedSummaries: clipped.length,
-      fonts: { delta, prose: sample(prose), command: sample(command), line: sample(root.querySelector('[data-reader-line]')), code: sample(code), toolLine: sample(root.querySelector('[data-reader-tool-call] [data-reader-line]')),
+      fonts: { delta, hostBodySize, prose: sample(prose), command: sample(command), line: sample(root.querySelector('[data-reader-line]')), code: sample(code), toolLine: sample(root.querySelector('[data-reader-tool-call] [data-reader-line]')),
         user: sample(root.querySelector('[data-reader-user-bubble]')), serif: { fontSetCheck: document.fonts.check('16px anthropic-serif'), loaded: [...document.fonts].some(face => face.family.replace(/["']/g, '') === 'anthropic-serif' && face.status === 'loaded'), cssStack: prose ? cs(prose).fontFamily : null } },
       rootBackground: cs(root).backgroundColor, backdropBackground: backdrop ? cs(backdrop).backgroundColor : null,
       hierarchy: (() => {
@@ -276,9 +280,9 @@ try {
           background: cs(button).backgroundColor, border: cs(button).borderTopWidth, minHeight: cs(button).minHeight,
         }));
         const bodyPrimary = !!prose && cs(prose).color === primaryColor;
-        const bodyDistinct = !!prose && !!label && cs(prose).color !== cs(label).color && Number.parseFloat(cs(prose).fontSize) > Number.parseFloat(cs(label).fontSize);
+        const bodyDistinct = !!prose && !!label && primaryColor !== secondaryColor && cs(label).color === secondaryColor && cs(prose).color !== cs(label).color;
         const groupsDistinct = groupAffordance.length > 0 && groupAffordance.every(row => row.background !== 'rgba(0, 0, 0, 0)' && row.background !== cs(root).backgroundColor && Number.parseFloat(row.border) >= 1 && Number.parseFloat(row.minHeight) >= 32 && row.hint === (row.expanded === 'true' ? '收起详情' : '展开详情'));
-        return { body: sample(prose), process: sample(label), primaryColor, bodyPrimary, bodyDistinct, thoughts: thoughts.length, thoughtAndToolMixed, groupAffordance, groupsDistinct,
+        return { body: sample(prose), process: sample(label), primaryColor, secondaryColor, bodyPrimary, bodyDistinct, thoughts: thoughts.length, thoughtAndToolMixed, groupAffordance, groupsDistinct,
           pass: bodyPrimary && bodyDistinct && thoughts.length > 0 && thoughtAndToolMixed === 0 && groupsDistinct };
       })(),
       overflowX: { page: document.documentElement.scrollWidth > document.documentElement.clientWidth, scroller: scroller ? scroller.scrollWidth > scroller.clientWidth + 1 : null, root: root.scrollWidth > root.clientWidth + 1 },
@@ -330,6 +334,56 @@ try {
     return true;
   };
 
+  // These probes operate on local disclosure state only; no host preference or message writes.
+  const inspectTurn = turn => {
+    const button = turn.querySelector('button[data-reader-turn-disclosure]');
+    const flow = turn.querySelector('div[data-reader-flow]');
+    const visible = node => node.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) && node.getBoundingClientRect().height > 0;
+    const entries = [...turn.querySelectorAll('div[data-reader-process-entry]')];
+    const process = entries.filter(node => node.getAttribute('data-reader-process-entry') === 'true');
+    const retained = entries.filter(node => node.getAttribute('data-reader-process-entry') === 'false');
+    const answers = [...turn.querySelectorAll('[data-reader-answer]')];
+    const persistentContent = [...turn.querySelectorAll('[data-reader-user-bubble], [data-reader-command-input], [data-reader-notice], [data-reader-command-output]')];
+    const expanded = button?.getAttribute('aria-expanded');
+    const folded = expanded === 'false';
+    const hint = folded ? '展开过程' : '收起过程';
+    const label = button?.textContent ?? '';
+    const controls = !!button && !!flow?.id && button.getAttribute('aria-controls') === flow.id && document.getElementById(flow.id) === flow;
+    return {
+      result: turn.getAttribute('data-reader-turn-result'), expanded, controls, label,
+      processCount: process.length, answerCount: answers.length,
+      processState: process.length > 0 && process.every(node => node.getAttribute('data-folded') === String(folded) && visible(node) === !folded),
+      retainedVisible: retained.every(node => node.getAttribute('data-folded') === 'false' && visible(node)),
+      persistentVisible: persistentContent.every(visible),
+      answersVisible: answers.length > 0 && answers.every(visible),
+      pass: controls && ['true', 'false'].includes(expanded) && label.includes(hint) && !label.includes(folded ? '收起过程' : '展开过程')
+        && entries.every(node => ['true', 'false'].includes(node.getAttribute('data-reader-process-entry')))
+        && process.length > 0 && process.every(node => node.getAttribute('data-folded') === String(folded) && visible(node) === !folded)
+        && retained.every(node => node.getAttribute('data-folded') === 'false' && visible(node)) && answers.every(visible) && persistentContent.every(visible),
+    };
+  };
+  const expandTurns = async () => {
+    await evaluate("document.querySelectorAll('[data-dsh-clearview] button[data-reader-turn-disclosure][aria-expanded=\"false\"]').forEach(button => button.click())");
+    await delay(400);
+  };
+  const clickTurnCenter = async () => {
+    await evaluate("globalThis.__clearviewTurnProbe.button.scrollIntoView({ block: 'center', inline: 'center' })");
+    await delay(350);
+    const point = await evaluate(`(() => {
+      const button = globalThis.__clearviewTurnProbe.button;
+      const box = button.getBoundingClientRect();
+      const x = box.left + box.width / 2, y = box.top + box.height / 2;
+      const hit = document.elementFromPoint(x, y);
+      return { x, y, width: box.width, height: box.height, hit: !!hit && button.contains(hit) && box.width > 0 && box.height > 0 };
+    })()`);
+    if (point.hit) {
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: point.x, y: point.y });
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: point.x, y: point.y, button: 'left', clickCount: 1 });
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: point.x, y: point.y, button: 'left', clickCount: 1 });
+      await delay(450);
+    }
+    return point;
+  };
   await until("!!document.querySelector('[role=treeitem][data-row-key^=\"session:\"]')", 20000);
   await expandWorkspaces();
   report.sidebarRows = await evaluate("(() => { const out = {}; let group = ''; for (const node of document.querySelectorAll('[role=treeitem]')) { const key = node.dataset.rowKey || ''; if (key.startsWith('workspace:')) group = node.textContent.trim(); else out[group] = (out[group] ?? 0) + 1; } return out; })()");
@@ -351,7 +405,27 @@ try {
     await delay(800);
     if (!item.readerMounted) { report.uncovered.push({ kind: 'reader-mount', title, reason: 'Reader did not mount under the read-only guard' }); continue; }
     item.initial = await evaluate(collect);
+    item.turnDefaults = await evaluate(`([...document.querySelectorAll('[data-dsh-clearview] section[data-reader-turn]')].map(${inspectTurn})).filter(turn => turn.processCount > 0)`);
+    const hasTurnProbe = await evaluate(`(() => {
+      const turn = [...document.querySelectorAll('[data-dsh-clearview] section[data-reader-turn][data-reader-turn-result="completed"]')]
+        .find(node => node.querySelector('button[data-reader-turn-disclosure]') && node.querySelector('[data-reader-answer]') && node.querySelector('div[data-reader-process-entry="true"]'));
+      if (!turn) return false;
+      const button = turn.querySelector('button[data-reader-turn-disclosure]');
+      const nodes = [...turn.querySelectorAll('div[data-reader-process-entry], div[data-reader-process-entry] *, [data-reader-answer], [data-reader-answer] *')];
+      globalThis.__clearviewTurnProbe = { turn, button, nodes };
+      return true;
+    })()`);
+    if (hasTurnProbe) {
+      const snapshot = `(() => { const probe = globalThis.__clearviewTurnProbe; return { ...(${inspectTurn})(probe.turn), domRetained: probe.nodes.every(node => node.isConnected && probe.turn.contains(node)) }; })()`;
+      item.turnToggle = { before: await evaluate(snapshot) };
+      item.turnToggle.openClick = await clickTurnCenter();
+      item.turnToggle.opened = await evaluate(snapshot);
+      item.turnToggle.closeClick = await clickTurnCenter();
+      item.turnToggle.closed = await evaluate(snapshot);
+      await evaluate('delete globalThis.__clearviewTurnProbe');
+    }
     await shot(`${name}-bottom`);
+    await expandTurns();
     await evaluate("(() => { const scroller = document.querySelector('[data-conversation-scroll]'); if (scroller) scroller.scrollTop = 0; })()");
     await delay(500);
     await shot(`${name}-top`);
@@ -398,6 +472,20 @@ try {
     item.toolDetails = await evaluate("(() => { const row = document.querySelector('[data-live-check=tool]'); const detail = row?.querySelector('[data-reader-tool-details]'); const box = detail?.getBoundingClientRect(); return !!box && box.height > 0 && detail.checkVisibility({ checkVisibilityCSS: true }) && row.getAttribute('data-expanded') === 'true'; })()");
     await shot(`${name}-group-tool-open`);
     item.measured = await evaluate(measure);
+    item.planTick = await evaluate(`(() => {
+      const completed = document.querySelector('[data-dsh-clearview] [data-reader-plan] [data-status="completed"]');
+      if (!completed) return null;
+      const box = completed.querySelector(':scope > span[aria-hidden="true"]');
+      const svg = box?.querySelector('svg');
+      if (!box || !svg) return { pass: false, reason: 'Completed checkbox has no decorative SVG' };
+      const outer = box.getBoundingClientRect(), tick = svg.getBoundingClientRect();
+      const style = getComputedStyle(box);
+      const offset = { x: tick.left + tick.width / 2 - outer.left - outer.width / 2, y: tick.top + tick.height / 2 - outer.top - outer.height / 2 };
+      return { box: { width: outer.width, height: outer.height }, tick: { width: tick.width, height: tick.height }, offset, boxSizing: style.boxSizing, lineHeight: style.lineHeight,
+        pass: svg.checkVisibility({ checkVisibilityCSS: true }) && Math.abs(outer.width - 14) <= 0.12 && Math.abs(outer.height - 14) <= 0.12
+          && Math.abs(tick.width - 10) <= 0.12 && Math.abs(tick.height - 10) <= 0.12 && Math.abs(offset.x) <= 0.12 && Math.abs(offset.y) <= 0.12
+          && style.boxSizing === 'border-box' && box.getAttribute('aria-hidden') === 'true' };
+    })()`);
     // Prose / thought / bubble / plan close-ups: one crop each, from the first match.
     for (const [label, selector] of [['answer', '[data-reader-answer]'], ['narration', '[data-reader-flow] [data-reader-key]'], ['thought', '[data-reader-reasoning]'], ['bubble', '[data-reader-user-bubble]'], ['plan', '[data-reader-plan]']]) {
       if (!await evaluate(`(() => { const node = document.querySelector(${JSON.stringify('[data-dsh-clearview] ' + selector)}); if (!node) return false; node.scrollIntoView({ block: 'center' }); return true; })()`)) continue;
@@ -479,6 +567,8 @@ try {
       item.roundTrips.push({ chatClicked, chatSelected, readerClicked, readerSelected: await selectedTab(), readerWhileOnChat, readerVersion: await evaluate("document.querySelector('[data-dsh-clearview]')?.getAttribute('data-dsh-clearview')"), readerBack: await evaluate("!!document.querySelector('[data-dsh-clearview] section[data-reader-turn]')") });
     }
     item.roundTripExceptions = report.exceptions.length - exceptionsBefore;
+    // Tab round trips remount completed turns folded. Reopen before thought/group measurements.
+    await expandTurns();
     // Conditions, while the reader still has the whole pane: host font size 13/14/16, dark / light,
     // reduced motion. Opening a file below adds a right sidebar that would crowd these screenshots.
     const focusGroup = async () => {
@@ -495,22 +585,23 @@ try {
       item.fontSizes[size] = (await evaluate(measure))?.fonts;
       await shot(`${name}-font-${size}`);
     }
-    await evaluate(`(() => { const saved = ${JSON.stringify(savedDelta)}; if (saved.value) document.body.style.setProperty('--dsh-content-font-delta', saved.value, saved.priority); else document.querySelector('[data-dsh-clearview]').style.removeProperty('--dsh-content-font-delta'); })()`);
+    await evaluate(`(() => { const saved = ${JSON.stringify(savedDelta)}; const root = document.querySelector('[data-dsh-clearview]'); if (saved.value) root.style.setProperty('--dsh-content-font-delta', saved.value, saved.priority); else root.style.removeProperty('--dsh-content-font-delta'); })()`);
     await focusGroup();
     // Theme check. The host theme does not follow prefers-color-scheme, so the attribute is flipped on
     // document.body of this throwaway headless page only (no host setting is written) and restored after.
     item.theme = {};
+    const savedTheme = await evaluate("({ dark: document.body.getAttribute('data-ds-dark-theme'), colorScheme: document.documentElement.style.getPropertyValue('color-scheme'), priority: document.documentElement.style.getPropertyPriority('color-scheme') })");
     for (const mode of ['dark', 'light']) {
       await evaluate(mode === 'dark' ? "(() => { document.body.setAttribute('data-ds-dark-theme', ''); document.documentElement.style.colorScheme = 'dark'; })()" : "(() => { document.body.removeAttribute('data-ds-dark-theme'); document.documentElement.style.colorScheme = 'light'; })()");
       await delay(600);
       await focusGroup();
       const measured = await evaluate(measure);
-      const expected = await evaluate(`(() => { const probe = document.createElement('span'); probe.style.backgroundColor = ${JSON.stringify(mode === 'dark' ? 'hsl(60 2.7% 14.5%)' : 'hsl(48 33.3% 97.1%)')}; document.body.appendChild(probe); const color = getComputedStyle(probe).backgroundColor; probe.remove(); return color; })()`);
+      const expected = 'rgba(0, 0, 0, 0)';
       item.theme[mode] = { attribute: await evaluate("document.body.hasAttribute('data-ds-dark-theme')"), rootBackground: measured?.rootBackground, backdropBackground: measured?.backdropBackground, hierarchy: measured?.hierarchy, expected,
-        matches: [measured?.rootBackground, measured?.backdropBackground].includes(expected) };
+        matches: measured?.rootBackground === expected };
       await shot(`${name}-theme-${mode}`);
     }
-    await evaluate("(() => { document.body.setAttribute('data-ds-dark-theme', ''); document.documentElement.style.colorScheme = 'dark'; })()");
+    await evaluate(`(() => { const saved = ${JSON.stringify(savedTheme)}; if (saved.dark === null) document.body.removeAttribute('data-ds-dark-theme'); else document.body.setAttribute('data-ds-dark-theme', saved.dark); if (saved.colorScheme) document.documentElement.style.setProperty('color-scheme', saved.colorScheme, saved.priority); else document.documentElement.style.removeProperty('color-scheme'); })()`);
     await delay(400);
     const transitions = "(() => { const read = selector => { const node = document.querySelector(selector); return node ? getComputedStyle(node).transitionDuration : null; }; return { line: read('[data-reader-line] button'), toolLine: read('[data-reader-tool-call] [data-reader-line] button') }; })()";
     item.defaultTransitions = await evaluate(transitions);
@@ -550,6 +641,7 @@ try {
         await shot(`${name}-record-${kind}-in-chat`);
         await clickTab('阅读');
         await delay(900);
+        await expandTurns();
       }
     }
     if (await evaluate("!!document.querySelector('[data-reader-inspect]')")) {
@@ -558,6 +650,7 @@ try {
       item.inspectTab = await selectedTab();
       await clickTab('阅读');
       await delay(800);
+      await expandTurns();
     }
     guardCreates();
     // Gap between the last transcript block and the composer.
@@ -607,7 +700,23 @@ try {
     const covered = (name, value) => interactionCoverage(name, value, { optional: name === 'bubbleToggle', title, skippedChecks: report.skippedChecks, uncovered: report.uncovered });
     const toggle = item.groupToggle;
     const bubble = item.bubbleClamp;
+    const turnToggle = item.turnToggle;
+    const turnDefaults = result => {
+      const turns = item.turnDefaults.filter(turn => turn.result === result);
+      if (!turns.length) {
+        report.uncovered.push({ kind: 'turn-fold-default', title, result, reason: 'No applicable process-bearing turn in the selected session' });
+        return 'uncovered';
+      }
+      return turns.every(turn => turn.pass && turn.expanded === (result === 'completed' ? 'false' : 'true'));
+    };
+    if (!item.planTick) report.uncovered.push({ kind: 'plan-tick-center', title, reason: 'No real completed plan check; synthetic fixture coverage belongs to the main task' });
+    if (!turnToggle) report.uncovered.push({ kind: 'turn-toggle', title, reason: 'No completed turn with both process entries and final answer' });
     item.checks = {
+      completedFoldDefault: turnDefaults('completed'), interruptedOpenDefault: turnDefaults('interrupted'),
+      turnToggle: turnToggle ? turnToggle.openClick.hit && turnToggle.closeClick.hit
+        && turnToggle.before.expanded === 'false' && turnToggle.opened.expanded === 'true' && turnToggle.closed.expanded === 'false'
+        && [turnToggle.before, turnToggle.opened, turnToggle.closed].every(state => state.pass && state.answersVisible && state.domRetained) : 'uncovered',
+      planTickCenter: item.planTick ? item.planTick.pass : 'uncovered',
       overflow1440: covered('geometry1440', noOverflow(item.measured)), overflow480: covered('geometry480', item.narrow && item.narrowBottom ? noOverflow(item.narrow) && noOverflow(item.narrowBottom) : null),
       proseCssStack: !item.measured?.fonts?.prose ? 'n/a' : family.startsWith('anthropic-serif') ? 'declared' : 'fallback-stack',
       // CSS stack and FontFace loaded status are evidence, never proof of the font used for a glyph.
@@ -621,9 +730,11 @@ try {
       bubbleToggle: covered('bubbleToggle', bubble ? bubble.button === true && bubble.before?.clamped === 'true' && bubble.opened?.clamped === 'false' && bubble.after?.clamped === 'true' && bubble.opened.height > bubble.before.height + 1 && Math.abs(bubble.after.height - bubble.before.height) <= 1 && bubble.before.text === '展开全文' && bubble.opened.text === '收起' && bubble.after.text === '展开全文' : null),
       roundTrips: item.roundTrips.length === 2 && item.roundTrips.every(trip => trip.chatClicked && trip.chatSelected === '对话' && !trip.readerWhileOnChat && trip.readerClicked && trip.readerSelected === '阅读' && trip.readerBack && trip.readerVersion === expectedVersion),
       copy: covered('copy', item.copyReceipt ? item.copyReceipt.isolated && item.copyReceipt.receipt.includes('已复制') && item.copyReceipt.writes.length > 0 : null),
-      themeBackground: item.theme ? item.theme.dark.matches && item.theme.light.matches : 'skipped',
+      themeBackground: [item.measured, item.narrow, item.narrowBottom].every(state => state?.rootBackground === 'rgba(0, 0, 0, 0)')
+        && (!item.theme || item.theme.dark.matches && item.theme.light.matches),
     };
     item.checks.pass = item.checks.overflow1440 && item.checks.overflow480 && item.checks.themeBackground !== false
+      && item.checks.completedFoldDefault !== false && item.checks.interruptedOpenDefault !== false && item.checks.turnToggle !== false && item.checks.planTickCenter !== false
       && item.checks.typography && item.checks.hierarchy && item.checks.groupToggle && item.checks.groupOpened && item.checks.toolDetails && item.checks.bubbleToggle && item.checks.roundTrips && item.checks.copy;
     guardCreates();
   }

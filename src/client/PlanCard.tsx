@@ -62,7 +62,11 @@ export function PlanCard({ todos, hasChecklist = true, tone = 'idle', detail, ch
     {detail && <div className={css.status} role="status">{detail}</div>}
     {todos.length === 0 && <div className={css.status} data-reader-plan-empty>暂无计划条目</div>}
     {todos.map((todo, index) => <div key={index} className={css.item} data-status={todo.status}>
-      <span className={css.box} aria-hidden="true">{todo.status === 'completed' ? '✓' : ''}</span>
+      <span className={css.box} aria-hidden="true">{todo.status === 'completed' &&
+        <svg className={css.check} width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true" focusable="false">
+          <path d="M1.5 5 4 7.5 8.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      }</span>
       <span className={css.content}>{todo.content}</span>
     </div>)}
     </>}

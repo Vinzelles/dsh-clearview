@@ -246,7 +246,7 @@ test('Reader failures, empty coverage and safety/cleanup failures still block th
   assert.equal(summarizeReaderGate(broken, '0.3.0').readerPass, false);
 });
 
-test('fonts.prose measures the actual paragraph and resolves/removes its DOM delta probe', () => {
+test('fonts.prose measures the paragraph and independently resolves/removes its host typography probe', () => {
   const source = readFileSync(new URL('../scripts/verify-live-reader.mjs', import.meta.url), 'utf8');
   const quote = String.fromCharCode(96);
   const start = source.indexOf('const measure = ' + quote) + 'const measure = '.length;
@@ -254,10 +254,11 @@ test('fonts.prose measures the actual paragraph and resolves/removes its DOM del
   const expression = runInNewContext(source.slice(start, end));
   for (const delta of [-1, 0, 2, 0.5]) {
     const paragraph = { tagName: 'P' }, command = { tagName: 'CODE' };
-    let attached = false, created = 0, removed = 0;
+    let attached = false, created = 0, removed = 0, probeSize = '';
     const deltaProbe = { tagName: 'SPAN', style: { cssText: '', setProperty: (name: string, value: string, priority: string) => {
       assert.equal(name, 'font-size');
-      assert.equal(value, 'calc(100px + var(--dsh-content-font-delta, 0px))');
+      assert.ok(['calc(100px + var(--dsh-content-font-delta, 0px))', 'var(--dsh-content-font-size, calc(14px + var(--dsh-content-font-delta, 0px)))'].includes(value));
+      probeSize = value;
       assert.equal(priority, 'important');
     } }, remove: () => { assert.equal(attached, true); attached = false; removed++; } };
     const root = { tagName: 'ARTICLE', scrollWidth: 100, clientWidth: 100,
@@ -270,15 +271,16 @@ test('fonts.prose measures the actual paragraph and resolves/removes its DOM del
     const getComputedStyle = (node: unknown) => {
       if (node === deltaProbe) assert.equal(attached, true, 'probe must be mounted before its computed size is read');
       return { backgroundColor: 'rgb(255, 255, 255)',
-        fontSize: (node === deltaProbe ? 100 + delta : node === paragraph ? 16 + delta : node === command ? 13 + delta : 14 + delta) + 'px',
-        lineHeight: node === paragraph ? (1.6 * (16 + delta)) + 'px' : '21px',
+        fontSize: (node === deltaProbe ? (probeSize.startsWith('calc(100px') ? 100 + delta : 14 + delta) : node === paragraph ? 14 + delta : node === command ? 13 + delta : 14 + delta) + 'px',
+        lineHeight: node === paragraph ? (1.6 * (14 + delta)) + 'px' : '21px',
         fontWeight: node === paragraph ? '400' : '500', fontFamily: node === paragraph ? 'anthropic-serif, Georgia' : 'system-ui' };
     };
     const measured = runInNewContext(expression, { document, getComputedStyle, innerWidth: 1440, innerHeight: 900 });
     assert.equal(measured.fonts.delta, delta);
     assert.equal(measured.fonts.prose.tag, 'P');
-    assert.equal(measured.fonts.prose.size, (16 + delta) + 'px');
-    assert.equal(measured.fonts.prose.line, (1.6 * (16 + delta)) + 'px');
+    assert.equal(measured.fonts.hostBodySize, (14 + delta) + 'px');
+    assert.equal(measured.fonts.prose.size, (14 + delta) + 'px');
+    assert.equal(measured.fonts.prose.line, (1.6 * (14 + delta)) + 'px');
     assert.equal(measured.fonts.prose.weight, '400');
     assert.equal(measured.fonts.prose.family, 'anthropic-serif, Georgia');
     assert.equal(measured.fonts.command.size, (13 + delta) + 'px');
@@ -318,19 +320,23 @@ function numericTypographyGate() {
   return runInNewContext(source.slice(start, end) + '\ntypographyGate') as (fonts: Record<string, unknown>) => { pass: boolean; proseSize: boolean; proseLine: boolean; commandSize: boolean };
 }
 
-test('typography gate enforces actual paragraph size 16 plus delta, ratio 1.6 and command size 13 plus delta', () => {
+test('typography gate compares paragraph to independent host size, ratio 1.6 and command size 13 plus delta', () => {
   const gate = numericTypographyGate();
   for (const delta of [-1, 0, 2, 0.5]) {
-    const fonts = { delta, prose: { tag: 'P', size: (16 + delta) + 'px', line: (1.6 * (16 + delta)) + 'px', weight: '400', family: 'Georgia' },
+    const fonts = { delta, hostBodySize: (14 + delta) + 'px', prose: { tag: 'P', size: (14 + delta) + 'px', line: (1.6 * (14 + delta)) + 'px', weight: '400', family: 'Georgia' },
       command: { size: (13 + delta) + 'px' }, serif: { loaded: false, fontSetCheck: false } };
     assert.equal(gate(fonts).pass, true, '404/fallback is allowed when actual numeric typography is correct');
-    assert.equal(gate({ ...fonts, prose: { ...fonts.prose, size: (14 + delta) + 'px' } }).pass, false);
-    assert.equal(gate({ ...fonts, prose: { ...fonts.prose, line: (1.5 * (16 + delta)) + 'px' } }).pass, false);
+    assert.equal(gate({ ...fonts, prose: { ...fonts.prose, size: (16 + delta) + 'px' } }).pass, false);
+    assert.equal(gate({ ...fonts, prose: { ...fonts.prose, line: (1.5 * (14 + delta)) + 'px' } }).pass, false);
     assert.equal(gate({ ...fonts, prose: { ...fonts.prose, weight: '500' } }).pass, false);
     assert.equal(gate({ ...fonts, command: { size: (12 + delta) + 'px' } }).pass, false);
     assert.equal(gate({ ...fonts, command: null }).pass, true, 'command is optional only when absent');
+    assert.equal(gate({ ...fonts, hostBodySize: '18px', prose: { ...fonts.prose, size: '18px', line: '28.8px' } }).pass, true, 'explicit host size takes precedence over delta fallback');
+    for (const hostBodySize of [undefined, 'normal', '0px', 'NaNpx']) {
+      assert.equal(gate({ ...fonts, hostBodySize }).pass, false, 'missing or invalid independent host measurement must fail');
+    }
   }
-  assert.equal(gate({ delta: NaN, prose: { tag: 'P', size: '16px', line: '25.6px', weight: '400' } }).pass, false);
-  assert.equal(gate({ delta: 0, prose: { tag: 'ARTICLE', size: '16px', line: '25.6px', weight: '400' } }).pass, false);
-  assert.equal(gate({ delta: 0, prose: { tag: 'P', size: '16px', line: 'normal', weight: '400' } }).pass, false);
+  assert.equal(gate({ delta: NaN, hostBodySize: '16px', prose: { tag: 'P', size: '16px', line: '25.6px', weight: '400' } }).pass, false);
+  assert.equal(gate({ delta: 0, hostBodySize: '16px', prose: { tag: 'ARTICLE', size: '16px', line: '25.6px', weight: '400' } }).pass, false);
+  assert.equal(gate({ delta: 0, hostBodySize: '16px', prose: { tag: 'P', size: '16px', line: 'normal', weight: '400' } }).pass, false);
 });

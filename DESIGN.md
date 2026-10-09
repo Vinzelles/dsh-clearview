@@ -14,7 +14,9 @@ Present a turn the way Claude Code Desktop does: one chronological transcript in
 
 ## Lifecycle
 
-During a turn, show its real process in chronological order. Starting body output, preparing tool input, finishing one tool, or entering another step is not whole-turn completion. Prose never folds when a turn ends: the closing narration and the answer continue the same column. Operation groups follow their own settled-state rule below. Failures, interruptions, unknown terminal states and approval requests are shown by the status line (below) and stay in place.
+During a turn, show its real process in chronological order. Starting body output, preparing tool input, finishing one tool, or entering another step is not whole-turn completion. From 0.3.1, completed turns fold process entries behind a single status summary while retaining final answers, user inputs and terminal notices. Interrupted or failed turns start expanded. An active selection or process focus delays automatic folding; an explicit current close action wins. Stored choices are scoped by session and turn. Stable outer entry seats animate grid height and opacity without unmounting their original content, including singleton-to-group promotion. Operation groups keep their own local disclosure rules below.
+
+The reader root is transparent. Prose uses the host `--dsh-content-font-size` (fallback 14px plus host delta), primary text color and paragraph spacing; it does not add a font-size increase. Completed plan marks are fixed-size SVGs centered in border-box squares, independent of font metrics.
 
 ## Transcript entries and grouping
 
@@ -41,7 +43,7 @@ Wheel, touch, viewport focus or selection pause following. The explicit follow c
 
 ## Tokens
 
-Reader colours are Claude's own, as HSL triples in `--cc-*` variables in `Reader.module.css`, with a light and a dark set keyed on the host's `body[data-ds-dark-theme]`. The reader root paints the page background (`bg-100`); the host sidebar, top bar and composer are untouched. The brand orange (`accent-brand`) is used only for the running ✻. Inside the reader, colours come from `--cc-*`; the host `--dsw-*` aliases are remapped on the reader root so embedded host primitives (native tool-result components) follow the same palette.
+Reader colours are Claude's own, as HSL triples in `--cc-*` variables in `Reader.module.css`, with a light and a dark set keyed on the host's `body[data-ds-dark-theme]`. The reader root is transparent and shows the host page background; local controls still use the palette's surface colors. The host sidebar, top bar and composer are untouched. The brand orange (`accent-brand`) is used only for the running ✻. Inside the reader, colours come from `--cc-*`; the host `--dsw-*` aliases are remapped on the reader root so embedded host primitives (native tool-result components) follow the same palette.
 
 ## Fonts
 

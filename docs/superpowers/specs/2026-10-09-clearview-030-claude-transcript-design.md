@@ -2,6 +2,8 @@
 
 日期：2026-10-09
 状态：规格与实施计划已获用户确认，实施后验收中
+
+后续修正：0.3.0 安装后的字号、整轮折叠、勾选居中和透明背景要求，以 [0.3.1 阅读修正](2026-10-09-clearview-031-reading-corrections.md) 为准。
 原型：`proto/clearview-030-cc-flow` 分支（80d89f9）中的 `prototype/cc-flow.prototype.html` 和 `prototype/shot-*.png`，只作参考，不进 main。
 
 ## 1. 背景与证据
