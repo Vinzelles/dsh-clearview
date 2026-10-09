@@ -1,0 +1,258 @@
+<!doctype html>
+<!-- PROTOTYPE (throwaway): dsh-clearview reading view redone in Claude Code Desktop transcript grammar.
+     Question: does the CC-style flow (no process panel, narration as body text, one-line tool groups,
+     bottom status line, live thinking) read better than 0.2.1 / the native view?
+     Content is copied from the real session "Three.js 中国古典建筑群场景" (2026-10-09). Static, no data access. -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clearview CC 原型</title>
+<style>
+/* Fonts: loaded from the locally installed Claude desktop app for preview only (not redistributed). */
+@font-face { font-family: anthropic-sans; src: url(file:///C:/Users/Administrator/AppData/Local/AnthropicClaude/app-2.26454.2/resources/ion-dist/assets/v1/cc27851ad-DDVos-BJ.woff2) format("woff2"); font-weight: 300 800; font-feature-settings: "dlig" 0; }
+@font-face { font-family: anthropic-serif; src: url(file:///C:/Users/Administrator/AppData/Local/AnthropicClaude/app-2.26454.2/resources/ion-dist/assets/v1/c66fc489e-2VcCjn5t.woff2) format("woff2"); font-weight: 300 800; }
+@font-face { font-family: anthropic-mono; src: url(file:///C:/Users/Administrator/AppData/Local/AnthropicClaude/app-2.26454.2/resources/ion-dist/assets/v1/c5dbe0935-CQcSkHaI.woff2) format("woff2"); font-weight: 300 800; }
+/* Claude tokens, copied from [data-theme=claude][data-mode=dark|light] */
+:root {
+  --bg-000: 60 2.1% 18.4%; --bg-100: 60 2.7% 14.5%; --bg-200: 30 3.3% 11.8%; --bg-300: 60 2.6% 7.6%;
+  --text-100: 48 33.3% 97.1%; --text-300: 50 9% 73.7%; --text-500: 48 4.8% 59.2%;
+  --border-300: 51 16.5% 84.5%; --accent-brand: 15 63.1% 59.6%; --accent-000: 210 65.5% 67.1%;
+  --danger-000: 0 98.4% 75.1%; --danger-100: 0 67% 59.6%; --danger-900: 0 46.5% 27.8%;
+  --success-000: 97 59.1% 46.1%; --success-100: 97 75% 32.9%; --success-900: 127 100% 13.9%;
+}
+:root[data-theme="light"] {
+  --bg-000: 0 0% 100%; --bg-100: 48 33.3% 97.1%; --bg-200: 53 28.6% 94.5%; --bg-300: 48 25% 92.2%;
+  --text-100: 60 2.6% 7.6%; --text-300: 60 2.5% 23.3%; --text-500: 51 3.1% 43.7%;
+  --border-300: 30 3.3% 11.8%; --accent-000: 210 73.7% 40.2%;
+  --danger-000: 0 58.6% 34.1%; --danger-100: 0 56.2% 45.4%; --danger-900: 0 50% 95%;
+  --success-000: 125 100% 18%; --success-100: 103 72.3% 26.9%; --success-900: 86 45.1% 90%;
+}
+:root {
+  --font-cjk: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC";
+  --font-ui: anthropic-sans, ui-sans-serif, -apple-system, "Segoe UI", var(--font-cjk), sans-serif;
+  --font-response: anthropic-serif, Georgia, "Times New Roman", var(--font-cjk), serif;
+  --font-mono: anthropic-mono, ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --bg: hsl(var(--bg-100)); --side: hsl(var(--bg-200)); --text: hsl(var(--text-100)); --text-2: hsl(var(--text-300)); --text-3: hsl(var(--text-500));
+  --line: hsl(var(--border-300) / .15); --bubble: hsl(var(--bg-300)); --hover: hsl(var(--bg-000) / .7); --code-bg: hsl(var(--bg-200));
+  --inline-code: hsl(var(--bg-300) / .8); --green: hsl(var(--success-000)); --red: hsl(var(--danger-000));
+  --red-bg: hsl(var(--danger-900) / .45); --green-bg: hsl(var(--success-900) / .45); --orange: hsl(var(--accent-brand)); --link: hsl(var(--accent-000));
+}
+:root[data-theme="light"] { --hover: hsl(var(--bg-300) / .6); --red: hsl(var(--danger-100)); --green: hsl(var(--success-100)); --red-bg: hsl(var(--danger-900)); --green-bg: hsl(var(--success-900)); --bubble: hsl(var(--bg-300)); }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font-ui); display: flex; overflow: hidden; }
+code, .mono { font-family: var(--font-mono); }
+
+/* host chrome (approximation of DSH) */
+.side { width: 280px; flex: none; background: var(--side); border-right: 1px solid var(--line); padding: 20px 16px; font-size: 13px; color: var(--text-2); }
+.side .brand { font: 500 20px var(--font-response); color: var(--text); margin: 0 0 22px 60px; }
+.side .item { padding: 6px 4px; }
+.side .ws { margin-top: 18px; color: var(--text-3); font-size: 12px; }
+.side .sess { padding: 6px 10px; border-radius: 8px; color: var(--text); background: var(--hover); margin-top: 4px; }
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.top { height: 52px; flex: none; display: flex; align-items: center; padding: 0 28px; gap: 14px; font-size: 14px; }
+.top .tabs { margin-left: auto; display: flex; gap: 4px; font-size: 13px; }
+.top .tabs span { padding: 3px 10px; border-radius: 6px; color: var(--text-2); }
+.top .tabs span.on { background: var(--hover); color: var(--text); }
+.scroll { flex: 1; overflow-y: auto; }
+.column { width: 742px; max-width: calc(100% - 32px); margin: 0 auto; padding: 24px 0 40px; }
+.composer { flex: none; width: 774px; max-width: calc(100% - 32px); margin: 0 auto 18px; border: 1px solid var(--line); border-radius: 14px; padding: 12px 16px; color: var(--text-3); font-size: 14px; }
+
+/* ---- transcript grammar ---- */
+.user { display: flex; justify-content: flex-end; margin: 8px 0 22px; }
+.bubble { max-width: 82%; background: var(--bubble); border-radius: 12px; padding: 10px 16px; font: 15px/1.6 var(--font-ui); position: relative; }
+.bubble.clamp .txt { display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+.bubble .more { font-size: 12.5px; color: var(--text-2); margin-top: 4px; }
+.say, .answer { font-family: var(--font-response); font-size: 16px; line-height: 1.6; }
+.say { margin: 12px 0; }
+.say p { margin: 0 0 8px; }
+.say code, .answer code { background: var(--inline-code); border: .5px solid var(--line); border-radius: 4px; padding: 1px 5px; font-size: 13px; color: hsl(var(--danger-000) / .9); }
+
+.row { display: flex; align-items: center; gap: 8px; min-height: 28px; font-size: 14px; color: var(--text-2); border-radius: 6px; margin: 2px -6px; padding: 0 6px; cursor: default; }
+.row:hover { background: var(--hover); }
+.row .ic { width: 16px; height: 16px; flex: none; color: var(--text-3); }
+.row .chev { width: 12px; height: 12px; flex: none; color: var(--text-3); transition: transform .15s; }
+.row.open > .chev { transform: rotate(90deg); }
+.row .verb { color: var(--text-2); }
+.row .tgt { color: var(--text); font-size: 13px; }
+.row .num { font-size: 12px; }
+.row .add { color: var(--green); } .row .del { color: var(--red); }
+.row .fail { color: var(--red); font-size: 12.5px; }
+.row .dim { color: var(--text-3); font-size: 12.5px; }
+.row.failed .ic { color: var(--red); }
+.kids { margin: 2px 0 6px 7px; padding-left: 14px; border-left: 1px solid var(--line); }
+.think-text { color: var(--text-2); font-family: var(--font-response); font-style: italic; font-size: 14px; line-height: 1.65; margin: 4px 0 8px 7px; padding-left: 14px; border-left: 1px solid var(--line); white-space: pre-wrap; }
+.block { margin: 4px 0 8px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--code-bg); font-size: 12.5px; line-height: 1.6; }
+.block .hd { display: flex; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--line); color: var(--text-2); font-size: 12px; }
+.block pre { margin: 0; padding: 8px 12px; overflow-x: auto; }
+.block .ln { display: block; padding: 0 12px; white-space: pre; }
+.block .ln.a { background: var(--green-bg); } .block .ln.a::before { content: "+ "; color: var(--green); }
+.block .ln.d { background: var(--red-bg); } .block .ln.d::before { content: "− "; color: var(--red); }
+.block .ln.c::before { content: "  "; }
+.block.err pre { color: var(--red); }
+.todo { margin: 8px 0 10px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 13.5px; }
+.todo .t { color: var(--text-2); font-size: 12.5px; margin-bottom: 4px; }
+.todo div.i { display: flex; gap: 8px; align-items: center; line-height: 1.9; }
+.todo .done { color: var(--text-3); text-decoration: line-through; }
+.todo .cur { color: var(--text); font-weight: 600; }
+.box { width: 13px; height: 13px; border: 1.5px solid var(--text-3); border-radius: 3px; flex: none; display: inline-grid; place-items: center; font-size: 10px; }
+.box.ok { background: var(--text-3); color: var(--bg); }
+
+/* running status line */
+.status { display: flex; align-items: center; gap: 10px; margin: 14px 0 6px; font-size: 14px; }
+.spark { color: var(--orange); font-size: 17px; display: inline-block; animation: spin 2.4s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.shimmer { background: linear-gradient(90deg, var(--text-2) 0%, var(--text) 45%, var(--text-2) 70%); background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: sh 2s linear infinite; }
+@keyframes sh { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+.status .meta { color: var(--text-3); font-size: 12.5px; }
+.live { color: var(--text-2); font-family: var(--font-response); font-style: italic; font-size: 14px; line-height: 1.65; margin: 0 0 8px 7px; padding-left: 14px; border-left: 1px solid var(--line); max-height: 6.6em; overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 1.6em); }
+
+/* answer + footer */
+.answer h3 { font-size: 18px; font-weight: 600; margin: 20px 0 8px; }
+.answer ul { margin: 0 0 8px; padding-left: 20px; }
+.answer pre { margin: 0; padding: 10px 14px; }
+.foot { display: flex; align-items: center; gap: 14px; margin: 14px 0 6px; font-size: 12.5px; color: var(--text-3); }
+.foot svg { width: 15px; height: 15px; }
+.files { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+.files span { border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; font-size: 12.5px; color: var(--text-2); }
+
+/* prototype switcher (not part of the design) */
+.proto { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); display: flex; gap: 6px; background: #ff3d7f; color: #fff; padding: 6px 8px; border-radius: 999px; font: 12px/1 sans-serif; box-shadow: 0 6px 20px rgba(0,0,0,.35); z-index: 9; }
+.proto button { border: 0; border-radius: 999px; padding: 6px 10px; background: rgba(255,255,255,.18); color: #fff; cursor: pointer; font: inherit; }
+.proto button.on { background: #fff; color: #ff3d7f; }
+[hidden] { display: none !important; }
+html.full body { overflow: visible; height: auto; } html.full .scroll { overflow: visible; } html.full .proto { display: none; } html.full .main { min-height: 100vh; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-term" viewBox="0 0 16 16"><path d="M3 4.5l3.5 3.5L3 11.5M8 12h5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-file" viewBox="0 0 16 16"><path d="M4 2h5l3 3v9H4z M9 2v3h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 16 16"><path d="M3 13l1-3.5L10.5 3l2.5 2.5L6.5 12z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+  <symbol id="i-think" viewBox="0 0 16 16"><path d="M8 2.5v2M8 11.5v2M2.5 8h2M11.5 8h2M4.1 4.1l1.4 1.4M10.5 10.5l1.4 1.4M4.1 11.9l1.4-1.4M10.5 5.5l1.4-1.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+  <symbol id="i-tools" viewBox="0 0 16 16"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h7" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+  <symbol id="i-agent" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M3.5 13.5c.6-2.4 2.3-3.5 4.5-3.5s3.9 1.1 4.5 3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 12 12"><path d="M4.5 2.5L8 6l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 16 16"><rect x="5" y="5" width="8.5" height="8.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M3 10.5V4a1.5 1.5 0 011.5-1.5H10.5" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+  <symbol id="i-branch" viewBox="0 0 16 16"><circle cx="4.5" cy="3.5" r="1.6" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="4.5" cy="12.5" r="1.6" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="11.5" cy="5.5" r="1.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M4.5 5.1v5.8M11.5 7.1c0 2.4-2.5 2.6-7 3.6" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+</svg>
+
+<aside class="side">
+  <div class="brand">✻ Claude</div>
+  <div class="item">＋ 新会话</div><div class="item">插件</div><div class="item">扩展管理</div><div class="item">定时任务</div>
+  <div class="ws">工作区</div>
+  <div class="item">0923 5.5</div><div class="item">签证材料</div><div class="item">0922 27B</div>
+  <div class="sess">Three.js 中国古典建筑群场景</div>
+  <div class="item">ys-pipeline</div><div class="item">dsh-multitask</div><div class="item">dsh-custom-patcher</div><div class="item">AI Benchmark</div>
+</aside>
+
+<div class="main">
+  <div class="top"><b>Three.js 中国古典建筑群场景</b><span style="color:var(--text-3);font-size:13px">标准模式 · 1 个后台任务</span>
+    <div class="tabs"><span>对话</span><span>轨迹</span><span class="on">阅读</span></div></div>
+  <div class="scroll"><div class="column" id="col"></div></div>
+  <div class="composer">Type / for commands</div>
+</div>
+
+<div class="proto">
+  <button data-k="state" data-v="running">运行中</button><button data-k="state" data-v="done">已完成</button>
+  <span style="width:6px"></span>
+  <button data-k="detail" data-v="0">默认</button><button data-k="detail" data-v="1">展开细节</button>
+  <span style="width:6px"></span>
+  <button data-k="theme" data-v="dark">深色</button><button data-k="theme" data-v="light">浅色</button>
+</div>
+
+<script>
+const q = new URLSearchParams(location.search);
+if (q.get('full')) document.documentElement.classList.add('full');
+const S = { state: q.get('state') || 'running', detail: q.get('detail') || '0', theme: q.get('theme') || 'dark' };
+const ic = id => `<svg class="ic"><use href="#i-${id}"/></svg>`;
+const chev = `<svg class="chev"><use href="#i-chev"/></svg>`;
+const say = html => `<div class="say"><p>${html}</p></div>`;
+// one call line
+const call = (icon, verb, tgt, extra = '', cls = '') => `<div class="row ${cls}">${ic(icon)}<span class="verb">${verb}</span><span class="tgt">${tgt}</span>${extra}</div>`;
+const nums = (a, d) => `<span class="num"><span class="add">+${a}</span> <span class="del">−${d}</span></span>`;
+// a collapsible line: open → children shown
+const group = (icon, label, kids, open, tail = '') => `<div class="row ${open ? 'open' : ''}">${chev}${ic(icon)}<span class="verb">${label}</span>${tail}</div>${open ? `<div class="kids">${kids}</div>` : ''}`;
+const thought = (secs, text, open) => `<div class="row ${open ? 'open' : ''}">${chev}${ic('think')}<span class="verb">思考了 ${secs}</span></div>${open ? `<div class="think-text">${text}</div>` : ''}`;
+
+function render() {
+  document.documentElement.dataset.theme = S.theme;
+  document.querySelectorAll('.proto button').forEach(b => b.classList.toggle('on', S[b.dataset.k] === b.dataset.v));
+  const running = S.state === 'running', detail = S.detail === '1';
+  let h = '';
+  h += `<div class="user"><div class="bubble clamp"><div class="txt">【任务】 请创建一个可运行的 3D 风格中国古典建筑群场景，用 Three.js 实现，浏览器打开即可观看。 【场景要求】 1. 建筑群至少 5 座建筑，主次关系明确： - 主殿：体量最大，位于中轴线核心位置 - 配殿：对称分布于主殿两侧 - 山门：位于场地前端入口 - 宝塔或钟鼓楼 1-2 座 2. 空间布局： - 建筑间距合理 - 有明确的道路动线连接：山门 → 庭院 → 主殿 - 整体呈中轴对称的院落布局 - 有植物作点缀 3. 建筑风格（中式古典）： - 屋顶：飞檐翘角，含歇山顶/庑殿顶/攒尖顶等中式形制 - 结构：斗拱、立柱、台阶 - 色彩：红墙、琉璃瓦或青瓦、木色构件 - 细节：门窗、灯笼、石狮等韵情添加 4. 环境与光影： - 地面有铺装/草地处理，建筑与地面自然衔接 - 有明确光源与阴影，建筑群呈现光影层次与氛围 - 可选：晨昏色调 【技术要求】 - 使用 Three.js（React 或纯原生均可），无需后端 - 在工作区中创建完整项目（Vite 等构建工具可用），确保可直接构建运行 - 画面流畅：建模面数、材质合理，旋转视角时帧率稳定（≥30fps） - 页面打开即进入场景，无需操作即可看到全貌 【交付要求】 - 项目结构完整，说明运行方式（安装与启动命令） - 如已实际运行，请说明运行结果</div><div class="more">展开全文</div></div></div>`;
+
+  h += say('I\'ll start by checking the workspace and available tooling.');
+  h += group('term', '运行了 2 条命令', call('term', '运行', '<code>node -v; npm -v; npm view three version</code>') + call('term', '运行', '<code>where chrome msedge</code>'), detail,
+    '');
+  if (detail) h += `<div class="block" style="margin-left:21px"><div class="hd mono">$ node -v; npm -v; npm view three version</div><pre class="mono">v24.3.0
+11.4.2
+0.186.1</pre></div>`;
+  h += say('I\'ll declare my route first, then set up the project.');
+  h += say('<b>Route: fast-path</b> — greenfield, self-contained deliverable with a fully specified brief; no existing codebase, bug, or ambiguous contract to govern.');
+  h += group('tools', '写入了 2 个文件，更新了计划', call('file', '写入', 'package.json', nums(18, 0)) + call('file', '写入', 'index.html', nums(24, 0)), false);
+  h += `<div class="todo"><div class="t">计划 · ${running ? 2 : 7} / 7</div>
+    <div class="i"><span class="box ok">✓</span><span class="done">搭建 Vite + three 项目骨架</span></div>
+    <div class="i"><span class="box ok">✓</span><span class="done">程序化贴图与材质库</span></div>
+    ${['屋顶引擎（歇山 / 庑殿 / 攒尖）', '建筑部件库与主殿、配殿、山门、钟鼓楼', '地形、道路、植物与道具', '光影与晨昏预设', '构建并在真实浏览器中验证帧率'].map((t, i) =>
+      running ? `<div class="i"><span class="box"></span><span class="${i === 0 ? 'cur' : ''}">${t}</span></div>` : `<div class="i"><span class="box ok">✓</span><span class="done">${t}</span></div>`).join('')}</div>`;
+  h += say('Scaffold in place. Installing dependencies in the background while I write the scene modules.');
+  h += group('tools', '运行了 1 条命令，写入了 4 个文件，读取了任务输出',
+      call('term', '运行', '<code>npm install three vite</code>', '<span class="dim">后台</span>')
+    + call('file', '写入', 'src/config.js', nums(136, 0))
+    + call('file', '写入', 'src/textures.js', nums(424, 0))
+    + call('file', '写入', 'src/materials.js', nums(136, 0))
+    + call('file', '读取任务输出', 'pwsh-3', '<span class="dim">已完成</span>')
+    + call('file', '写入', 'src/geometry/assembler.js', nums(228, 0))
+    + call('term', '运行', '<code>Report installed three and vite versions</code>', '<span class="fail">失败</span>', 'failed'), detail,
+    detail ? '' : ' <span class="fail">· 1 次失败</span>');
+  h += say('three 0.186.1 + vite 8.3.4 installed. Now I\'ll delegate the two leaf modules (plants, props) in parallel while I write the roof engine — the hardest part.');
+  h += `<div class="row failed">${chev}${ic('agent')}<span class="verb">子代理</span><span class="tgt">编写植物与道具模块</span><span class="fail">失败</span></div>`;
+  if (detail) h += `<div class="block err" style="margin-left:21px"><pre class="mono">Error: session "[object Object]" has no live agent (background job owner must be live)</pre></div>`;
+  h += say('The <code>swap-standard</code> profile is unavailable (untrusted preset). Falling back to inherited routing for the delegation.');
+  h += say('Now the core: the roof engine. This is the piece that decides whether the architecture reads as Chinese.');
+  h += thought('41 秒', 'Hip-and-gable (歇山) = a hip roof whose upper part turns into a gable. Build it as: lower hip skirt from eave rect to a smaller rect at the break line, then two gable triangles on the short sides above the break, then the upper ridge. Eave curve: lift the four corners by sweep * (|x|/hw)^2 so the 飞檐 reads from a distance…', detail);
+  h += group('edit', '写入了 1 个文件，编辑了 1 个文件', call('file', '写入', 'src/geometry/roof.js', nums(512, 0)) + call('edit', '编辑', 'src/geometry/roof.js', nums(3, 11)), detail);
+  if (detail) h += `<div class="block" style="margin-left:21px"><div class="hd"><span class="mono">src/geometry/roof.js</span><span class="add">+3</span><span class="del">−11</span></div><div style="padding:6px 0" class="mono">
+<span class="ln c">export function buildRoof(kind, rect, opts) {</span><span class="ln d">  return __setRidgeBeamImpl(kind, rect, opts);</span><span class="ln d">}</span><span class="ln d">function __setRidgeBeamImpl(kind, rect, opts) {</span><span class="ln d">  // TODO: temporary indirection</span><span class="ln a">  const builder = ROOF_BUILDERS[kind];</span><span class="ln a">  if (!builder) throw new Error(\`unknown roof: \${kind}\`);</span><span class="ln a">  return builder(rect, { ...DEFAULTS, ...opts });</span><span class="ln c">}</span></div></div>`;
+  h += say('I left a bad indirection stub in that file — fixing it now.');
+  h += say('Fixing the tile-texture repeat so one UV unit equals one tile column, then writing the architectural parts library.');
+
+  if (running) {
+    h += group('tools', '正在调用工具', call('edit', '编辑', 'src/textures.js', nums(2, 1)) + call('file', '写入', 'src/geometry/parts.js', nums(391, 0)), true);
+    h += `<div class="status"><span class="spark">✻</span><span class="shimmer">思考中…</span><span class="meta">13 分 42 秒 · 已思考 1 分 42 秒</span></div>`;
+    h += `<div class="live">But the 围脊 boxes I build are at y = ridgeY + 0.3 with height 0.6, spanning the full rect. For the 歇山, the front/back edges of the top rect are inside the roof surface (covered by the gable roof), so they'd be hidden — fine. The left/right edges (at x = ±upHalfW) are the 博脊 — visible ✓.
+
+Hmm, but the front/back 围脊 boxes at z = ±upHalfD would poke THROUGH the gable roof surface? The gable roof surface rises from the break line to the ridge…</div>`;
+  } else {
+    h += group('tools', '编辑了 4 个文件，写入了 3 个文件，运行了 6 条命令', '', false, ' <span class="fail">· 2 次失败</span>');
+    h += say('Build passes. Verifying in a real headless browser: title, canvas, object counts, console errors, and a screenshot.');
+    h += group('term', '运行了 3 条命令，读取了 1 张图片', '', false);
+    h += `<div class="answer">
+      <p>已完成。项目位于 <code>chinese-courtyard-3d/</code>，已实际构建并在真实浏览器（Chrome 无头）中渲染验证通过。</p>
+      <h3>运行方式</h3>
+      <div class="block"><div class="hd mono">bash</div><pre class="mono">cd chinese-courtyard-3d
+npm install          # three + vite
+npm run dev          # 开发模式，自动打开 http://localhost:5173
+npm run build        # 生产构建 → dist/</pre></div>
+      <h3>场景实现</h3>
+      <ul><li>主殿位于中轴核心，体量最大，重檐庑殿顶；左右对称布置两座配殿</li><li>前方设置山门，两侧设置钟楼与鼓楼；中轴动线为“山门 → 庭院 → 主殿”</li><li>包含歇山式双坡屋面、庑殿顶、攒尖顶和飞檐起翘</li><li>页面打开后自动显示全貌，支持拖动旋转、滚轮缩放与缓慢自动环绕</li></ul>
+      <h3>实际运行结果</h3>
+      <ul><li><b>构建</b>：<code>✓ 22 modules transformed</code>，dist 624K</li><li><b>浏览器实测</b>：219 draw calls / 111,868 tris，无任何运行时报错，稳定 60fps</li></ul>
+    </div>
+    <div class="files"><span>📄 README.md</span><span>🖼 artifacts/scene.png</span><span>📁 本会话文件改动 · 新增 20 · 修改 3</span></div>
+    <div class="foot"><svg><use href="#i-copy"/></svg><svg><use href="#i-branch"/></svg><span>10:12 · 用时 18 分 06 秒 · 用量 4.1M tok</span></div>`;
+  }
+  document.getElementById('col').innerHTML = h;
+  document.querySelectorAll('.row').forEach(r => r.onclick = () => {});
+}
+document.querySelectorAll('.proto button').forEach(b => b.onclick = () => {
+  S[b.dataset.k] = b.dataset.v;
+  const u = new URL(location); u.searchParams.set(b.dataset.k, b.dataset.v); history.replaceState(null, '', u);
+  render();
+});
+render();
+</script>
+</body>
+</html>
