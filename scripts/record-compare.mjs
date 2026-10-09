@@ -47,47 +47,40 @@ async function page(ws) {
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   return { send, evaluate, until, exceptions };
 }
-const pages = [];
-const first = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(t => t.type === 'page');
-for (const [tab, target] of [[process.env.REC_TAB, first]]) {
-  const p = await page(new WebSocket(target.webSocketDebuggerUrl));
-  p.tab = tab; pages.push(p);
-}
+const target = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(t => t.type === 'page');
+const p = await page(new WebSocket(target.webSocketDebuggerUrl));
+p.tab = process.env.REC_TAB;
 try {
-  for (const p of pages) {
-    await p.send('Page.navigate', { url: base });
-    await p.until("!!document.querySelector('[data-composer-seat]')", 30000);
-    await p.until("!!document.querySelector('[role=treeitem][data-row-key^=\"session:\"]')");
-    const rows = `[...document.querySelectorAll('[role="treeitem"][data-row-key^="session:"]')].filter(n => n.dataset.rowKey.endsWith(${JSON.stringify(title)}))`;
-    await p.until(`${rows}.length > 0`, 8000);
-    if (!await p.evaluate(`${rows}.length > 0`)) {
-      await p.evaluate(`(() => { const row = [...document.querySelectorAll('[role="treeitem"][data-row-key^="workspace:"]')].find(n => n.textContent.trim() === ${JSON.stringify(workspace)}); if (row && row.getAttribute('aria-expanded') === 'false') row.click(); })()`);
-      await delay(1500);
-    }
-    for (let r = 0; r < 10 && !await p.evaluate(`${rows}.length > 0`); r++) {
-      await p.evaluate(`(() => { const row = [...document.querySelectorAll('[role="treeitem"][data-row-key^="workspace:"]')].find(n => n.textContent.trim() === ${JSON.stringify(workspace)}); const b = [...(row?.closest('[class*=groupSection]')?.querySelectorAll('button') ?? [])].find(n => /展开其余/.test(n.textContent)); b?.click(); })()`);
-      await delay(1200);
-    }
-    if (!await p.until(`${rows}.length > 0`, 5000)) throw new Error('session row not found on ' + p.tab + ' ' + JSON.stringify(await p.evaluate(`[...document.querySelectorAll('[role=treeitem]')].map(n => (n.dataset.rowKey||'').slice(0,20) + ':' + n.getAttribute('aria-expanded') + ':' + n.textContent.trim().slice(0,12)).slice(0,40)`)));
-    await p.evaluate(`${rows}[0].click()`);
-    await delay(2500);
-    await p.evaluate(`(() => { const t = [...document.querySelectorAll('[role="tab"]')].find(n => n.textContent.trim() === ${JSON.stringify(p.tab)}); t?.click(); })()`);
+  await p.send('Page.navigate', { url: base });
+  await p.until("!!document.querySelector('[data-composer-seat]')", 30000);
+  await p.until("!!document.querySelector('[role=treeitem][data-row-key^=\"session:\"]')");
+  const rows = `[...document.querySelectorAll('[role="treeitem"][data-row-key^="session:"]')].filter(n => n.dataset.rowKey.endsWith(${JSON.stringify(title)}))`;
+  await p.until(`${rows}.length > 0`, 8000);
+  if (!await p.evaluate(`${rows}.length > 0`)) {
+    await p.evaluate(`(() => { const row = [...document.querySelectorAll('[role="treeitem"][data-row-key^="workspace:"]')].find(n => n.textContent.trim() === ${JSON.stringify(workspace)}); if (row && row.getAttribute('aria-expanded') === 'false') row.click(); })()`);
     await delay(1500);
-    if (creates > 1) throw new Error('session create seen: ' + creates);
   }
+  for (let r = 0; r < 10 && !await p.evaluate(`${rows}.length > 0`); r++) {
+    await p.evaluate(`(() => { const row = [...document.querySelectorAll('[role="treeitem"][data-row-key^="workspace:"]')].find(n => n.textContent.trim() === ${JSON.stringify(workspace)}); const b = [...(row?.closest('[class*=groupSection]')?.querySelectorAll('button') ?? [])].find(n => /展开其余/.test(n.textContent)); b?.click(); })()`);
+    await delay(1200);
+  }
+  if (!await p.until(`${rows}.length > 0`, 5000)) throw new Error('session row not found on ' + p.tab + ' ' + JSON.stringify(await p.evaluate(`[...document.querySelectorAll('[role=treeitem]')].map(n => (n.dataset.rowKey||'').slice(0,20) + ':' + n.getAttribute('aria-expanded') + ':' + n.textContent.trim().slice(0,12)).slice(0,40)`)));
+  await p.evaluate(`${rows}[0].click()`);
+  await delay(2500);
+  await p.evaluate(`(() => { const t = [...document.querySelectorAll('[role="tab"]')].find(n => n.textContent.trim() === ${JSON.stringify(p.tab)}); t?.click(); })()`);
+  await delay(1500);
+  if (creates > 1) throw new Error('session create seen: ' + creates);
   const end = Date.now() + Number(minutes) * 60000;
   for (let n = 0; Date.now() < end; n++) {
     const t0 = Date.now();
     const entry = { n, t: new Date().toISOString().slice(11, 19) };
-    for (const p of pages) {
-      const tag = p.tab === '对话' ? 'chat' : 'reader';
-      const { data } = await p.send('Page.captureScreenshot', { format: 'png' });
-      writeFileSync(join(out, `${String(n).padStart(3, '0')}-${tag}.png`), Buffer.from(data, 'base64'));
-      entry[tag] = await p.evaluate(`(() => { const s = document.querySelector('[data-conversation-scroll]'); return s ? { top: Math.round(s.scrollTop), h: s.scrollHeight, c: s.clientHeight } : null; })()`).catch(e => String(e));
-    }
+    const tag = p.tab === '对话' ? 'chat' : 'reader';
+    const { data } = await p.send('Page.captureScreenshot', { format: 'png' });
+    writeFileSync(join(out, `${String(n).padStart(3, '0')}-${tag}.png`), Buffer.from(data, 'base64'));
+    entry[tag] = await p.evaluate(`(() => { const s = document.querySelector('[data-conversation-scroll]'); return s ? { top: Math.round(s.scrollTop), h: s.scrollHeight, c: s.clientHeight } : null; })()`).catch(e => String(e));
     log.push(entry);
     if (creates > 1) throw new Error('session create seen: ' + creates);
     await delay(Math.max(0, Number(interval) * 1000 - (Date.now() - t0)));
   }
-  log.push({ exceptions: pages.map(p => ({ tab: p.tab, list: p.exceptions })), creates });
+  log.push({ exceptions: { tab: p.tab, list: p.exceptions }, creates });
 } finally { cleanup(); }

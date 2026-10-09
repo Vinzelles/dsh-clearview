@@ -280,10 +280,11 @@ try {
     // Open the first closed group (clicking an already open one would collapse it), then the first
     // closed tool row. Only local disclosure state is toggled.
     item.groupOpened = await evaluate(`(() => {
-      const group = [...document.querySelectorAll('[data-dsh-clearview] [data-reader-group]')].find(node => node.querySelector('button[aria-expanded="false"]'));
+      const group = [...document.querySelectorAll('[data-dsh-clearview] [data-reader-group]')].find(node => node.querySelector(':scope > [data-reader-line] > button[aria-expanded="false"]'));
       if (!group) return null;
       group.setAttribute('data-live-check', 'group');
-      const button = group.querySelector('button[aria-expanded="false"]');
+      const button = group.querySelector(':scope > [data-reader-line] > button[aria-expanded="false"]');
+      if (!button) return null;
       button.click();
       return { state: group.getAttribute('data-group-state'), label: button.textContent.slice(0, 60) };
     })()`);
@@ -336,7 +337,7 @@ try {
     // Group toggle: aria-expanded must flip on click and flip back (local state only).
     item.groupToggle = await evaluate(`(async () => {
       const group = document.querySelector('[data-dsh-clearview] [data-reader-group]');
-      const button = group?.querySelector('button[aria-expanded]');
+      const button = group?.querySelector(':scope > [data-reader-line] > button[aria-expanded]');
       if (!button) return null;
       const before = button.getAttribute('aria-expanded');
       button.click(); await new Promise(done => setTimeout(done, 500));
@@ -349,13 +350,15 @@ try {
       const bubble = document.querySelector('[data-dsh-clearview] [data-reader-user-bubble][data-clamped="true"]');
       if (!bubble) return null;
       bubble.scrollIntoView({ block: 'center' });
-      const button = bubble.querySelector('button[aria-expanded]') ?? bubble.closest('[data-reader-anchor]')?.querySelector('button[aria-expanded]');
+      // The toggle is a sibling of the bubble inside the same row, with no aria-expanded: its text carries the state.
+      const button = bubble.parentElement?.querySelector('button');
       if (!button) return { clamped: true, button: false };
-      const before = button.getAttribute('aria-expanded'); const height = bubble.getBoundingClientRect().height;
+      const snap = () => ({ text: button.textContent.trim(), clamped: bubble.getAttribute('data-clamped'), height: Math.round(bubble.getBoundingClientRect().height * 10) / 10 });
+      const before = snap();
       button.click(); await new Promise(done => setTimeout(done, 500));
-      const grown = bubble.getBoundingClientRect().height;
-      button.click(); await new Promise(done => setTimeout(done, 300));
-      return { clamped: true, button: true, before, after: button.getAttribute('aria-expanded'), height, grown };
+      const opened = snap();
+      button.click(); await new Promise(done => setTimeout(done, 400));
+      return { clamped: true, button: true, before, opened, after: snap() };
     })()`);
     guardCreates();
     // 阅读 → 对话 → 阅读 round trips (tab switches only): the reader remounts and restores its position;
@@ -396,7 +399,9 @@ try {
       await delay(600);
       await focusGroup();
       const measured = await evaluate(measure);
-      item.theme[mode] = { attribute: await evaluate("document.body.hasAttribute('data-ds-dark-theme')"), rootBackground: measured?.rootBackground, backdropBackground: measured?.backdropBackground };
+      const expected = await evaluate(`(() => { const probe = document.createElement('span'); probe.style.backgroundColor = ${JSON.stringify(mode === 'dark' ? 'hsl(60 2.7% 14.5%)' : 'hsl(48 33.3% 97.1%)')}; document.body.appendChild(probe); const color = getComputedStyle(probe).backgroundColor; probe.remove(); return color; })()`);
+      item.theme[mode] = { attribute: await evaluate("document.body.hasAttribute('data-ds-dark-theme')"), rootBackground: measured?.rootBackground, backdropBackground: measured?.backdropBackground, expected,
+        matches: [measured?.rootBackground, measured?.backdropBackground].includes(expected) };
       await shot(`${name}-theme-${mode}`);
     }
     await evaluate("(() => { document.body.setAttribute('data-ds-dark-theme', ''); document.documentElement.style.colorScheme = 'dark'; })()");
@@ -485,6 +490,16 @@ try {
       if (item[key]) { await delay(900); await shot(`${name}-${key}`); }
     }
     item.final = await evaluate(collect);
+    // Step 2 expectations, evaluated from the evidence above.
+    const overflowing = state => state ? Object.values(state.overflowX).some(value => value === true) : false;
+    const family = (item.measured?.fonts?.prose?.family ?? '').replace(/["']/g, '');
+    const serifLoaded = item.measured?.fonts?.anthropicSerifLoaded;
+    item.checks = {
+      overflow1440: !overflowing(item.measured), overflow480: !overflowing(item.narrow) && !overflowing(item.narrowBottom),
+      proseFont: !item.measured?.fonts?.prose ? 'n/a' : family.startsWith('anthropic-serif') ? 'anthropic-serif' : serifLoaded === false ? 'fallback' : 'mismatch',
+      themeBackground: item.theme ? item.theme.dark.matches && item.theme.light.matches : 'skipped',
+    };
+    item.checks.pass = item.checks.overflow1440 && item.checks.overflow480 && item.checks.proseFont !== 'mismatch' && item.checks.themeBackground !== false;
     guardCreates();
   }
   report.sessionCountAfter = await sessionCount();
@@ -499,10 +514,10 @@ report.profileRemoved = !existsSync(profile);
 if (report.sessionCountAfter === undefined) report.sessionCountAfter = await sessionCount().catch(() => null);
 const readerErrors = report.exceptions.concat(report.consoleErrors).filter(text => /clearview|data-reader|dsh-clearview/i.test(text));
 report.pass = (!intercept || report.replacements + report.spliced > 0)
-  && report.sessions.every(item => item.opened && item.readerMounted && item.initial?.version === expectedVersion && item.initial.blockErrors.length === 0 && item.final?.blockErrors.length === 0 && item.initial.retired === 0 && item.final?.retired === 0)
+  && report.sessions.every(item => item.opened && item.readerMounted && item.initial?.version === expectedVersion && item.initial.blockErrors.length === 0 && item.final?.blockErrors.length === 0 && item.initial.retired === 0 && item.final?.retired === 0 && item.checks?.pass === true)
   && readerErrors.length === 0 && report.handlerErrors.length === 0 && report.profileRemoved
   && report.sessionCreates <= 1 && report.sessionCountBefore === report.sessionCountAfter;
 report.readerErrors = readerErrors;
 writeFileSync(join(out, 'report.json'), JSON.stringify(report, null, 2));
-console.log(JSON.stringify({ pass: report.pass, replacements: report.replacements, spliced: report.spliced, comboPassedThrough: report.comboPassedThrough.length, sessions: report.sessions.map(item => ({ title: item.title, opened: item.opened, initial: item.initial })), readerErrors }, null, 2));
+console.log(JSON.stringify({ pass: report.pass, replacements: report.replacements, spliced: report.spliced, comboPassedThrough: report.comboPassedThrough.length, sessions: report.sessions.map(item => ({ title: item.title, opened: item.opened, initial: item.initial, checks: item.checks })), readerErrors }, null, 2));
 process.exit(report.pass ? 0 : 1);
