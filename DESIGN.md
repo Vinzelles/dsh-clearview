@@ -20,7 +20,7 @@ The reader root is transparent. Prose uses the host `--dsh-content-font-size` (f
 
 ## Transcript entries and grouping
 
-Settled operation summaries use a subtle bg-200 fill, a 1px border, a 32px minimum height and a stronger chevron. A persistent 「展开详情 / 收起详情」 hint explains the disclosure; long summaries wrap on narrow screens. This is a local operation control: prose remains fully visible, in the primary color and larger body type, and thoughts never share an operation row.
+Settled operation summaries use a subtle bg-200 fill, a 1px border, a 32px minimum height and a stronger chevron. A persistent 「展开详情 / 收起详情」 hint explains the local disclosure; long summaries wrap on narrow screens. In an expanded process, prose uses the primary color and host body size, and thoughts never share an operation row. Whole-turn process folding is controlled separately by the completed-turn summary.
 
 A turn is one column with no container, header, counts or "earlier steps" row. Narration between operations and the final answer share one serif `.prose` style. Entries:
 
@@ -65,7 +65,7 @@ The reading position is remembered per session in memory only. A view request fr
 
 ## Compat contract
 
-Kept: `data-dsh-clearview` (version), `section[data-reader-turn]`, `data-reader-turn-state`, `data-reader-turn-result`, `data-reader-key`, `data-reader-text[data-shown-length]`, `data-reader-anchor`, `data-reader-answer`, `data-dshcp-rewind-root` / `data-dshcp-rewind-seat`, `data-dshcp-heavy`, `data-dshcp-load`. Added for verification scripts: `data-reader-group` (`data-group-state` running / settled, `data-expanded`), `data-reader-status-line`, `data-reader-live-thought`, `data-reader-user-bubble` (`data-clamped`). Removed: `data-reader-panel`, `data-reader-earlier`, `data-reader-cluster`, `data-reader-narration`, `data-reader-activity-pill` and the panel header's disclosure; the anti-fold module `memory-tail-keep` is gone because nothing folds. `data-reader-process` / `data-reader-process-key` remain only as markers on the height-transition body and flow wrappers.
+Kept: `data-dsh-clearview` (version), `section[data-reader-turn]`, `data-reader-turn-state`, `data-reader-turn-result`, `data-reader-key`, `data-reader-text[data-shown-length]`, `data-reader-anchor`, `data-reader-answer`, `data-dshcp-rewind-root` / `data-dshcp-rewind-seat`, `data-dshcp-heavy`, `data-dshcp-load`. Verification markers include `data-reader-group`, `data-reader-status-line`, `data-reader-live-thought`, `data-reader-user-bubble` and, from 0.3.1, `data-reader-turn-disclosure`, `data-reader-process-entry`, `data-folded` and `data-process-open`. The old panel/earlier/cluster/activity-pill markers remain removed. Selection pinning reads actual process-entry seats, not the whole flow, so selecting the retained final answer does not expand its process. The old `memory-tail-keep` DOM patch stays removed: the renderer directly protects the final answer while folding process entries.
 
 ## Motion tokens
 
