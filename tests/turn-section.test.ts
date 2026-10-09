@@ -196,7 +196,7 @@ test('an opened earlier range stays open for the whole turn, whatever its status
   assert.doesNotMatch(opened, /data-reader-earlier/);
   // Each thought merges with the one settled tool call after it, so both steps are present as thought rows.
   assert.equal(opened.match(/data-reader-reasoning-row/g)?.length, 2);
-  assert.equal(opened.match(/class="suffix">Bash</g)?.length, 2);
+  assert.equal(opened.match(/class="suffix">运行</g)?.length, 2);
   assert.doesNotMatch(opened, /步骤 \d|data-reader-step/);
 });
 
@@ -223,7 +223,7 @@ test('a thought followed by one settled tool call is one row in a real turn; the
   const tool = chatNode('tool-call', { root: settledTool('c1', 'bash', { command: 'ls' }) }, turn, 1);
   const html = renderTurn([user, step, tool], turn);
   assert.match(html, /data-reader-reasoning-row/);
-  assert.match(html, /class="suffix">Bash</);
+  assert.match(html, /class="suffix">运行</);
   assert.doesNotMatch(html, /data-reader-tool-call=/);
   assert.match(html, /aria-expanded="false"/);
 });

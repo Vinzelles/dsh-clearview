@@ -1,16 +1,6 @@
 .tool { min-width: 0; }
-/* The hover background bleeds 6px past the text on both sides, drawn as zero-spread side shadows (ink overflow):
-   a negative margin or width: calc(100% + 12px) would widen the scrollable area of a narrow reader. */
-.row { border-radius: var(--dsw-radius-sm); corner-shape: round; box-shadow: 6px 0 0 transparent, -6px 0 0 transparent; transition: background-color var(--cv-fast) ease, box-shadow var(--cv-fast) ease; }
-.row:hover { background: var(--dsw-alias-interactive-bg-hover); box-shadow: 6px 0 0 var(--dsw-alias-interactive-bg-hover), -6px 0 0 var(--dsw-alias-interactive-bg-hover); }
-.failedTitle { color: var(--dsw-alias-state-error-primary); }
-.summary { flex: 1 1 auto; min-width: 0; color: var(--dsw-alias-label-caption); }
-.summaryContent { min-width: 0; overflow: hidden; }
-.summaryText { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--cv-font-secondary); }
-.end { flex: none; margin-left: 8px; color: var(--dsw-alias-label-caption); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.failedEnd { color: var(--dsw-alias-state-error-primary); }
-.children { display: flex; flex-direction: column; gap: 2px; margin-left: calc(22px + var(--dsh-content-font-delta, 0px)); }
-.deep { margin: 0; color: var(--dsw-alias-label-caption); font-size: 12px; }
+.detail { margin: 2px 0 8px 22px; min-width: 0; }
+.children { display: flex; flex-direction: column; margin: 2px 0 6px 7px; padding-left: 14px; border-left: 1px solid var(--cc-border); }
+.command { font-family: var(--cc-font-mono); font-size: var(--cc-size-code); }
+.deep { margin: 0; color: var(--cc-text-500); font-size: var(--cc-size-small); }
 .media { display: flex; flex-direction: column; gap: 12px; }
-[data-motion=off] .row { transition: none; }
-@media (prefers-reduced-motion: reduce) { .row { transition: none; } }

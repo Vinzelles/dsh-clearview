@@ -70,11 +70,13 @@ test('rows, inputs and notices render from their nodes', () => {
   const useSession = sessionHook(chatOf([failed, steering, error], [turn]));
   const row = render(RecordRow, { useSession, nodeKey: failed.key, t: ((key: string) => key) as never, onRead: () => {}, ...blocks });
   assert.match(row, /data-record-tone="failed"/);
-  assert.match(row, /data-stub="StateDot" data-state="error"/);
+  assert.match(row, /data-tone="failed"/);
   const input = render(InputBubble, { useSession, nodeKey: steering.key, ...blocks });
   assert.match(input, /补充消息[\s\S]*禁止使用子代理/);
   const notice = render(TurnNotice, { useSession, nodeKey: error.key });
-  assert.match(notice, /本轮出现错误[\s\S]*upstream 500[\s\S]*HTTP_500/);
+  assert.match(notice, /本轮出现错误[\s\S]*upstream 500/);
+  assert.match(notice, /data-reader-line[^>]*data-tone="failed"|data-tone="failed"[^>]*data-reader-notice/);
+  assert.doesNotMatch(notice, /<button/);
 });
 
 const body = (kind: string, data: unknown, showInChat?: (focus: string) => void) => {
@@ -150,9 +152,9 @@ test('a retry record in a closed turn renders without an ongoing dot; in an open
   const settled = render(RecordRow, { useSession: sessionHook(chatOf([retry], [closed])), ...props, turnClosed: true });
   assert.match(settled, /data-record-tone="idle"/);
   assert.match(settled, /模型请求重试记录/);
-  assert.doesNotMatch(settled, /data-state="ongoing"|正在重试/);
+  assert.doesNotMatch(settled, /data-tone="running"|正在重试/);
   const live = render(RecordRow, { useSession: sessionHook(chatOf([retry], [open])), ...props, turnClosed: false });
   assert.match(live, /data-record-tone="active"/);
-  assert.match(live, /data-stub="StateDot" data-state="ongoing"/);
+  assert.match(live, /data-tone="running"/);
   assert.match(live, /模型请求正在重试/);
 });

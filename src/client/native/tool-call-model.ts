@@ -24,8 +24,8 @@ export type ToolRowState = 'running' | 'ok' | 'error' | 'stopped'
  * unclassified tool shows the generic Chinese title while its real name rides the summary.
  */
 export const VARIANT_TITLES: Record<ToolRowVariant, string> = {
-  search: '搜索', read: '读取', bash: 'Bash',
-  write: '写入', edit: '编辑', code: '代码', others: '工具调用',
+  search: '搜索', read: '读取', bash: '运行',
+  write: '写入', edit: '编辑', code: '运行代码', others: '调用工具',
 }
 
 /**
@@ -68,7 +68,9 @@ const TOOL_TITLES: Record<string, string> = {
   cordis_run: '运行 Cordis 插件',
   cordis_stop: '停止 Cordis 插件',
   cordis_undefine: '移除 Cordis 插件',
-  pwsh: 'Pwsh',
+  pwsh: '运行',
+  dispatch: '子代理',
+  todo_write: '更新计划',
 }
 
 /**
@@ -228,7 +230,7 @@ export function toolRowModel(toolName: string, block: ToolCallBlock, cwd?: strin
     ? block.callId
     : abbreviateHomePath(relativizeToCwd(deriveSummary(variant, argsRaw), cwd), home)
   const toolTitle = TOOL_TITLES[toolName]
-  // Others keeps the static 「工具调用」 title; the real tool
+  // Others keeps the static 「调用工具」 title; the real tool
   // name rides the mutable summary slot unless the tool owns a specific title.
   const summary = variant === 'others' && toolName !== '' && toolTitle === undefined
     ? `${toolName} · ${base}`

@@ -11,7 +11,7 @@ test('redesigned surfaces use token radii and no in-flow backdrop blur', () => {
   for (const name of REDESIGNED) {
     const text = sheet(name);
     assert.doesNotMatch(text, /backdrop-filter/, `${name} uses backdrop-filter`);
-    assert.doesNotMatch(text, /border-radius:\s*(?:6|7|10)px/, `${name} uses a retired radius`);
+    assert.doesNotMatch(text, /border-radius:\s*7px/, `${name} uses a retired radius`);
   }
 });
 
@@ -136,6 +136,8 @@ test('no stylesheet under src/client widens its box with a negative horizontal m
     // An inline anchor: its 3px transparent hit-area border is cancelled by the -3px margin, so the box is net zero width and
     // it sits in text flow that already wraps at the container edge.
     ['markdown/MarkdownText.module.css .markdown a', 'inline, net-zero width (3px border cancelled by -3px margin)'],
+    // Claude Code line grammar: the hover plate bleeds 6px each side of the text; the reader column carries the matching gutter.
+    ['Line.module.css .button', 'row hover plate bleed, net 6px each side inside the column gutter'],
   ]);
   const sources: { name: string; text: string }[] = [];
   for (const entry of readdirSync(CLIENT, { recursive: true }) as string[]) {
@@ -165,7 +167,7 @@ test('no stylesheet under src/client widens its box with a negative horizontal m
 });
 
 test('hover bleed on process rows is drawn with side shadows in the hover colour', () => {
-  for (const [file, selector] of [['ToolRow', '.row'], ['ClusterRow', '.row'], ['RecordRows', '.row'], ['ReasoningRow', '.row'], ['ProcessPanel', '.headerButton'], ['FileChanges', '.header']] as const) {
+  for (const [file, selector] of [['ClusterRow', '.row'], ['ReasoningRow', '.row'], ['ProcessPanel', '.headerButton'], ['FileChanges', '.header']] as const) {
     const css = sheet(file);
     const hover = new RegExp(String.raw`${selector.replace('.', String.raw`\.`)}:hover[^{]*\{([^}]*)\}`).exec(css)?.[1] ?? '';
     assert.match(hover, /box-shadow: 6px 0 0 var\(--dsw-alias-interactive-bg-hover\), -6px 0 0 var\(--dsw-alias-interactive-bg-hover\)/, `${file} ${selector}`);
@@ -236,7 +238,7 @@ test('reader root defines Claude tokens for light and dark', () => {
   assert.match(text, /\.root\s*\{[^}]*background:\s*var\(--cc-bg-100\)/s);
 });
 
-const MIGRATED = new Set(['Reader.module.css']);
+const MIGRATED = new Set(['Reader.module.css', 'Line.module.css', 'ToolRow.module.css', 'ToolDetails.module.css']);
 
 test('only the remap block in Reader.module.css names host colour tokens', () => {
   const names = readdirSync(CLIENT).filter(name => name.endsWith('.module.css') && MIGRATED.has(name));

@@ -2,9 +2,9 @@ import { memo, useCallback, useMemo, useState } from 'react';
 import type { ComponentType } from 'react';
 import type { ContextMessageNode } from '@deepseek-ai/dsh-client-ui-conversation/client';
 import {
-  DisclosureRow, JsonTree, StateDot,
-  IconApiOutlineRegular, IconCompactOutlineRegular, IconFlatListOutlineRegular, IconPlanOutlineRegular,
-  IconQuestionOutlineRegular, IconRefreshOutlineRegular, IconSparkleRegular,
+  JsonTree,
+  IconApiOutlineRegular, IconCloseCircleFillRegular, IconCompactOutlineRegular, IconFlatListOutlineRegular, IconPlanOutlineRegular,
+  IconQuestionOutlineRegular, IconRefreshOutlineRegular, IconSparkleRegular, IconWarningOutlineRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives';
 import { Blocks } from './Blocks.js';
 import { useChatSelector } from './compat/session-snapshot.js';
@@ -13,7 +13,7 @@ import { ContextInjectionRow } from './native/ContextInjectionRow.js';
 import { JSON_TREE_LABELS } from './native/primitive-labels.js';
 import { SystemPromptRow } from './native/SystemPromptRow.js';
 import { nodeText, workflowRunSummary, workflowStatusLabel } from './node-payloads.js';
-import { Inset, RowGlyph, RowSeparator } from './ProcessRow.js';
+import { Line } from './Line.js';
 import { useReaderActions } from './reader-context.js';
 import { contentBlocks } from './user-content.js';
 import type { BlockRenderProps, ReaderProps } from './types.js';
@@ -160,7 +160,7 @@ export function RecordBody({ kind, data, view, nodeKey, ...render }: BlockRender
   </div>;
 }
 
-/** One process record in the native row grammar; context and prompt rows keep their native presentation. */
+/** One process record as a transcript line; context and prompt rows keep their native presentation. */
 export const RecordRow = memo(function RecordRow({ useSession, nodeKey, t, onRead, onOpenChange, turnClosed = false, ...render }: BlockRenderProps & Pick<ReaderProps, 'useSession'> & {
   nodeKey: string; t: ReaderProps['contextT']; onRead: () => void; turnClosed?: boolean;
   /** Reports the reader opening or closing this row, so a settled record is not folded away under them. */
@@ -178,12 +178,11 @@ export const RecordRow = memo(function RecordRow({ useSession, nodeKey, t, onRea
   }
   const view = recordView(node, turnClosed);
   const Icon = ICONS[node.kind] ?? IconSparkleRegular;
-  return <div className={css.record} data-reader-record-kind={node.kind} data-record-tone={view.tone}>
-    <DisclosureRow icon={<RowGlyph tone={view.tone === 'active' ? 'active' : view.tone === 'failed' ? 'failed' : 'idle'} icon={<Icon size={14} />} />}
-      title={view.title} open={open} expandable expandOnRowClick previewChevron keepContentWhenOpen onToggle={toggle} rowClassName={css.row}
-      titleClassName={view.tone === 'failed' ? css.failedTitle : view.tone === 'done' ? css.doneTitle : undefined}
-      collapsedContent={view.summary ? <><RowSeparator /><span className={css.summary} title={view.summary}>{view.summary}</span></> : undefined} />
-    <CollapseBody open={open} motion={motion}><Inset><RecordBody kind={node.kind} data={node.data} view={view} nodeKey={nodeKey} {...render} /></Inset></CollapseBody>
+  return <div className={css.record} data-record-tone={view.tone}>
+    <Line icon={<Icon size={14} />} label={view.title} target={view.summary} title={view.summary}
+      tone={view.tone === 'failed' ? 'failed' : view.tone === 'active' ? 'running' : 'idle'} shimmer={view.tone === 'active' && motion}
+      open={open} onToggle={toggle} data={{ 'data-reader-record-kind': node.kind }} />
+    <CollapseBody open={open} motion={motion}><div className={css.detail}><RecordBody kind={node.kind} data={node.data} view={view} nodeKey={nodeKey} {...render} /></div></CollapseBody>
   </div>;
 });
 
@@ -205,16 +204,11 @@ export const InputBubble = memo(function InputBubble({ useSession, nodeKey, ...r
 export const TurnNotice = memo(function TurnNotice({ useSession, nodeKey }: Pick<ReaderProps, 'useSession'> & { nodeKey: string }) {
   const node = useChatSelector(useSession, chat => chat.nodes.get(nodeKey));
   if (!node || node.visibility === 'hidden') return null;
-  if (node.kind === 'turn-max-tokens') return <div className={css.notice} role="status" data-reader-notice="max-tokens">
-    <StateDot state="warning" /><span className={css.noticeTitle} data-tone="warning">已到达输出长度限制</span>
-    <span className={css.noticeText}>回答可能尚未完整，已生成的内容仍保留。</span>
-  </div>;
+  if (node.kind === 'turn-max-tokens') return <Line icon={<IconWarningOutlineRegular size={14} />} label="已到达输出长度限制" target="回答可能尚未完整，已生成的内容仍保留。"
+    data={{ role: 'status', 'data-reader-notice': 'max-tokens' }} />;
   const data = record(node.data);
   const message = typeof data?.message === 'string' ? data.message : '';
   const code = typeof data?.code === 'string' ? data.code : '';
-  return <div className={css.notice} role="alert" data-reader-notice="error">
-    <StateDot state="error" /><span className={css.noticeTitle} data-tone="error">本轮出现错误</span>
-    {message && <span className={css.noticeText}>{message}</span>}
-    {code && <code className={css.noticeCode}>{code}</code>}
-  </div>;
+  return <Line icon={<IconCloseCircleFillRegular size={14} />} label="本轮出现错误" target={message} title={message} tone="failed"
+    trailing={code && <code>{code}</code>} data={{ role: 'alert', 'data-reader-notice': 'error' }} />;
 });

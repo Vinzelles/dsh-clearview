@@ -1,28 +1,16 @@
 .record { min-width: 0; }
-/* The hover background bleeds 6px past the text on both sides, drawn as zero-spread side shadows (ink overflow):
-   a negative margin or width: calc(100% + 12px) would widen the scrollable area of a narrow reader. */
-.row { border-radius: var(--dsw-radius-sm); corner-shape: round; box-shadow: 6px 0 0 transparent, -6px 0 0 transparent; transition: background-color var(--cv-fast) ease, box-shadow var(--cv-fast) ease; }
-.row:hover { background: var(--dsw-alias-interactive-bg-hover); box-shadow: 6px 0 0 var(--dsw-alias-interactive-bg-hover), -6px 0 0 var(--dsw-alias-interactive-bg-hover); }
-.failedTitle { color: var(--dsw-alias-state-error-primary); }
-.doneTitle { color: var(--dsw-alias-label-secondary); }
-.summary { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--dsw-alias-label-caption); font-size: var(--cv-font-secondary); }
+.detail { margin: 2px 0 8px 22px; min-width: 0; padding: 8px 12px; border: 1px solid var(--cc-border); border-radius: 10px; background: var(--cc-bg-200); color: var(--cc-text-300); font-size: var(--cc-size-code); line-height: 20px; overflow-wrap: anywhere; }
 .section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.label { margin: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 18px; font-weight: 500; }
-.raw { margin: 0; max-height: 320px; overflow: auto; padding: 10px 12px; border-radius: var(--dsw-radius-sm); corner-shape: round; background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-secondary); font: 12px/18px var(--ds-font-family-code, ui-monospace, monospace); white-space: pre-wrap; overflow-wrap: anywhere; }
-.replyText { margin: 0; color: var(--dsw-alias-label-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
+.label { margin: 0; color: var(--cc-text-300); font-size: var(--cc-size-small); line-height: 18px; font-weight: 500; }
+.raw { margin: 0; max-height: 320px; overflow: auto; padding: 10px 12px; border-radius: 6px; background: var(--cc-bg-300); color: var(--cc-text-300); font: var(--cc-size-code)/18px var(--cc-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.replyText { margin: 0; color: var(--cc-text-300); white-space: pre-wrap; overflow-wrap: anywhere; }
 .qa { display: flex; flex-direction: column; gap: 10px; }
-.question { margin: 0; color: var(--dsw-alias-label-secondary); font-weight: 500; }
-.answers { margin: 2px 0 0; padding-left: 18px; color: var(--dsw-alias-label-primary); }
-.skipped { margin: 2px 0 0; color: var(--dsw-alias-label-caption); font-size: 12px; }
-.chatLink { align-self: flex-start; padding: 2px 0; box-shadow: 6px 0 0 transparent, -6px 0 0 transparent; border: 0; border-radius: var(--dsw-radius-sm); corner-shape: round; background: transparent; color: var(--dsw-alias-state-business-primary); font: inherit; font-size: 12px; cursor: pointer; transition: background-color var(--cv-fast) ease; }
-.chatLink:hover { background: var(--dsw-alias-interactive-bg-hover); box-shadow: 6px 0 0 var(--dsw-alias-interactive-bg-hover), -6px 0 0 var(--dsw-alias-interactive-bg-hover); }
-.input { --cv-blocks-gap: 10px; width: fit-content; max-width: min(78%, 520px); margin: 6px 0 6px auto; padding: 6px 12px; border-radius: var(--dsw-radius-md); corner-shape: round; background: var(--dsw-specific-bubble); color: var(--dsw-alias-label-primary); font-size: var(--cv-font-secondary); line-height: 20px; overflow-wrap: anywhere; }
+.question { margin: 0; color: var(--cc-text-300); font-weight: 500; }
+.answers { margin: 2px 0 0; padding-left: 18px; color: var(--cc-text-100); }
+.skipped { margin: 2px 0 0; color: var(--cc-text-500); font-size: var(--cc-size-small); }
+.chatLink { align-self: flex-start; padding: 2px 6px; border: 0; border-radius: 6px; background: transparent; color: var(--cc-brand); font: inherit; font-size: var(--cc-size-small); cursor: pointer; transition: background-color var(--cv-fast) ease; }
+.chatLink:hover { background: var(--cc-hover); }
+.input { --cv-blocks-gap: 10px; width: fit-content; max-width: min(78%, 520px); margin: 6px 0 6px auto; padding: 6px 12px; border-radius: var(--dsw-radius-md); corner-shape: round; background: var(--dsw-specific-bubble); color: var(--dsw-alias-label-primary); font-size: 13px; line-height: 20px; overflow-wrap: anywhere; }
 .meta { margin: 0 0 2px; color: var(--dsw-alias-label-caption); font-size: 12px; line-height: 18px; }
-.notice { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-height: var(--cv-row-height); font-size: var(--cv-font-secondary); line-height: 20px; }
-.noticeTitle { font-weight: 600; }
-.noticeTitle[data-tone=error] { color: var(--dsw-alias-state-error-primary); }
-.noticeTitle[data-tone=warning] { color: var(--dsw-alias-state-warn-primary); }
-.noticeText { color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }
-.noticeCode { color: var(--dsw-alias-label-tertiary); font: 12px/18px var(--ds-font-family-code, ui-monospace, monospace); }
-[data-motion=off] .row, [data-motion=off] .chatLink { transition: none; }
-@media (prefers-reduced-motion: reduce) { .row, .chatLink { transition: none; } }
+[data-motion=off] .chatLink { transition: none; }
+@media (prefers-reduced-motion: reduce) { .chatLink { transition: none; } }

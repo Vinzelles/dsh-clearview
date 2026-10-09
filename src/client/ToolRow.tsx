@@ -1,18 +1,19 @@
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useId, useMemo, useState } from 'react';
 import type { ToolCallBlock } from '@deepseek-ai/dsh-client-ui-conversation/client';
 import {
-  DisclosureRow, TextShimmer,
   IconApiOutlineRegular, IconBrowseOutlineRegular, IconCodeOutlineRegular, IconEditOutlineRegular,
   IconGlobeOutlineRegular, IconSearchOutlineRegular, IconSkillOutlineRegular, IconSparkleRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives';
 import { Blocks } from './Blocks.js';
 import { contentBlocks } from './user-content.js';
-import { ProcessFragment } from './motion.js';
+import { CollapseBody } from './motion.js';
+import { diffCardModel } from './native017/tool-models.mjs';
 import { classifyTool, toolRowModel, VARIANT_TITLES } from './native/tool-call-model.js';
-import { ErrorSummary, RowGlyph, RowSeparator, errorExcerpt } from './ProcessRow.js';
+import { Line } from './Line.js';
 import { useReaderActions } from './reader-context.js';
 import { activityPhase, activitySummary, executionFacts, exitCodeFromOutput } from './tool-activity.js';
 import type { ToolActivityEntry, ToolCategory, ToolPhase } from './tool-activity.js';
+import { diffStat } from './transcript-model.js';
 import { ToolDetails } from './ToolDetails.js';
 import type { BlockRenderProps } from './types.js';
 import css from './ToolRow.module.css';
@@ -26,24 +27,33 @@ const ICONS: Record<ToolCategory, typeof IconSparkleRegular> = {
   other: IconSparkleRegular,
 };
 
+/** Compact duration text; still read by ClusterRow until its rewrite. */
 export function formatDuration(ms: number): string {
   return ms < 1000 ? `${Math.round(ms)} 毫秒` : `${(ms / 1000).toFixed(ms < 10000 ? 1 : 0)} 秒`;
 }
 
-export function toolEndLabel(phase: ToolPhase, exitCode: number | undefined, elapsedMs: number | null): string {
-  switch (phase) {
-    case 'preparing': return '生成输入';
-    case 'running': return '执行中';
-    case 'failed': return exitCode !== undefined ? `退出码 ${exitCode}` : '失败';
-    case 'interrupted': return '已中断';
-    default: return elapsedMs !== null ? formatDuration(elapsedMs) : '';
-  }
+export function toolTrailing(phase: ToolPhase, exitCode: number | undefined, stat: { added: number; removed: number } | null): { text: string; tone: 'idle' | 'failed' } | null {
+  if (phase === 'failed') return { text: exitCode !== undefined ? `退出码 ${exitCode}` : '失败', tone: 'failed' };
+  if (phase === 'interrupted') return { text: '已中断', tone: 'failed' };
+  if (stat && (stat.added > 0 || stat.removed > 0) && (phase === 'succeeded' || phase === 'returned')) return { text: `+${stat.added} −${stat.removed}`, tone: 'idle' };
+  return null;
+}
+
+/** Added and removed lines of a file edit, summed over its diff hunks; null when the call carries no diff. */
+export function editStat(block: ToolCallBlock | undefined): { added: number; removed: number } | null {
+  if (!block) return null;
+  const diffs = diffCardModel(block)?.card.diffs ?? [];
+  if (diffs.length === 0) return null;
+  return diffs.reduce((sum: { added: number; removed: number }, hunk: { oldText: string | null; newText: string }) => {
+    const stat = diffStat(hunk.oldText, hunk.newText);
+    return { added: sum.added + stat.added, removed: sum.removed + stat.removed };
+  }, { added: 0, removed: 0 });
 }
 
 /** The row title of a tool call: 「技能」 for skills, the native title, or the variant fallback (「工具调用」 for unknown tools). */
 export function toolRowTitle(entry: ToolActivityEntry, known?: { model: ReturnType<typeof activitySummary>; native: { title: string } | null }): string {
   const model = known?.model ?? activitySummary(entry);
-  if (model.name === 'skill') return '技能';
+  if (model.name === 'skill') return '使用技能';
   const native = known ? known.native : entry.block ? toolRowModel(model.name, entry.block) : null;
   return native?.title ?? VARIANT_TITLES[classifyTool(model.name)];
 }
@@ -52,7 +62,7 @@ function resultText(block: ToolCallBlock | undefined): string {
   return block && 'kind' in block ? block.content.filter(item => item.type === 'text').map(item => item.text).join('\n') : '';
 }
 
-/** One tool call in the native 24px row grammar, keyed by call id from generation to result. */
+/** One tool call as a transcript line, keyed by call id from generation to result. */
 export const ToolRow = memo(function ToolRow({ entry, turnClosed, onRead, onOpenChange, depth = 0, ...render }: BlockRenderProps & {
   entry: ToolActivityEntry; turnClosed: boolean; onRead: () => void; depth?: number;
   /** Reports the reader opening or closing this row, so a settled call is not folded away under them. */
@@ -60,7 +70,7 @@ export const ToolRow = memo(function ToolRow({ entry, turnClosed, onRead, onOpen
 }) {
   const { motion } = useReaderActions();
   const [open, setOpen] = useState(false);
-  const control = useRef<HTMLElement | null>(null);
+  const detailId = useId();
   const toggle = useCallback(() => { onRead(); setOpen(!open); onOpenChange?.(entry.key, !open); }, [onRead, open, onOpenChange, entry.key]);
   const model = useMemo(() => activitySummary(entry), [entry.block, entry.draft]);
   if (depth > 6) return <p className={css.deep}>更深的嵌套调用可在原对话查看。</p>;
@@ -78,22 +88,14 @@ export const ToolRow = memo(function ToolRow({ entry, turnClosed, onRead, onOpen
   const text = resultText(block);
   const facts = executionFacts(block);
   const exitCode = facts.exitCode ?? (failed ? exitCodeFromOutput(text, true) : undefined);
-  const elapsed = block && 'kind' in block && block.callTime != null ? Math.max(0, block.time - block.callTime) : null;
-  const end = toolEndLabel(phase, exitCode, elapsed);
-  return <div ref={element => { control.current = element?.querySelector<HTMLElement>('[data-disclosure-row]') ?? null; }}
-    className={css.tool} data-reader-tool-call={entry.callId} data-tool-phase={phase} data-tool-category={model.category} data-expanded={open}>
-    <DisclosureRow icon={<RowGlyph tone={active ? 'active' : failed ? 'failed' : 'idle'} icon={<Icon size={14} />} />}
-      title={title} open={open} expandable expandOnRowClick previewChevron keepContentWhenOpen onToggle={toggle}
-      rowClassName={css.row} titleClassName={failed ? css.failedTitle : undefined}
-      collapsedContent={<>
-        <RowSeparator />
-        <TextShimmer active={active && motion} className={css.summary} contentClassName={css.summaryContent}><span className={css.summaryText} title={summary}>{summary}</span></TextShimmer>
-        {end && <span className={failed ? `${css.end} ${css.failedEnd}` : css.end}>{end}</span>}
-      </>} />
-    {failed && !open && <ErrorSummary text={errorExcerpt(native?.errorSummary ?? text)} />}
-    <ProcessFragment open={open} motion={motion} onRead={onRead} returnFocusTo={control} nodeKey={`${entry.key}:detail`} framed>
-      <ToolDetails entry={entry} model={model} phase={phase} {...render} />
-    </ProcessFragment>
+  const stat = model.category === 'write' ? editStat(block) : null;
+  const end = toolTrailing(phase, exitCode, stat);
+  return <div className={css.tool} data-reader-tool-call={entry.callId} data-tool-phase={phase} data-tool-category={model.category} data-expanded={open}>
+    <Line icon={<Icon size={14} />} label={title} target={classifyTool(model.name) === 'bash' ? <code className={css.command}>{summary}</code> : summary} title={summary}
+      tone={failed || phase === 'interrupted' ? 'failed' : active ? 'running' : 'idle'} shimmer={active && motion}
+      trailing={end && (stat && end.tone === 'idle' ? <><span data-add>+{stat.added}</span> <span data-del>−{stat.removed}</span></> : end.text)}
+      open={open} onToggle={toggle} controls={detailId} />
+    <CollapseBody open={open} motion={motion}><div id={detailId} className={css.detail}><ToolDetails entry={entry} model={model} phase={phase} {...render} /></div></CollapseBody>
     {!!block?.subCalls.length && <div className={css.children} aria-label="子调用">{block.subCalls.map((child, index) => <ToolRow key={child.callId} {...render}
       entry={{ kind: 'tool', key: `reader-tool:${child.callId}`, callId: child.callId, step: entry.step, order: index, block: child }}
       turnClosed={turnClosed} onRead={onRead} depth={depth + 1} />)}</div>}
