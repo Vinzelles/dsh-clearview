@@ -14,6 +14,8 @@
 
 ## Global Constraints
 
+**Final verification refinement:** Font-face declarations now live in `Reader.module.css`; the original `cc-fonts.ts` mount-time injector is removed. Synthetic view-open timing first waits for a native host compositor frame before injecting either tested source's stylesheet or Reader code. `hostReadyFrameMs` is reported separately and is only screenshot-wait duration, not total application startup time. Commit, first-rAF and two-rAF opportunity timings remain reported; the two-rAF metric does not establish actual pixel-completion or native WebView2 acceptance.
+
 - Work only in the worktree `D:/Khabarovsk/K.Develop/dsh/staging/dsh-clearview-0200-20261005`, branch `feat/clearview-030-claude-transcript`. Never touch the main checkout `D:/Khabarovsk/K.Develop/dsh/dsh-clearview`, `dsh-env`, or any running DSH state.
 - Presentation only: no provider, tool, session-log, permission or settings mutations; the browser side never sends messages.
 - All user-visible copy is Chinese; tool names, arguments, paths and model output are data and are shown verbatim (never translated, summarised or rewritten).

@@ -1,3 +1,8 @@
+/* Declare faces with the module stylesheet before any Reader mounts. */
+@font-face { font-family: anthropic-sans; src: url("/dsh-clearview/fonts/sans.woff2") format("woff2"); font-weight: 300 800; font-style: normal; font-display: swap; }
+@font-face { font-family: anthropic-serif; src: url("/dsh-clearview/fonts/serif.woff2") format("woff2"); font-weight: 300 800; font-style: normal; font-display: swap; }
+@font-face { font-family: anthropic-mono; src: url("/dsh-clearview/fonts/mono.woff2") format("woff2"); font-weight: 300 800; font-style: normal; font-display: swap; }
+
 .root {
   /* Claude tokens: [data-theme=claude][data-mode=light] (Claude Desktop 2.26454.2) */
   --cc-bg-000: hsl(0 0% 100%);

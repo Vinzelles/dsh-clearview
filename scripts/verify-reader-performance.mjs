@@ -23,7 +23,7 @@ const harnessHash = createHash('sha256').update(readFileSync(join(repo, 'tests/b
 // --build-only bundles in memory: no Chrome, host traffic, or generated files.
 
 
-const bundle = await build({ entryPoints: [join(repo, 'tests/browser/reader-performance.tsx')], bundle: true, write: !buildOnly, outfile: join(out, 'fixture.js'), platform: 'browser', format: 'iife', jsx: 'automatic', target: 'es2022', external: ['react', 'react/*', 'react-dom', 'react-dom/*', '@deepseek-ai/*'], define: { 'process.env.NODE_ENV': '"production"', '__TRANSCRIPT__': String(transcript) }, plugins: [{ name: 'fixture-source', setup(b) { b.onResolve({ filter: /^fixture-source\// }, a => ({ path: join(source, 'src/client', a.path.slice('fixture-source/'.length)) })); } }], banner: { js: 'var require = (name) => { if (!(name in window.__clearviewTestModules)) throw new Error("Missing test host module: "+name); return window.__clearviewTestModules[name]; };' } });
+const bundle = await build({ entryPoints: [join(repo, 'tests/browser/reader-performance.tsx')], bundle: true, write: !buildOnly, outfile: join(out, 'fixture.js'), platform: 'browser', format: 'iife', jsx: 'automatic', target: 'es2022', external: ['react', 'react/*', 'react-dom', 'react-dom/*', '@deepseek-ai/*', '/dsh-clearview/fonts/*.woff2'], define: { 'process.env.NODE_ENV': '"production"', '__TRANSCRIPT__': String(transcript) }, plugins: [{ name: 'fixture-source', setup(b) { b.onResolve({ filter: /^fixture-source\// }, a => ({ path: join(source, 'src/client', a.path.slice('fixture-source/'.length)) })); } }], banner: { js: 'var require = (name) => { if (!(name in window.__clearviewTestModules)) throw new Error("Missing test host module: "+name); return window.__clearviewTestModules[name]; };' } });
 if (buildOnly) {
     for (const file of bundle.outputFiles) if (file.path.endsWith('.js')) new Script(file.text, { filename: file.path });
     console.log(JSON.stringify({ syntaxChecked: true, buildOnly: true, source, sourceVersion, grammar: transcript ? 'transcript-0.3' : 'panel-0.2', outputs: bundle.outputFiles.map(file => ({ path: file.path, bytes: file.contents.length })) }, null, 2));
@@ -129,6 +129,13 @@ try {
     }
     const modules = ['react', 'react/jsx-runtime', 'react-dom', 'react-dom/client', '@deepseek-ai/dsh-client-ui-primitives'];
     await evaluate(`(async()=>{const system=window.__dshSidebarModuleSystem__;if(!system?.import)throw Error('Host module system unavailable');window.__clearviewTestModules={};for(const name of ${JSON.stringify(modules)})window.__clearviewTestModules[name]=await system.import(name)})()`);
+    // The native host must have completed a frame before timing a new reader view.
+    // Module-table readiness alone can precede its first compositor commit; the
+    // trace showed steady BeginFrames with the main-frame pipeline still deferred.
+    // This happens before the tested stylesheet and Reader code are installed.
+    const hostReadyStart = performance.now();
+    await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    const hostReadyFrameMs = performance.now() - hostReadyStart;
     // Fresh browser profile and synthetic session only. No Agent messages or
     // writes to the running host. Production primitives/React come from its real
     // module table; the tested Reader itself comes from the selected source tree.
@@ -138,7 +145,7 @@ try {
     if (tracing) {
         await send('Profiler.enable');
         await send('Profiler.start');
-        await send('Tracing.start', { categories: 'devtools.timeline,blink.user_timing,v8.execute', transferMode: 'ReportEvents' });
+        await send('Tracing.start', { categories: 'devtools.timeline,blink.user_timing,v8.execute,cc,viz,gpu,disabled-by-default-devtools.timeline.frame', transferMode: 'ReportEvents' });
     }
     await evaluate(readFileSync(join(out, 'fixture.js'), 'utf8'));
     const result = await evaluate('window.runClearviewPerformance()');
@@ -183,7 +190,7 @@ try {
     const finalSessions = await sessionInventory();
     if (initialSessions.idsHash !== finalSessions.idsHash) result.failures.push('Host session inventory changed during read-only probe');
     const sourceBundleHash = createHash('sha256').update(readFileSync(join(out, 'fixture.js'))).update(readFileSync(join(out, 'fixture.css'))).digest('hex');
-    const report = { readonlyPolicyHash, screenshots, sourceBundleHash, initialSessions, finalSessions, schemaVersion: 2, capturedAt: new Date().toISOString(), source, sourceVersion, harnessHash, testUrl, viewport: { width: 1280, height: 950 }, baseline, browser: version.product, blockedMutations, initialHostErrors: errors.slice(0, initialErrors), errors: [...errors.slice(0, initialErrors).filter(text => !knownNativeReact130(text, 'native-chat')), ...errors.slice(initialErrors)], ...result, ...traceSummary ? { traceSummary } : {} };
+    const report = { readonlyPolicyHash, hostReadyFrameMs, screenshots, sourceBundleHash, initialSessions, finalSessions, schemaVersion: 2, capturedAt: new Date().toISOString(), source, sourceVersion, harnessHash, testUrl, viewport: { width: 1280, height: 950 }, baseline, browser: version.product, blockedMutations, initialHostErrors: errors.slice(0, initialErrors), errors: [...errors.slice(0, initialErrors).filter(text => !knownNativeReact130(text, 'native-chat')), ...errors.slice(initialErrors)], ...result, ...traceSummary ? { traceSummary } : {} };
     writeFileSync(join(out, baseline ? 'baseline.json' : 'optimized.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify({ report: join(out, baseline ? 'baseline.json' : 'optimized.json'), initialSessions, finalSessions, errors: report.errors, performance: report.performance, failures: report.failures }, null, 2));
     if (report.errors.length || report.failures.length)

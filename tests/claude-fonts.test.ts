@@ -1,11 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
 import { FONT_ROUTE, fontRouteHandler, locateClaudeFonts } from '../src/server/claude-fonts.ts';
-import { CLAUDE_FONT_FACES, ensureClaudeFonts } from '../src/client/cc-fonts.ts';
 
 function fakeInstall(versions: string[], css: (v: string) => string) {
   const root = mkdtempSync(join(tmpdir(), 'cc-fonts-'));
@@ -68,14 +67,16 @@ test('the route serves only the three whitelisted names', async () => {
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test('client font faces point at the route and inject once', () => {
-  assert.match(CLAUDE_FONT_FACES, /font-family:\s*anthropic-serif;[^}]*url\("\/dsh-clearview\/fonts\/serif\.woff2"\)/);
-  assert.match(CLAUDE_FONT_FACES, /font-display:\s*swap/);
-  const nodes: { id: string; textContent: string }[] = [];
-  const doc = { getElementById: (id: string) => nodes.find(node => node.id === id) ?? null, createElement: () => ({ id: '', textContent: '' }), head: { appendChild: (node: never) => nodes.push(node) } };
-  ensureClaudeFonts(doc as never); ensureClaudeFonts(doc as never);
-  assert.equal(nodes.length, 1);
-  assert.equal(nodes[0]!.id, 'dsh-clearview-fonts');
+test('module stylesheet declares exactly three whitelisted font faces with swap fallback', () => {
+  const css = readFileSync(new URL('../src/client/Reader.module.css', import.meta.url), 'utf8');
+  const faces = [...css.matchAll(/@font-face\s*\{([^}]*)\}/g)].map(match => match[1]!);
+  assert.equal(faces.length, 3);
+  for (const role of ['sans', 'serif', 'mono']) {
+    const face = faces.find(rule => rule.includes(`font-family: anthropic-${role};`));
+    assert.ok(face, role);
+    assert.ok(face.includes(`url("/dsh-clearview/fonts/${role}.woff2")`));
+    assert.match(face, /font-display:\s*swap/);
+  }
 });
 
 
