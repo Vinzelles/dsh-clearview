@@ -1,31 +1,93 @@
 .root {
+  /* Claude tokens: [data-theme=claude][data-mode=light] (Claude Desktop 2.26454.2) */
+  --cc-bg-000: hsl(0 0% 100%);
+  --cc-bg-100: hsl(48 33.3% 97.1%);
+  --cc-bg-200: hsl(53 28.6% 94.5%);
+  --cc-bg-300: hsl(48 25% 92.2%);
+  --cc-text-100: hsl(60 2.6% 7.6%);
+  --cc-text-300: hsl(60 2.5% 23.3%);
+  --cc-text-500: hsl(51 3.1% 43.7%);
+  --cc-border: hsl(30 3.3% 11.8% / .15);
+  --cc-border-strong: hsl(30 3.3% 11.8% / .3);
+  --cc-hover: hsl(48 25% 92.2% / .6);
+  --cc-danger: hsl(0 56.2% 45.4%);
+  --cc-danger-bg: hsl(0 50% 95%);
+  --cc-success: hsl(103 72.3% 26.9%);
+  --cc-success-bg: hsl(86 45.1% 90%);
+  --cc-brand: hsl(15 63.1% 59.6%);
+  --cc-link: hsl(210 73.7% 40.2%);
+  --cc-font-cjk: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC";
+  --cc-font-ui: anthropic-sans, ui-sans-serif, -apple-system, "Segoe UI", var(--cc-font-cjk), sans-serif;
+  --cc-font-response: anthropic-serif, Georgia, "Times New Roman", var(--cc-font-cjk), serif;
+  --cc-font-mono: anthropic-mono, ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --cc-size-body: calc(16px + var(--dsh-content-font-delta, 0px));
+  --cc-size-ui: calc(14px + var(--dsh-content-font-delta, 0px));
+  --cc-size-small: calc(12.5px + var(--dsh-content-font-delta, 0px));
+  --cc-size-code: calc(13px + var(--dsh-content-font-delta, 0px));
   --cv-ease: cubic-bezier(.2,.8,.2,1);
   --cv-fast: 100ms;
   --cv-swap: 200ms;
   --cv-size: 260ms;
-  --cv-row-height: calc(24px + var(--dsh-content-font-delta, 0px));
-  --cv-font-body: var(--dsh-content-font-size, 14px);
-  --cv-line-body: calc(24px + var(--dsh-content-font-delta, 0px));
-  --cv-font-secondary: var(--dsh-content-font-size-secondary, 13px);
-  --cv-panel-bg: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 72%, transparent);
-  --cv-panel-ring: 0 0 0 .5px var(--dsw-alias-border-l3);
-  --cv-inset-bg: var(--dsw-alias-markdown-code-block);
-  color: var(--dsw-alias-label-primary);
-  font-family: inherit;
-  font-size: var(--cv-font-body);
-  line-height: var(--cv-line-body);
+  /* host-remap:start — host primitives embedded in the reader (code blocks, diff blocks, dots) follow Claude colours */
+  --dsw-alias-label-primary: var(--cc-text-100);
+  --dsw-alias-label-secondary: var(--cc-text-300);
+  --dsw-alias-label-tertiary: var(--cc-text-500);
+  --dsw-alias-label-caption: var(--cc-text-500);
+  --dsw-alias-label-dimmed: var(--cc-text-500);
+  --dsw-alias-label-error: var(--cc-danger);
+  --dsw-alias-bg-base: var(--cc-bg-100);
+  --dsw-alias-bg-layer-1: var(--cc-bg-000);
+  --dsw-alias-bg-layer-2: var(--cc-bg-200);
+  --dsw-alias-bg-layer-3: var(--cc-bg-300);
+  --dsw-alias-border-l1: var(--cc-border-strong);
+  --dsw-alias-border-l2: var(--cc-border);
+  --dsw-alias-border-l3: var(--cc-border);
+  --dsw-alias-border-l4: var(--cc-border);
+  --dsw-alias-interactive-bg-hover: var(--cc-hover);
+  --dsw-alias-interactive-bg-hover-solid: var(--cc-hover);
+  --dsw-alias-state-error-primary: var(--cc-danger);
+  --dsw-alias-state-success-primary: var(--cc-success);
+  --dsw-alias-state-business-primary: var(--cc-link);
+  --dsw-alias-link: var(--cc-link);
+  --dsw-alias-markdown-code-block: var(--cc-bg-200);
+  --dsw-alias-markdown-code-block-banner: var(--cc-bg-300);
+  --dsw-alias-markdown-inline-code: var(--cc-bg-300);
+  /* host-remap:end */
+  background: var(--cc-bg-100);
+  color: var(--cc-text-100);
+  font-family: var(--cc-font-ui);
+  font-size: var(--cc-size-ui);
+  line-height: 1.5;
   min-width: 0;
   flex: 0 0 auto;
   overflow-anchor: auto;
   container-type: inline-size;
 }
+:global(body[data-ds-dark-theme]) .root {
+  /* [data-theme=claude][data-mode=dark] */
+  --cc-bg-000: hsl(60 2.1% 18.4%);
+  --cc-bg-100: hsl(60 2.7% 14.5%);
+  --cc-bg-200: hsl(30 3.3% 11.8%);
+  --cc-bg-300: hsl(60 2.6% 7.6%);
+  --cc-text-100: hsl(48 33.3% 97.1%);
+  --cc-text-300: hsl(50 9% 73.7%);
+  --cc-text-500: hsl(48 4.8% 59.2%);
+  --cc-border: hsl(51 16.5% 84.5% / .15);
+  --cc-border-strong: hsl(51 16.5% 84.5% / .3);
+  --cc-hover: hsl(60 2.1% 18.4% / .7);
+  --cc-danger: hsl(0 98.4% 75.1%);
+  --cc-danger-bg: hsl(0 46.5% 27.8% / .45);
+  --cc-success: hsl(97 59.1% 46.1%);
+  --cc-success-bg: hsl(127 100% 13.9% / .45);
+  --cc-link: hsl(210 65.5% 67.1%);
+}
 .column { display: flex; flex-direction: column; gap: 22px; width: 100%; padding-bottom: 24px; max-width: var(--dsh-chat-content-width, 748px); min-width: 0; margin: 0 auto; }
-.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
-.switchButton { display: inline-flex; align-items: center; gap: 8px; padding: 2px 8px; border: 0; border-radius: var(--dsw-radius-sm); corner-shape: round; background: transparent; color: var(--dsw-alias-label-tertiary); font: inherit; white-space: nowrap; cursor: pointer; transition: background-color var(--cv-fast) ease, color var(--cv-fast) ease; }
-.switchButton:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); }
-.switchLabel[data-checked=true] { color: var(--dsw-alias-label-secondary); }
-.root button:focus-visible, .root summary:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 2px; }
-.root [role=button]:not(button):focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: -2px; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--cc-text-500); font-size: 12px; line-height: 18px; }
+.switchButton { display: inline-flex; align-items: center; gap: 8px; padding: 2px 8px; border: 0; border-radius: 8px; corner-shape: round; background: transparent; color: var(--cc-text-500); font: inherit; white-space: nowrap; cursor: pointer; transition: background-color var(--cv-fast) ease, color var(--cv-fast) ease; }
+.switchButton:hover { background: var(--cc-hover); color: var(--cc-text-300); }
+.switchLabel[data-checked=true] { color: var(--cc-text-300); }
+.root button:focus-visible, .root summary:focus-visible { outline: 2px solid var(--cc-link); outline-offset: 2px; }
+.root [role=button]:not(button):focus-visible { outline: 2px solid var(--cc-link); outline-offset: -2px; }
 
 .blocks { display: flex; flex-direction: column; gap: var(--cv-blocks-gap, 16px); min-width: 0; }
 .blocks:empty { display: none; }
@@ -79,43 +141,43 @@
 .processFrame { min-width: 0; }
 .processContents { display: flow-root; min-width: 0; }
 
-.notice { padding: 10px 14px; border-radius: var(--dsw-radius-md); corner-shape: round; background: var(--cv-inset-bg); color: var(--dsw-alias-label-secondary); font-size: var(--cv-font-secondary); line-height: 21px; overflow-wrap: anywhere; }
-.error { padding: 10px 14px; border-radius: var(--dsw-radius-md); corner-shape: round; background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent); color: var(--dsw-alias-state-error-primary); font-size: var(--cv-font-secondary); line-height: 21px; overflow-wrap: anywhere; }
-.unknown { padding: 10px 14px; border-radius: var(--dsw-radius-md); corner-shape: round; background: var(--cv-inset-bg); font-size: var(--cv-font-secondary); line-height: 21px; }
+.notice { padding: 10px 14px; border-radius: 8px; corner-shape: round; background: var(--cc-bg-200); color: var(--cc-text-300); font-size: var(--cc-size-small); line-height: 21px; overflow-wrap: anywhere; }
+.error { padding: 10px 14px; border-radius: 8px; corner-shape: round; background: color-mix(in srgb, var(--cc-danger) 10%, transparent); color: var(--cc-danger); font-size: var(--cc-size-small); line-height: 21px; overflow-wrap: anywhere; }
+.unknown { padding: 10px 14px; border-radius: 8px; corner-shape: round; background: var(--cc-bg-200); font-size: var(--cc-size-small); line-height: 21px; }
 .unknown p { margin: 0 0 6px; }
 .attention {
   display: flex; flex-direction: column; gap: 2px;
   padding: 10px 14px;
-  border-radius: var(--dsw-radius-lg); corner-shape: round;
-  background: var(--cv-panel-bg);
-  box-shadow: 0 0 0 .5px color-mix(in srgb, var(--dsw-alias-state-business-primary) 45%, transparent), var(--dsw-shadow-lv1);
-  color: var(--dsw-alias-label-primary); font-size: var(--cv-font-secondary); line-height: 20px;
+  border-radius: 12px; corner-shape: round;
+  background: var(--cc-bg-000);
+  box-shadow: 0 0 0 .5px color-mix(in srgb, var(--cc-link) 45%, transparent);
+  color: var(--cc-text-100); font-size: var(--cc-size-small); line-height: 20px;
 }
-.attention span { color: var(--dsw-alias-label-secondary); }
+.attention span { color: var(--cc-text-300); }
 .attention.isEntering { opacity: 0; transform: translateY(4px); transition: none; }
 .attention.isIn { opacity: 1; transform: none; transition: opacity var(--cv-swap) var(--cv-ease), transform var(--cv-swap) var(--cv-ease); }
-.historyButton { align-self: center; padding: 4px 12px; border: 0; border-radius: var(--dsw-radius-sm); corner-shape: round; background: var(--dsw-alias-interactive-bg-hover-solid, var(--dsw-alias-interactive-bg-hover)); color: var(--dsw-alias-label-secondary); font: inherit; font-size: 12px; cursor: pointer; transition: color var(--cv-fast) ease, opacity var(--cv-fast) ease; }
-.historyButton:hover:not(:disabled) { color: var(--dsw-alias-label-primary); }
+.historyButton { align-self: center; padding: 4px 12px; border: 0; border-radius: 8px; corner-shape: round; background: var(--cc-hover); color: var(--cc-text-300); font: inherit; font-size: 12px; cursor: pointer; transition: color var(--cv-fast) ease, opacity var(--cv-fast) ease; }
+.historyButton:hover:not(:disabled) { color: var(--cc-text-100); }
 .historyButton:disabled { opacity: .55; cursor: default; }
-.empty { padding: 40px 0; color: var(--dsw-alias-label-tertiary); text-align: center; }
-.textButton { padding: 2px 6px; border: 0; border-radius: var(--dsw-radius-sm); corner-shape: round; background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; white-space: nowrap; cursor: pointer; transition: background-color var(--cv-fast) ease, color var(--cv-fast) ease; }
-.textButton:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.empty { padding: 40px 0; color: var(--cc-text-500); text-align: center; }
+.textButton { padding: 2px 6px; border: 0; border-radius: 8px; corner-shape: round; background: transparent; color: var(--cc-text-300); font: inherit; white-space: nowrap; cursor: pointer; transition: background-color var(--cv-fast) ease, color var(--cv-fast) ease; }
+.textButton:hover { background: var(--cc-hover); }
 
 .imageFigure { align-self: flex-start; width: min(100%, 460px); margin: 0; }
-.imageFrame { position: relative; max-width: 100%; max-height: 520px; min-height: 96px; overflow: hidden; border: .5px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-lg); corner-shape: round; background: var(--cv-inset-bg); }
+.imageFrame { position: relative; max-width: 100%; max-height: 520px; min-height: 96px; overflow: hidden; border: .5px solid var(--cc-border); border-radius: 12px; corner-shape: round; background: var(--cc-bg-200); }
 .imageOpen { position: absolute; inset: 0; display: flex; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: zoom-in; }
 .imageOpen img { display: block; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity var(--cv-swap) var(--cv-ease), filter var(--cv-fast) ease; }
 .imageOpen img[data-ready=true] { opacity: 1; }
 .imageOpen:hover img[data-ready=true] { filter: brightness(1.06); }
-.imagePlaceholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--dsw-alias-label-tertiary); font-size: var(--cv-font-secondary); pointer-events: none; }
+.imagePlaceholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--cc-text-500); font-size: var(--cc-size-small); pointer-events: none; }
 .imagePlaceholder button { pointer-events: auto; }
-.imageFigure figcaption { margin-top: 6px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
-.imageDialog { max-width: 90vw; max-height: 90vh; padding: 38px 20px 20px; border: .5px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-lg); corner-shape: round; background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary); box-shadow: var(--dsw-elevation-panel); }
-.imageDialog::backdrop { background: var(--dsw-alias-bg-mask-photo); opacity: 0; transition: opacity var(--cv-swap) var(--cv-ease); }
+.imageFigure figcaption { margin-top: 6px; color: var(--cc-text-500); font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
+.imageDialog { max-width: 90vw; max-height: 90vh; padding: 38px 20px 20px; border: .5px solid var(--cc-border); border-radius: 12px; corner-shape: round; background: var(--cc-bg-100); color: var(--cc-text-100); box-shadow: 0 4px 24px hsl(0 0% 0% / .2); }
+.imageDialog::backdrop { background: hsl(0 0% 0% / .5); opacity: 0; transition: opacity var(--cv-swap) var(--cv-ease); }
 .imageDialog[open]::backdrop { opacity: 1; }
 .imageDialog img { display: block; max-width: 82vw; max-height: 75vh; object-fit: contain; }
-.dialogClose { position: absolute; top: 4px; right: 8px; width: 32px; height: 32px; border: 0; border-radius: var(--dsw-radius-sm); corner-shape: round; background: transparent; color: inherit; font-size: 24px; cursor: pointer; transition: background-color var(--cv-fast) ease, transform var(--cv-fast) ease; }
-.dialogClose:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.dialogClose { position: absolute; top: 4px; right: 8px; width: 32px; height: 32px; border: 0; border-radius: 8px; corner-shape: round; background: transparent; color: inherit; font-size: 24px; cursor: pointer; transition: background-color var(--cv-fast) ease, transform var(--cv-fast) ease; }
+.dialogClose:hover { background: var(--cc-hover); }
 .dialogClose:active { transform: scale(.96); }
 
 [data-motion=off] .switchButton, [data-motion=off] .historyButton, [data-motion=off] .textButton, [data-motion=off] .imageOpen img, [data-motion=off] .dialogClose, [data-motion=off] .isEntering, [data-motion=off] .isIn { transition: none; }

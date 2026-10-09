@@ -223,3 +223,26 @@ test('the Markdown table wrapper never exceeds its column', () => {
   assert.match(wrapper, /min-width: 0/);
   assert.match(wrapper, /contain: inline-size/);
 });
+
+test('reader root defines Claude tokens for light and dark', () => {
+  const text = sheet('Reader');
+  for (const name of ['--cc-bg-100', '--cc-bg-200', '--cc-bg-300', '--cc-text-100', '--cc-text-300', '--cc-text-500', '--cc-border', '--cc-danger', '--cc-success', '--cc-brand', '--cc-font-ui', '--cc-font-response', '--cc-font-mono', '--cc-size-body']) {
+    assert.match(text, new RegExp(`${name}:`), name);
+  }
+  assert.match(text, /48 33\.3% 97\.1%/, 'light bg-100 / dark text-100');
+  assert.match(text, /60 2\.7% 14\.5%/, 'dark bg-100');
+  assert.match(text, /:global\(body\[data-ds-dark-theme\]\)\s*\.root/, 'dark override keyed on the host attribute');
+  assert.match(text, /anthropic-serif/);
+  assert.match(text, /\.root\s*\{[^}]*background:\s*var\(--cc-bg-100\)/s);
+});
+
+const MIGRATED = new Set(['Reader.module.css']);
+
+test('only the remap block in Reader.module.css names host colour tokens', () => {
+  const names = readdirSync(CLIENT).filter(name => name.endsWith('.module.css') && MIGRATED.has(name));
+  for (const name of names) {
+    let text = readFileSync(new URL(name, CLIENT), 'utf8');
+    if (name === 'Reader.module.css') text = text.replace(/\/\* host-remap:start[^*]*\*\/[\s\S]*?\/\* host-remap:end \*\//, '');
+    assert.doesNotMatch(text, /var\(--dsw-/, `${name} reads a host colour token`);
+  }
+});
