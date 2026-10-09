@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { COMPAT_CSS } from '../src/client/compat/styles.ts';
 
 const CLIENT = new URL('../src/client/', import.meta.url);
-const REDESIGNED = ['Reader', 'ProcessRow', 'ToolRow', 'ToolDetails', 'ReasoningRow', 'RecordRows', 'Opening', 'ProcessPanel', 'ClusterRow', 'TurnSection', 'TurnFooter', 'FloatingStatus', 'FileChanges'];
+const REDESIGNED = ['Reader', 'Line', 'ToolRow', 'ToolDetails', 'ToolGroupRow', 'ThoughtRow', 'LiveThought', 'StatusLine', 'UserBubble', 'PlanCard', 'RecordRows', 'Opening', 'TurnSection', 'TurnFooter', 'JumpButton', 'FileChanges'];
 const sheet = (name: string) => readFileSync(new URL(`${name}.module.css`, CLIENT), 'utf8');
 
 test('redesigned surfaces use token radii and no in-flow backdrop blur', () => {
@@ -89,18 +89,6 @@ test('the reader column keeps 24px of breathing room after its last element, wit
   }
 });
 
-test('the cluster row uses the 24px row grammar with token colours only', () => {
-  const css = sheet('ClusterRow');
-  assert.match(css, /\.members \{[^}]*margin-left: calc\(22px/);
-  assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}\b|rgba?\(/);
-});
-
-test('the panel header meta items are 12/18 secondary text while the status keeps the row size', () => {
-  const css = sheet('ProcessPanel');
-  assert.match(/\.meta \{([^}]*)\}/.exec(css)?.[1] ?? '', /font-size: 12px; line-height: 18px/);
-  assert.doesNotMatch(/\.status \{([^}]*)\}/.exec(css)?.[1] ?? '', /font-size/);
-});
-
 /** Horizontal margin values a declaration sets (null when it sets none): `margin`, `margin-inline` and the longhands. */
 function horizontalMargins(property: string, rawValue: string): string[] | null {
   const value = rawValue.replace(/!important/gi, '').trim();
@@ -163,7 +151,7 @@ test('no stylesheet under src/client widens its box with a negative horizontal m
 });
 
 test('hover bleed on process rows is drawn with side shadows in the hover colour', () => {
-  for (const [file, selector] of [['Line', 'button.button'], ['ClusterRow', '.row'], ['ReasoningRow', '.row'], ['ProcessPanel', '.headerButton'], ['FileChanges', '.header']] as const) {
+  for (const [file, selector] of [['Line', 'button.button'], ['FileChanges', '.header']] as const) {
     const css = sheet(file);
     const hover = new RegExp(String.raw`${selector.replace('.', String.raw`\.`)}:hover[^{]*\{([^}]*)\}`).exec(css)?.[1] ?? '';
     const colour = file === 'Line' ? '--cc-hover' : '--dsw-alias-interactive-bg-hover';
@@ -184,35 +172,12 @@ test('a settled-open collapse body does not clip; it clips only while closed or 
   assert.equal(renderToStaticMarkup(createElement(CollapseBody, { open: false, motion: true }, createElement('span', null, 'x'))), '');
 });
 
-test('panel narration is 13px on the 21px process line in the thought-text colour, with the Markdown root overridden', () => {
-  const turn = sheet('TurnSection');
-  const narration = /\.narration \{([^}]*)\}/.exec(turn)?.[1] ?? '';
-  assert.match(narration, /color: var\(--dsw-alias-label-tertiary\)/);
-  assert.match(narration, /font-size: var\(--cv-font-secondary\)/);
-  assert.match(narration, /line-height: 21px/);
-  const root = /\.narration \[data-reader-text\] > \* \{([^}]*)\}/.exec(turn)?.[1] ?? '';
-  assert.match(root, /color: var\(--dsw-alias-label-tertiary\)/);
-  assert.match(root, /font-size: var\(--cv-font-secondary\)/);
-  assert.match(root, /line-height: 21px/);
-  assert.doesNotMatch(root, /font-weight|font:/, 'the Markdown base weight is already regular');
-  // The thought text (the inset viewport) uses the same colour and line.
-  assert.match(/\.viewport \{([^}]*)\}/.exec(sheet('ReasoningRow'))?.[1] ?? '', /color: var\(--dsw-alias-label-tertiary\)[\s\S]*line-height: 21px/);
-  // Inline code is one step stronger than the text; strong keeps the Markdown weight; links are not touched.
-  assert.match(turn, /\.narration \[data-reader-text\] :not\(pre\) > code \{[^}]*color: var\(--dsw-alias-label-secondary\)/);
-  assert.doesNotMatch(turn, /\.narration[^{]*\b(strong|a)\s*\{/);
-  // Linked inline code keeps the link colour instead of the inline-code colour.
-  assert.match(turn, /\.narration \[data-reader-text\] a > code \{ color: inherit; \}/);
-  // Nested lists keep the answer zone's 4px gap.
-  assert.match(turn, /\.narration \[data-reader-text\] li > :where\(ul, ol\) \{ margin-top: 4px; \}/);
-  // One line-height declaration per heading: the block rule owns it, the heading rule does not repeat it.
-  assert.doesNotMatch(/:where\(h1, h2, h3, h4, h5, h6\) \{([^}]*)\}/.exec(turn)?.[1] ?? '', /line-height/);
-  // Spacing scales with the smaller text: no 16px / 32px Markdown margins left on paragraphs, lists and headings.
-  assert.match(turn, /\.narration \[data-reader-text\] :where\(p, ul, ol, blockquote\) \{ margin: 8px 0; \}/);
-  // The Markdown block rules set their own line height, so the 21px line is also set on the blocks, not only on the root.
-  assert.match(turn, /\.narration \[data-reader-text\] :where\(p, li, blockquote, h1, h2, h3, h4, h5, h6\) \{ line-height: 21px; \}/);
-  assert.match(turn, /:where\(h1, h2, h3, h4, h5, h6\) \{[^}]*margin: 10px 0 4px[^}]*font-size: var\(--cv-font-secondary\)/);
-  // The rule being overridden: .markdown sets primary colour and the 16px base font on itself.
-  assert.match(/\.markdown \{([^}]*)\}/.exec(readFileSync(new URL('markdown/MarkdownText.module.css', CLIENT), 'utf8'))?.[1] ?? '', /color: var\(--dsw-alias-label-primary\)/);
+test('narration and answer share one serif prose class on the Claude tokens', () => {
+  const prose = /\.prose \{([^}]*)\}/.exec(sheet('TurnSection'))?.[1] ?? '';
+  assert.match(prose, /font-family: var\(--cc-font-response\)/);
+  assert.match(prose, /font-size: var\(--cc-size-body\)/);
+  assert.match(prose, /line-height: 1\.6/);
+  assert.match(prose, /color: var\(--cc-text-100\)/);
 });
 
 test('the Markdown table wrapper never exceeds its column', () => {

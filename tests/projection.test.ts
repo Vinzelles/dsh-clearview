@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { AssistantChatData } from '@deepseek-ai/dsh-client-ui-conversation/client';
 import type { AssistantBlock, ChatConversationViewNode, TurnLocation, ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client';
-import { assistantSegments, boundaryOf, groupNodes, hasVisibleBody, processChoiceKey, processExpanded, terminalLabel } from '../src/client/projection.ts';
+import { assistantSegments, boundaryOf, groupNodes, hasVisibleBody, terminalLabel } from '../src/client/projection.ts';
 import type { TurnBoundary } from '../src/client/projection.ts';
 import { activityPhase, activitySummary, inputFields, readerFlow } from '../src/client/tool-activity.ts';
 
@@ -22,32 +22,6 @@ test('reasoning and body retain original order, content and identities across st
   assert.equal(segments[0].blocks[0], first);
   const append = assistantSegments([first, text, later, { kind: 'text', text: '最终正文' }]);
   assert.deepEqual(append.slice(0, 3), segments);
-});
-
-test('process stays open through body output and later steps until successful turn completion', () => {
-  assert.equal(processExpanded(undefined, active), true);
-  assert.equal(processExpanded(undefined, { ...active, latestStep: 7 }), true);
-  assert.equal(processExpanded(undefined, completed), false);
-  assert.equal(processExpanded(undefined, { ...active, status: 'unknown' }), true);
-  for (const reason of ['error', 'aborted', 'interrupted', 'blocked', 'max-tokens', 'future-terminal']) {
-    assert.equal(processExpanded(undefined, { ...completed, reason }), true, reason);
-  }
-});
-
-test('deliberate process expansion or collapse overrides the automatic lifecycle', () => {
-  assert.equal(processExpanded(true, completed), true);
-  assert.equal(processExpanded(false, active), false);
-  assert.equal(processExpanded(false, { ...completed, reason: 'error' }), false);
-});
-
-test('reading during a run does not keep the completed process open; reopening after completion is deliberate', () => {
-  const choices: Record<string, boolean> = {};
-  choices[processChoiceKey('turn:1', active)] = true;
-  assert.equal(processExpanded(choices[processChoiceKey('turn:1', completed)], completed), false);
-  assert.equal(processChoiceKey('turn:1', active), processChoiceKey('turn:1', { ...active, latestStep: 9 }));
-  choices[processChoiceKey('turn:1', completed)] = true;
-  assert.equal(processExpanded(choices[processChoiceKey('turn:1', completed)], completed), true);
-  assert.equal(processExpanded(choices[processChoiceKey('turn:2', completed)], completed), false);
 });
 
 test('all abnormal and unknown terminal states preserve generated prefixes', () => {

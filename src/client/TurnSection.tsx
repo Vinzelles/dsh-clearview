@@ -1,26 +1,30 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { AssistantChatData } from '@deepseek-ai/dsh-client-ui-chat/client';
 import { BlockBoundary, Blocks } from './Blocks.js';
 import { useChatSelector, usePendingSelector } from './compat/session-snapshot.js';
+import { LiveThought } from './LiveThought.js';
 import type { MarkdownFileMentions } from './markdown/render.js';
-import { StatusText } from './motion.js';
 import { SystemPromptRow } from './native/SystemPromptRow.js';
 import { nodeText } from './node-payloads.js';
 import { Opening } from './Opening.js';
-import { ProcessPanel } from './ProcessPanel.js';
-import { commandOutputText, elapsedLabel, layoutTurn, panelCounts, panelStatus, rememberOpened, runningLabel, statusLabel, type PanelItem, type ReasoningItem } from './process-steps.js';
-import { assistantSegments, boundaryOf, processChoiceKey, processExpanded, terminalLabel, type ReaderGroup, type TurnBoundary } from './projection.js';
-import { ReasoningRow, reasoningPreview } from './ReasoningRow.js';
+import { PlanCard } from './PlanCard.js';
+import { commandOutputText, elapsedLabel, layoutTurn, panelStatus, runningLabel, statusLabel, type PanelItem } from './process-steps.js';
+import { assistantSegments, boundaryOf, terminalLabel, type ReaderGroup } from './projection.js';
 import { useReaderActions } from './reader-context.js';
 import { createGroupSelector } from './reader-selection.js';
-import { InputBubble, RecordRow, TurnNotice, recordView } from './RecordRows.js';
+import { InputBubble, RecordRow, TurnNotice } from './RecordRows.js';
 import type { RewindSpan } from './rewind-hidden.js';
+import { StatusLine } from './StatusLine.js';
 import { RevealLedgerContext, type RevealLedger } from './streaming.js';
+import { ThoughtRow } from './ThoughtRow.js';
 import { readerFlow } from './tool-activity.js';
-import { ToolImages, ToolRow, toolRowTitle } from './ToolRow.js';
+import { ToolGroupRow } from './ToolGroupRow.js';
+import { ToolImages, ToolRow } from './ToolRow.js';
+import { buildTranscript, liveThoughtKey, type TranscriptEntry } from './transcript-model.js';
 import { TurnFooter } from './TurnFooter.js';
 import { closingOf } from './turn-meta.js';
+import { formatSeconds } from './turn-activity.js';
 import type { BlockRenderProps, ReaderProps } from './types.js';
 import css from './TurnSection.module.css';
 
@@ -41,34 +45,34 @@ function useSegment(useSession: ReaderProps['useSession'], nodeKey: string, star
 /** The answer zone and the panel's narration show the same body segment under one reveal identity. */
 const revealKeyOf = (nodeKey: string, start: number) => `${nodeKey}:${start}`;
 
-const ReasoningSegment = memo(function ReasoningSegment({ useSession, nodeKey, start, pinned, boundary, panelOpen, compact, onRead, suffix, tailItem, renderTail, ...render }: SegmentProps & {
-  boundary: TurnBoundary; panelOpen: boolean; compact: boolean; onRead: () => void;
-  /** Merged with one healthy operation: its row title and the item rendered under the opened thought. */
-  suffix?: string; tailItem?: PanelItem; renderTail?: (item: PanelItem) => ReactNode;
-}) {
+const ThoughtSegment = memo(function ThoughtSegment({ useSession, nodeKey, start, pinned, onRead, ...render }: SegmentProps & { onRead: () => void }) {
   const { motion } = useReaderActions();
-  const { data, part, last } = useSegment(useSession, nodeKey, start);
-  const thinkingMs = useMemo(() => {
+  const { data, part } = useSegment(useSession, nodeKey, start);
+  const durationMs = useMemo(() => {
     const timing = data?.finalNode?.timing;
-    if (!timing) return null;
-    if (timing.stepStartTime != null && timing.firstTokenTime != null) return Math.max(0, timing.firstTokenTime - timing.stepStartTime);
-    if (timing.stepStartTime != null && timing.completedTime != null) return Math.max(0, timing.completedTime - timing.stepStartTime);
-    return null;
+    if (!timing || timing.stepStartTime == null) return null;
+    const end = timing.firstTokenTime ?? timing.completedTime;
+    return end == null ? null : Math.max(0, end - timing.stepStartTime);
   }, [data]);
   if (!data || !part) return null;
-  const live = data.status === 'running' && last && data.blocks.at(-1)?.kind === 'reasoning';
-  const text = part.blocks.map(block => block.kind === 'reasoning' ? block.text : '').join('\n');
-  return <ReasoningRow step={data.step} live={live} follow={panelOpen && boundary.status === 'open' && data.step === boundary.latestStep}
-    motion={motion} selected={pinned} onRead={onRead} compact={compact} durationMs={thinkingMs} startedAt={data.time}
-    charCount={text.length} preview={reasoningPreview(text)} suffix={suffix} tail={tailItem && renderTail ? renderTail(tailItem) : undefined}>
-    <Blocks {...render} blocks={part.blocks} streaming={live} holdFormatting={pinned} startedAt={data.time} interrupted={data.status === 'interrupted'} liveText />
-  </ReasoningRow>;
+  return <ThoughtRow durationMs={durationMs} motion={motion} onRead={onRead}>
+    <Blocks {...render} blocks={part.blocks} holdFormatting={pinned} startedAt={data.time} interrupted={data.status === 'interrupted'} liveText />
+  </ThoughtRow>;
+});
+
+const LiveSegment = memo(function LiveSegment({ useSession, nodeKey, start, pinned, follow, ...render }: SegmentProps & { follow: boolean }) {
+  const { motion } = useReaderActions();
+  const { data, part } = useSegment(useSession, nodeKey, start);
+  if (!data || !part) return null;
+  return <LiveThought follow={follow} motion={motion}>
+    <Blocks {...render} blocks={part.blocks} streaming holdFormatting={pinned} startedAt={data.time} liveText />
+  </LiveThought>;
 });
 
 const NarrationSegment = memo(function NarrationSegment({ useSession, nodeKey, start, pinned, ...render }: SegmentProps) {
   const { data, part } = useSegment(useSession, nodeKey, start);
   if (!data || !part) return null;
-  return <div className={css.narration} data-reader-narration data-reader-key={nodeKey}>
+  return <div className={css.prose} data-reader-key={nodeKey}>
     <Blocks {...render} blocks={part.blocks} streaming={data.status === 'running'} holdFormatting={pinned} startedAt={data.time} interrupted={data.status === 'interrupted'} liveText revealKey={revealKeyOf(nodeKey, start)} />
   </div>;
 });
@@ -76,7 +80,7 @@ const NarrationSegment = memo(function NarrationSegment({ useSession, nodeKey, s
 const AnswerSegment = memo(function AnswerSegment({ useSession, nodeKey, start, pinned, fileMentions, ...render }: SegmentProps & { fileMentions?: MarkdownFileMentions }) {
   const { data, part, last } = useSegment(useSession, nodeKey, start);
   if (!data || !part) return null;
-  return <article className={css.answer} data-reader-answer data-reader-anchor data-reader-key={nodeKey} data-reader-source-start={start} data-answer-status={data.status}>
+  return <article className={css.prose} data-reader-answer data-reader-anchor data-reader-key={nodeKey} data-reader-source-start={start} data-answer-status={data.status}>
     <Blocks {...render} blocks={part.blocks} streaming={data.status === 'running'} holdFormatting={pinned} startedAt={data.time} interrupted={data.status === 'interrupted'} liveText revealKey={revealKeyOf(nodeKey, start)} fileMentions={fileMentions} />
     {last && data.status === 'interrupted' && <span className={css.stopped}>已停止</span>}
   </article>;
@@ -109,9 +113,9 @@ function useNow(active: boolean): number {
   return now;
 }
 
-/** One turn: opening, process panel, tool media, answer, notices, footer. */
-export const TurnSection = memo(function TurnSection({ group, pinnedKeys, selectedProcessKeys, rewindHidden, rewindSpans, flowTail, ...props }: ReaderProps & {
-  group: ReaderGroup; pinnedKeys: readonly string[]; selectedProcessKeys: readonly string[];
+/** One turn: opening, the transcript flow, tool media, answer, notices, status line, live thinking, footer. */
+export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewindHidden, rewindSpans, flowTail, ...props }: ReaderProps & {
+  group: ReaderGroup; pinnedKeys: readonly string[];
   rewindHidden: ReadonlySet<number>; rewindSpans: readonly RewindSpan[]; flowTail?: ReactNode;
 }) {
   const { motion, fileMentions } = useReaderActions();
@@ -121,15 +125,6 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, select
   const nextBoundary = boundaryOf(turn);
   const boundary = useMemo(() => nextBoundary, [nextBoundary.status, nextBoundary.reason, nextBoundary.latestStep, nextBoundary.closingStep]);
   const pendingCount = usePendingSelector(props.useSession, pending => pending.length);
-  const choiceKey = processChoiceKey(group.key, boundary);
-  const expansionChoice = props.useStore(state => state.expanded[choiceKey]);
-  // An opened earlier range stays open for the whole turn, so its key must not follow the turn's status.
-  const earlierKey = `${group.key}:earlier`;
-  const earlierOpen = props.useStore(state => state.expanded[earlierKey] ?? false);
-  const compact = props.useStore(state => state.collapseThinking ?? false);
-  const setOpen = useCallback((value: boolean) => props.actions.setExpanded(choiceKey, value), [props.actions, choiceKey]);
-  const openEarlier = useCallback(() => props.actions.setExpanded(earlierKey, true), [props.actions, earlierKey]);
-  const pinPanel = useCallback(() => setOpen(true), [setOpen]);
   const get = useCallback((key: string) => chat.nodes.get(key), [chat]);
   const revealLedger = useMemo<RevealLedger>(() => new Map(), []);
   // The opening is the first user / trigger / command input before any assistant or tool row; system prompts
@@ -154,37 +149,36 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, select
   const layout = useMemo(() => layoutTurn(flow, get, boundary), [flow, get, boundary]);
   const status = panelStatus(boundary, pendingCount);
   const closed = boundary.status === 'closed';
-  const counts = useMemo(() => panelCounts(layout.panel, get, closed), [layout.panel, get, closed]);
-  // Only a real, still-active text selection delays folding; clicking or scrolling never pins the panel.
-  const open = selectedProcessKeys.includes(group.key) || processExpanded(expansionChoice, boundary);
+  const open = boundary.status === 'open';
+  const entries = useMemo(() => buildTranscript(layout.panel, get, closed), [layout.panel, get, closed]);
+  const liveKey = useMemo(() => liveThoughtKey(entries, get, open), [entries, get, open]);
+  const live = liveKey ? entries.at(-1) as Extract<TranscriptEntry, { kind: 'thought' }> : null;
   const now = useNow(status === 'running' || status === 'waiting');
-  const label = statusLabel(status, boundary.reason, status === 'running' ? runningLabel(turn, group.keys, get) : '');
-  const elapsed = elapsedLabel(turn, now, status);
-  const panelPinned = pinnedKeys.includes(group.key);
+  const liveData = live ? get(live.item.nodeKey)?.data as AssistantChatData | undefined : undefined;
+  const thinking = live && typeof liveData?.time === 'number' ? formatSeconds(Math.max(0, Math.round((now - liveData.time) / 1000))) : null;
+  const flowPinned = pinnedKeys.includes(group.key);
   const closingSeq = closingOf(turn)?.seq;
   // The host hands back a fresh resolver per call; keep one per turn and closing reply so the answer's Blocks stay memoised.
   const mentions = useMemo(() => status === 'done' && turn && closingSeq !== undefined ? fileMentions?.(turn, closingSeq) : undefined, [status, turn, closingSeq, fileMentions]);
   const shared = useMemo(() => ({ renderSlotChain: props.renderSlotChain, loadImage: props.loadImage }), [props.renderSlotChain, props.loadImage]);
-  // Rows the reader opened keep their own row: a settled call is not folded into the thought above it under their cursor.
-  const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
-  const trackOpen = useCallback((key: string, value: boolean) => setOpened(previous => rememberOpened(previous, key, value)), []);
-  const renderItem = useCallback((item: PanelItem, track = true): ReactNode => {
+  const noop = useCallback(() => {}, []);
+  const renderItem = useCallback((item: PanelItem): ReactNode => {
     switch (item.kind) {
-      case 'reasoning': return <BlockBoundary><ReasoningSegment {...shared} useSession={props.useSession} nodeKey={item.nodeKey} start={item.start} pinned={panelPinned} boundary={boundary} panelOpen={open} compact={compact} onRead={pinPanel} /></BlockBoundary>;
-      case 'narration': return <BlockBoundary><NarrationSegment {...shared} useSession={props.useSession} nodeKey={item.nodeKey} start={item.start} pinned={panelPinned} /></BlockBoundary>;
-      case 'tool': return <BlockBoundary><ToolRow {...shared} entry={item.entry} turnClosed={closed} onRead={pinPanel} onOpenChange={track ? trackOpen : undefined} /></BlockBoundary>;
-      case 'record': return <BlockBoundary><RecordRow {...shared} useSession={props.useSession} nodeKey={item.nodeKey} t={props.contextT} onRead={pinPanel} turnClosed={closed} onOpenChange={track ? trackOpen : undefined} /></BlockBoundary>;
+      case 'tool': return <BlockBoundary><ToolRow {...shared} entry={item.entry} turnClosed={closed} onRead={noop} /></BlockBoundary>;
+      case 'record': return <BlockBoundary><RecordRow {...shared} useSession={props.useSession} nodeKey={item.nodeKey} t={props.contextT} onRead={noop} turnClosed={closed} /></BlockBoundary>;
       case 'input': return <BlockBoundary><InputBubble {...shared} useSession={props.useSession} nodeKey={item.nodeKey} /></BlockBoundary>;
+      case 'narration': return <BlockBoundary><NarrationSegment {...shared} useSession={props.useSession} nodeKey={item.nodeKey} start={item.start} pinned={flowPinned} /></BlockBoundary>;
+      case 'reasoning': return <BlockBoundary><ThoughtSegment {...shared} useSession={props.useSession} nodeKey={item.nodeKey} start={item.start} pinned={flowPinned} onRead={noop} /></BlockBoundary>;
     }
-  }, [shared, props.useSession, props.contextT, panelPinned, boundary, open, compact, pinPanel, closed, trackOpen]);
-  // The row inside a merged thought is not tracked: opening it there must not unfold the merge.
-  const renderTail = useCallback((item: PanelItem): ReactNode => renderItem(item, false), [renderItem]);
-  const renderThought = useCallback((thought: ReasoningItem, operation: PanelItem): ReactNode => {
-    const node = operation.kind === 'record' ? get(operation.nodeKey) : undefined;
-    const suffix = operation.kind === 'tool' ? toolRowTitle(operation.entry) : node ? recordView(node, closed).title : undefined;
-    return <BlockBoundary><ReasoningSegment {...shared} useSession={props.useSession} nodeKey={thought.nodeKey} start={thought.start} pinned={panelPinned} boundary={boundary} panelOpen={open} compact={compact} onRead={pinPanel}
-      suffix={suffix} tailItem={operation} renderTail={renderTail} /></BlockBoundary>;
-  }, [renderTail, shared, props.useSession, panelPinned, boundary, open, compact, pinPanel, get, closed]);
+  }, [shared, props.useSession, props.contextT, closed, noop, flowPinned]);
+  const renderEntry = (entry: TranscriptEntry): ReactNode => {
+    switch (entry.kind) {
+      case 'group': return <ToolGroupRow key={entry.key} group={entry} motion={motion} onRead={noop} renderItem={renderItem} />;
+      case 'plan': return <PlanCard key={entry.key} todos={entry.todos} />;
+      case 'input': return <div key={entry.key} className={css.input}>{renderItem(entry.item)}</div>;
+      default: return <Fragment key={entry.key}>{renderItem(entry.item)}</Fragment>;
+    }
+  };
   const answerBlocks = useMemo(() => layout.answer.flatMap(segment => {
     const node = get(segment.nodeKey);
     if (!node || node.kind !== 'assistant-step') return [];
@@ -192,15 +186,12 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, select
   }), [layout.answer, get]);
   const answerText = useMemo(() => answerBlocks.flatMap(block => block.kind === 'text' ? [block.text] : []).join('\n\n'), [answerBlocks]);
   const terminal = terminalLabel(boundary.reason);
-  const showTerminal = terminal && boundary.reason !== 'error' && boundary.reason !== 'max-tokens';
+  const stopped = closed && boundary.reason !== 'completed';
   return <RevealLedgerContext.Provider value={revealLedger}><section className={css.turn} data-reader-turn={group.turn ?? 'unresolved'} data-reader-turn-state={boundary.status} data-reader-turn-result={boundary.reason ?? undefined}>
     {preambleKeys.map(key => <BlockBoundary key={key}><PromptPreamble useSession={props.useSession} nodeKey={key} /></BlockBoundary>)}
     {leading.opening && <BlockBoundary><Opening {...shared} useSession={props.useSession} nodeKey={leading.opening} /></BlockBoundary>}
-    {layout.panel.length > 0 && <BlockBoundary><ProcessPanel panelKey={group.key} status={status} statusLabel={label} elapsed={elapsed} counts={counts}
-      items={layout.panel} open={open} onOpenChange={setOpen} earlierOpen={earlierOpen} onEarlierOpen={openEarlier}
-      motion={motion} get={get} turnClosed={closed} onRead={pinPanel} renderItem={renderItem} renderThought={renderThought} opened={opened} /></BlockBoundary>}
-    {layout.panel.length === 0 && boundary.status === 'open' && <div className={css.statusOnly} data-reader-status-only>
-      <StatusText text={label} motion={motion} shimmer={status === 'running'} />
+    {entries.length > 0 && <div className={css.flow} data-reader-flow data-reader-process-key={group.key}>
+      {entries.filter(entry => entry.key !== liveKey).map(renderEntry)}
     </div>}
     {layout.media.length > 0 && <BlockBoundary><ToolImages {...shared} entries={layout.media} /></BlockBoundary>}
     {layout.outputs.map(key => <BlockBoundary key={key}><CommandOutput {...shared} useSession={props.useSession} nodeKey={key} /></BlockBoundary>)}
@@ -209,7 +200,10 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, select
         pinned={pinnedKeys.includes(segment.nodeKey)} fileMentions={index === layout.answer.length - 1 ? mentions : undefined} />
     </BlockBoundary>)}
     {layout.notices.map(key => <BlockBoundary key={key}><TurnNotice useSession={props.useSession} nodeKey={key} /></BlockBoundary>)}
-    {showTerminal && <p className={css.terminal} data-reader-terminal>{terminal}</p>}
+    {open && <StatusLine phase={status === 'waiting' ? 'waiting' : 'running'} label={status === 'waiting' ? '等待你的操作' : runningLabel(turn, group.keys, get)}
+      elapsed={elapsedLabel(turn, now, status)} thinking={thinking} motion={motion} />}
+    {live && <BlockBoundary><LiveSegment {...shared} useSession={props.useSession} nodeKey={live.item.nodeKey} start={live.item.start} pinned={flowPinned} follow={boundary.latestStep === liveData?.step} /></BlockBoundary>}
+    {stopped && <StatusLine phase={status === 'interrupted' ? 'interrupted' : 'error'} label={terminal ?? statusLabel(status, boundary.reason, '')} elapsed={elapsedLabel(turn, now, status)} thinking={null} motion={motion} />}
     {closed && <BlockBoundary><TurnFooter turn={turn} answerText={answerText} /></BlockBoundary>}
     {flowTail}
   </section></RevealLedgerContext.Provider>;

@@ -27,7 +27,7 @@ const ICONS: Record<ToolCategory, typeof IconSparkleRegular> = {
   other: IconSparkleRegular,
 };
 
-/** Compact duration text; still read by ClusterRow until its rewrite. */
+/** Compact duration text. */
 export function formatDuration(ms: number): string {
   return ms < 1000 ? `${Math.round(ms)} 毫秒` : `${(ms / 1000).toFixed(ms < 10000 ? 1 : 0)} 秒`;
 }

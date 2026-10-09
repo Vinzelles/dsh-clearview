@@ -21,7 +21,7 @@ export function useMotionAllowed(enabled: boolean): boolean {
   return enabled && !reduced;
 }
 
-export function usePinnedSelection(root: RefObject<HTMLElement>, selector = '[data-reader-answer], [data-reader-process]'): readonly string[] {
+export function usePinnedSelection(root: RefObject<HTMLElement>, selector = '[data-reader-answer], [data-reader-flow]'): readonly string[] {
   const [keys, setKeys] = useState<readonly string[]>([]);
   useEffect(() => {
     const update = () => {

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ensureClaudeFonts } from './cc-fonts.js';
 import { cssEscape } from './css-escape.js';
 import { FileChangesPanel } from './FileChanges.js';
-import { FloatingStatus } from './FloatingStatus.js';
+import { JumpButton } from './JumpButton.js';
 import { viewRequestAction } from './view-request.js';
 import { TurnSection } from './TurnSection.js';
 import { useTurnActivity } from './use-turn-activity.js';
@@ -36,7 +36,6 @@ export function Reader(rawProps: ReaderProps) {
   const hasMore = useSessionSelector(props.useSession, snapshot => snapshot.hasMore);
   const loadingOlder = useSessionSelector(props.useSession, snapshot => snapshot.loadingOlder);
   const motionPreference = props.useStore(state => state.motion);
-  const collapseThinking = props.useStore(state => state.collapseThinking ?? false);
   const motion = useMotionAllowed(motionPreference);
   const activity = useTurnActivity(props.useSession);
   // 阅读流空闲判定（文件改动展示区的可见条件之一）：无开放轮次活动、无待处理交互、窗口已加载。
@@ -92,7 +91,6 @@ export function Reader(rawProps: ReaderProps) {
     previousLatestUserKey.current = latest;
   }, [latestUserKey]);
   const pinnedKeys = usePinnedSelection(root);
-  const selectedProcessKeys = usePinnedSelection(root, '[data-reader-process]');
   const [historyError, setHistoryError] = useState(false);
   // 「本会话文件改动」作为最后一个轮次的收尾插槽（见 groups.map）。
   const fileChanges = useMemo(() => (
@@ -115,8 +113,6 @@ export function Reader(rawProps: ReaderProps) {
     <div ref={root} className={css.root} data-dsh-clearview={READER_VERSION} data-motion={motion ? 'on' : 'off'}>
       <div className={css.column}>
         <div className={css.toolbar} data-ud-check="reader-toolbar">
-          <Switch label={`折叠思考${collapseThinking ? '开' : '关'}`} checked={collapseThinking} onChange={() => props.actions.setCollapseThinking(!collapseThinking)}
-            title="开启后，进行中的思考也只显示一行；已完成的思考始终是一行，点击查看全文。" />
           <Switch label={`动效${motionPreference ? '开' : '关'}`} checked={motionPreference} onChange={() => props.actions.setMotion(!motionPreference)}
             title="新到文字柔和显现，过程平滑展开；关闭后立即完整显示，自动遵循系统减少动态效果设置。" />
         </div>
@@ -127,14 +123,14 @@ export function Reader(rawProps: ReaderProps) {
         {historyError && <div className={css.notice}>历史记录加载失败，可再次尝试；现有内容未改变。</div>}
         {openError && <div className={css.error} role="alert">会话暂时无法读取：{openError.message}</div>}
         {loading && groups.length === 0 && <p className={css.empty} role="status">正在读取会话…</p>}
-        {groups.map((group, index) => <TurnSection key={group.key} {...props} group={group} pinnedKeys={pinnedKeys} selectedProcessKeys={selectedProcessKeys}
+        {groups.map((group, index) => <TurnSection key={group.key} {...props} group={group} pinnedKeys={pinnedKeys}
           rewindHidden={rewindHidden} rewindSpans={rewindSpans} flowTail={index === groups.length - 1 ? fileChanges : undefined} />)}
         {pending.length > 0 && <MountFade mounted={pending.length > 0} motion={motion}>{({ entering }) =>
           <div className={`${css.attention} ${entering ? css.isEntering : css.isIn}`} role="alert" data-reader-attention>
             <strong>{pending.some(item => item.kind === 'question') ? '需要你回答一个问题' : '需要你的确认'}</strong>
             <span>请在下方原生操作区处理。此提示不会收进执行过程。</span>
           </div>}</MountFade>}
-        <FloatingStatus activity={activity} detached={scroll.detached} onJump={scroll.jump} motion={motion} />
+        <JumpButton detached={scroll.detached} onJump={scroll.jump} motion={motion} />
       </div>
     </div>
   </ReaderActionsContext.Provider></StreamMotionContext.Provider>;

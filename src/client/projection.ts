@@ -32,15 +32,6 @@ export function boundaryOf(turn: TurnLocation | undefined): TurnBoundary {
   };
 }
 
-export function processExpanded(choice: boolean | undefined, boundary: TurnBoundary): boolean {
-  return choice ?? !(boundary.status === 'closed' && boundary.reason === 'completed');
-}
-
-/** Reading while running must not pin the process open after completion. */
-export function processChoiceKey(groupKey: string, boundary: TurnBoundary): string {
-  return `${groupKey}:${boundary.status}:${boundary.reason ?? 'pending'}`;
-}
-
 export function hasVisibleBody(blocks: readonly AssistantBlock[]): boolean {
   return blocks.some(block => block.kind === 'image' || block.kind === 'other' || (block.kind === 'text' && block.text.trim() !== ''));
 }

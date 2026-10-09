@@ -111,9 +111,9 @@ async function reader() {
     const chat = store(makeData(), true);
     const sess = store({ running: true, queue: [], pendingSubmissions: [], openState: 'loaded', hasMore: false, loadingOlder: false, openError: null });
     const pend = store(new Map(), true);
-    const prefs = store({ motion: true, collapseThinking: false, expanded: {} });
+    const prefs = store({ motion: true, expanded: {} });
     const sessions = store({ byId: { fixture: { cwd: 'C:/synthetic' } }, jobsBySession: {} });
-    const actions = { setExpanded: (key: string, value: boolean) => prefs.set({ ...prefs.get(), expanded: { ...prefs.get().expanded, [key]: value } }), setMotion: (motion: boolean) => prefs.set({ ...prefs.get(), motion }), setCollapseThinking: (collapseThinking: boolean) => prefs.set({ ...prefs.get(), collapseThinking }) };
+    const actions = { setExpanded: (key: string, value: boolean) => prefs.set({ ...prefs.get(), expanded: { ...prefs.get().expanded, [key]: value } }), setMotion: (motion: boolean) => prefs.set({ ...prefs.get(), motion }) };
     let historyBlockRenders = 0;
     const renderSlotChain = (_name: any, owner: any, options: any) => { if (owner.block.text?.startsWith('已检查实现'))
         historyBlockRenders++; return options.fallback; };

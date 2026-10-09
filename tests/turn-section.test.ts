@@ -9,17 +9,17 @@ import { TurnSection } from '../src/client/TurnSection.tsx';
 import { assistantNode, chatNode, chatOf, reasoning, settledTool, text, toolCall, turnLocation } from './support/chat-fixture.ts';
 import { sessionHook } from './support/session.ts';
 
-function renderTurn(nodes: ReturnType<typeof chatNode>[], turn: ReturnType<typeof turnLocation> | undefined, options: { selected?: string[]; expanded?: Record<string, boolean>; groupTurn?: number | null; actions?: Partial<ReaderActions>; pending?: unknown } = {}) {
+function renderTurn(nodes: ReturnType<typeof chatNode>[], turn: ReturnType<typeof turnLocation> | undefined, options: { expanded?: Record<string, boolean>; groupTurn?: number | null; actions?: Partial<ReaderActions>; pending?: unknown } = {}) {
   const chat = chatOf(nodes, turn ? [turn] : []);
   const group = { key: 'turn:1', turn: options.groupTurn === undefined ? 1 : options.groupTurn, keys: nodes.map(node => node.key) };
   const props = {
     useSession: sessionHook(chat, {}, options.pending),
-    useStore: (selector: (state: unknown) => unknown) => selector({ expanded: options.expanded ?? {}, motion: true, collapseThinking: true }),
-    actions: { setExpanded: () => {}, setMotion: () => {}, setCollapseThinking: () => {} },
+    useStore: (selector: (state: unknown) => unknown) => selector({ expanded: options.expanded ?? {}, motion: true }),
+    actions: { setExpanded: () => {}, setMotion: () => {} },
     renderSlotChain: (_n: string, _o: unknown, value: { fallback: unknown }) => value.fallback,
     loadImage: async () => 'blob:x',
     contextT: (key: string) => key,
-    group, pinnedKeys: [], selectedProcessKeys: options.selected ?? [], rewindHidden: new Set(), rewindSpans: [],
+    group, pinnedKeys: [], rewindHidden: new Set(), rewindSpans: [],
   };
   const original = console.error;
   console.error = (...args: unknown[]) => { if (!String(args[0]).includes('useLayoutEffect')) original(...args); };
@@ -37,52 +37,67 @@ function completedTurn() {
   return { turn, nodes: [user, first, tool, second], second };
 }
 
-test('a completed turn collapses its process and keeps the answer in place', () => {
+test('a completed turn keeps its narration, groups operations into one line and shows the answer', () => {
   const { turn, nodes, second } = completedTurn();
   const html = renderTurn(nodes, turn);
   assert.match(html, /data-reader-turn="1" data-reader-turn-state="closed" data-reader-turn-result="completed"/);
-  assert.match(html, /data-reader-disclosure="true" data-expanded="false"/);
-  assert.match(html, /已完成[\s\S]*用时 16 分 39 秒/);
+  assert.match(html, /我先检查一下。/);
+  assert.match(html, /data-reader-flow/);
   assert.match(html, new RegExp(`<article[^>]*data-reader-answer="true"[^>]*data-reader-key="${second.key}"`));
-  assert.doesNotMatch(html, /我先检查一下/);
+  for (const retired of ['data-reader-panel', 'data-reader-process=', 'data-reader-earlier', 'data-reader-cluster', '前 \d+ 步', '次工具', '毫秒']) {
+    assert.doesNotMatch(html, new RegExp(retired), retired);
+  }
+  assert.doesNotMatch(html, /data-reader-status-line/);
 });
 
-test('a live text selection inside the panel keeps a completed turn open', () => {
-  const { turn, nodes } = completedTurn();
-  const html = renderTurn(nodes, turn, { selected: ['turn:1'] });
-  assert.match(html, /data-expanded="true"/);
-  assert.match(html, /我先检查一下/);
-});
-
-test('a running turn stays open and names its current activity', () => {
+test('an open turn ends with the status line and renders live thinking exactly once, below it', () => {
   const turn = turnLocation({ status: 'open', start: 0, steps: [1] });
-  const user = chatNode('user', { content: [{ type: 'text', text: '修构建' }] }, turn);
-  const live = assistantNode(turn, 1, [reasoning('构建报错是因为')], 'running');
-  const html = renderTurn([user, live], turn);
-  assert.match(html, /data-status="running"/);
-  assert.match(html, /data-expanded="true"/);
-  assert.match(html, /正在思考/);
+  const user = chatNode('user', { content: [{ type: 'text', text: '继续' }] }, turn);
+  const step = assistantNode(turn, 1, [text('先看一下。'), reasoning('But the 围脊 boxes')], 'running');
+  const html = renderTurn([user, step], turn);
+  assert.equal(html.match(/data-reader-live-thought/g)?.length, 1);
+  assert.equal(html.match(/But the 围脊 boxes/g)?.length, 1);
+  assert.match(html, /data-reader-status-line[^>]*data-phase="running"[\s\S]*data-reader-live-thought/);
+  assert.match(html, /思考中…/);
 });
 
-test('a window that starts mid-turn stays open and neutral', () => {
-  const turn = turnLocation({ status: 'unknown', steps: [4] });
-  const node = assistantNode(turn, 4, [reasoning('继续'), text('部分说明'), toolCall('c9', 'read')]);
-  const tool = chatNode('tool-call', { root: settledTool('c9', 'read', { path: 'a.ts' }) }, turn, 4);
-  const html = renderTurn([node, tool], turn);
-  assert.match(html, /data-status="unknown"/);
-  assert.match(html, /data-expanded="true"/);
-  assert.match(html, /执行过程/);
+test('an interrupted turn shows a red status line and keeps everything', () => {
+  const turn = turnLocation({ status: 'closed', reason: 'interrupted', start: 0, end: 5_000, steps: [1], closingStep: null });
+  const step = assistantNode(turn, 1, [text('写到一半'), toolCall('c1', 'bash', { command: 'ls' })], 'interrupted');
+  const html = renderTurn([chatNode('user', { content: [{ type: 'text', text: 'x' }] }, turn), step], turn);
+  assert.match(html, /data-reader-status-line[^>]*data-phase="interrupted"/);
+  assert.match(html, /写到一半/);
 });
 
-test('a turn interrupted on a tool has no answer and stays open', () => {
-  const turn = turnLocation({ status: 'closed', reason: 'aborted', steps: [1] });
-  const user = chatNode('user', { content: [{ type: 'text', text: '写文件' }] }, turn);
-  const only = assistantNode(turn, 1, [text('准备写入'), toolCall('c1', 'write', { path: 'a.ts' })], 'interrupted');
-  const started = chatNode('tool-call', { root: { callId: 'c1', name: 'write', phase: 'start', argsRaw: '{"path":"a.ts"}', turn: 1, step: 1, time: 0, subCalls: [] } }, turn, 1);
-  const html = renderTurn([user, only, started], turn);
-  assert.match(html, /data-status="interrupted"/);
-  assert.match(html, /data-expanded="true"/);
-  assert.doesNotMatch(html, /data-reader-answer/);
+test('a long turn keeps every narration paragraph', () => {
+  const turn = turnLocation({ status: 'closed', reason: 'completed', start: 0, end: 9_000, steps: [1, 2, 3, 4, 5, 6], closingStep: 6 });
+  const nodes = [chatNode('user', { content: [{ type: 'text', text: 'go' }] }, turn)];
+  for (let step = 1; step <= 5; step++) {
+    nodes.push(assistantNode(turn, step, [text(`第 ${step} 段说明`), toolCall(`a${step}`, 'bash', { command: 'ls' }), toolCall(`b${step}`, 'read', { path: 'x' })]));
+    nodes.push(chatNode('tool-call', { root: settledTool(`a${step}`, 'bash', { command: 'ls' }) }, turn, step));
+    nodes.push(chatNode('tool-call', { root: settledTool(`b${step}`, 'read', { path: 'x' }) }, turn, step));
+  }
+  nodes.push(assistantNode(turn, 6, [text('最终回答')]));
+  const html = renderTurn(nodes, turn);
+  for (let step = 1; step <= 5; step++) assert.match(html, new RegExp(`第 ${step} 段说明`));
+  assert.equal(html.match(/data-reader-group=/g)?.length, 5);
+});
+
+test('a turn waiting on the user says so in the status line', () => {
+  const turn = turnLocation({ status: 'open', start: 0, steps: [1] });
+  const user = chatNode('user', { content: [{ type: 'text', text: '改文件' }] }, turn);
+  const step = assistantNode(turn, 1, [text('需要确认'), toolCall('c1', 'write', { path: 'a.ts' })], 'running');
+  const html = renderTurn([user, step], turn, { pending: { kind: 'question' } });
+  assert.match(html, /data-reader-status-line[^>]*data-phase="waiting"/);
+  assert.match(html, /等待你的操作/);
+});
+
+test('an errored turn shows a red status line', () => {
+  const turn = turnLocation({ status: 'closed', reason: 'error', steps: [1] });
+  const step = assistantNode(turn, 1, [text('先试试'), toolCall('c1', 'bash', { command: 'ls' })]);
+  const tool = chatNode('tool-call', { root: settledTool('c1', 'bash', { command: 'ls' }) }, turn, 1);
+  const html = renderTurn([chatNode('user', { content: [{ type: 'text', text: '跑一下' }] }, turn), step, tool], turn);
+  assert.match(html, /data-reader-status-line[^>]*data-phase="error"/);
 });
 
 test('a scheduled trigger opens its turn without a generic card', () => {
@@ -95,7 +110,7 @@ test('a scheduled trigger opens its turn without a generic card', () => {
   assert.match(html, /一切正常/);
 });
 
-test('a steering input admitted mid-turn keeps its rewind seat inside the panel', () => {
+test('a steering input admitted mid-turn keeps its rewind seat inside the flow', () => {
   const turn = turnLocation({ status: 'open', start: 0, steps: [1, 2] });
   const user = chatNode('user', { content: [{ type: 'text', text: '开始' }] }, turn);
   const first = assistantNode(turn, 1, [reasoning('先做第一步')]);
@@ -103,10 +118,10 @@ test('a steering input admitted mid-turn keeps its rewind seat inside the panel'
   const second = assistantNode(turn, 2, [reasoning('好的，换思路')], 'running');
   const html = renderTurn([user, first, steering, second], turn);
   assert.match(html, new RegExp(`<div[^>]*data-reader-input="steering"[^>]*data-reader-anchor="true"[^>]*data-reader-key="${steering.key}"[^>]*><p[^>]*>补充消息</p>`));
-  assert.match(html, /data-reader-process="true"[\s\S]*data-reader-input="steering"/);
+  assert.match(html, /data-reader-flow[\s\S]*data-reader-input="steering"/);
 });
 
-test('tool images render below the panel, ahead of the answer', () => {
+test('tool images render below the flow, ahead of the answer', () => {
   const turn = turnLocation({ status: 'closed', reason: 'completed', start: 0, end: 5_000, steps: [1, 2], closingStep: 2 });
   const user = chatNode('user', { content: [{ type: 'text', text: '截图' }] }, turn);
   const first = assistantNode(turn, 1, [toolCall('c1', 'bash', { command: 'shot' })]);
@@ -115,7 +130,7 @@ test('tool images render below the panel, ahead of the answer', () => {
   const second = assistantNode(turn, 2, [text('完成')]);
   const html = renderTurn([user, first, tool, second], turn);
   const media = html.indexOf('data-reader-tool-media');
-  assert.ok(media > html.indexOf('data-reader-panel'), 'media follows the panel');
+  assert.ok(media > html.indexOf('data-reader-flow'), 'media follows the flow');
   assert.ok(media < html.indexOf('data-reader-answer'), 'media precedes the answer');
 });
 
@@ -127,39 +142,12 @@ test('closing-reply file mentions are resolved once per turn and closing seq', (
   assert.equal(calls[0]![1], 900);
 });
 
-const EXPANDED = /data-reader-disclosure="true" data-expanded="true"/;
-const COLLAPSED = /data-reader-disclosure="true" data-expanded="false"/;
-
-test('an errored turn keeps its panel expanded', () => {
-  const turn = turnLocation({ status: 'closed', reason: 'error', steps: [1] });
-  const user = chatNode('user', { content: [{ type: 'text', text: '跑一下' }] }, turn);
-  const step = assistantNode(turn, 1, [reasoning('先试试'), toolCall('c1', 'bash', { command: 'ls' })]);
-  const tool = chatNode('tool-call', { root: settledTool('c1', 'bash', { command: 'ls' }) }, turn, 1);
-  const html = renderTurn([user, step, tool], turn);
-  assert.match(html, /data-reader-panel="true" data-status="error"/);
-  assert.match(html, EXPANDED);
-  assert.doesNotMatch(html, COLLAPSED);
-});
-
-test('a turn waiting on the user keeps its panel expanded', () => {
-  const turn = turnLocation({ status: 'open', start: 0, steps: [1] });
-  const user = chatNode('user', { content: [{ type: 'text', text: '改文件' }] }, turn);
-  const step = assistantNode(turn, 1, [reasoning('需要确认'), toolCall('c1', 'write', { path: 'a.ts' })], 'running');
-  const html = renderTurn([user, step], turn, { pending: { kind: 'question' } });
-  assert.match(html, /data-reader-panel="true" data-status="waiting"/);
-  assert.match(html, /等待你的操作/);
-  assert.match(html, EXPANDED);
-  assert.doesNotMatch(html, COLLAPSED);
-});
-
-test('a successful command output reads beside the answer while the panel stays collapsed', () => {
+test('a successful command output reads beside the answer', () => {
   const turn = turnLocation({ status: 'closed', reason: 'completed', start: 0, end: 5_000, steps: [1], closingStep: 1 });
   const user = chatNode('user', { content: [{ type: 'text', text: '/status' }] }, turn);
   const command = chatNode('command', { name: 'status', outcome: { kind: 'success', text: '## 命令输出结果' } }, turn, 1);
   const answer = assistantNode(turn, 1, [text('已处理')]);
   const html = renderTurn([user, command, answer], turn);
-  assert.match(html, COLLAPSED);
-  assert.doesNotMatch(html, /data-reader-process=/);
   assert.match(html, /data-reader-command-output="true"[^>]*>[\s\S]*命令输出结果/);
 });
 
@@ -174,64 +162,18 @@ test('a failed command keeps its text out of the answer zone', () => {
 
 test('the opening is the first user input even when a context record precedes it', () => {
   const { turn, nodes } = completedTurn();
-  const context = chatNode('context', { content: [] }, turn);
+  const context = chatNode('context', { content: [], form: null, source: null, producer: { role: 'injection', name: 'x' } }, turn);
   const user = nodes[0]!;
   const html = renderTurn([context, ...nodes], turn);
   const seat = html.indexOf(`data-reader-anchor="true" data-reader-key="${user.key}"`);
   assert.ok(seat >= 0, 'user bubble is rendered');
-  assert.ok(seat < html.indexOf('data-reader-panel'), 'user bubble sits above the panel');
+  assert.ok(seat < html.indexOf('data-reader-flow'), 'user bubble sits above the flow');
   assert.doesNotMatch(html, /data-reader-input=/);
 });
 
-test('an opened earlier range stays open for the whole turn, whatever its status', () => {
-  const turn = turnLocation({ status: 'closed', reason: 'aborted', steps: [1, 2] });
-  const user = chatNode('user', { content: [{ type: 'text', text: '连续做' }] }, turn);
-  const first = assistantNode(turn, 1, [reasoning('第一步想法'), toolCall('c1', 'bash', { command: 'ls' })]);
-  const firstTool = chatNode('tool-call', { root: settledTool('c1', 'bash', { command: 'ls' }) }, turn, 1);
-  const second = assistantNode(turn, 2, [reasoning('第二步想法'), toolCall('c2', 'bash', { command: 'pwd' })], 'interrupted');
-  const secondTool = chatNode('tool-call', { root: settledTool('c2', 'bash', { command: 'pwd' }) }, turn, 2);
-  const nodes = [user, first, firstTool, second, secondTool];
-  assert.match(renderTurn(nodes, turn), /data-reader-earlier/);
-  const opened = renderTurn(nodes, turn, { expanded: { 'turn:1:earlier': true } });
-  assert.doesNotMatch(opened, /data-reader-earlier/);
-  // Each thought merges with the one settled tool call after it, so both steps are present as thought rows.
-  assert.equal(opened.match(/data-reader-reasoning-row/g)?.length, 2);
-  assert.equal(opened.match(/class="suffix">运行</g)?.length, 2);
-  assert.doesNotMatch(opened, /步骤 \d|data-reader-step/);
-});
-
-test('consecutive tool calls of an interrupted turn cluster into one collapsed row; a failure opens it', () => {
-  const turn = turnLocation({ status: 'closed', reason: 'aborted', steps: [1] });
-  const user = chatNode('user', { content: [{ type: 'text', text: '连续做' }] }, turn);
-  const step = assistantNode(turn, 1, [toolCall('c1', 'bash', { command: 'ls' }), toolCall('c2', 'read', { path: 'a.ts' })], 'interrupted');
-  const first = chatNode('tool-call', { root: settledTool('c1', 'bash', { command: 'ls' }) }, turn, 1);
-  const second = chatNode('tool-call', { root: settledTool('c2', 'read', { path: 'a.ts' }) }, turn, 1);
-  const html = renderTurn([user, step, first, second], turn);
-  assert.match(html, /data-reader-cluster="cluster:reader-tool:c1"[^>]*data-cluster-state="idle"/);
-  assert.match(html, /运行了 1 条命令，进行了 2 次工具调用，执行了 1 个操作/);
-  assert.doesNotMatch(html, /data-reader-tool-call=/);
-  const failing = chatNode('tool-call', { root: settledTool('c2', 'read', { path: 'a.ts' }, { isError: true }) }, turn, 1);
-  const opened = renderTurn([user, step, first, failing], turn);
-  assert.match(opened, /data-cluster-state="failed"/);
-  assert.match(opened, /data-reader-tool-call="c1"[\s\S]*data-reader-tool-call="c2"/);
-});
-
-test('a thought followed by one settled tool call is one row in a real turn; the tool row appears only when opened', () => {
-  const turn = turnLocation({ status: 'closed', reason: 'aborted', steps: [1] });
-  const user = chatNode('user', { content: [{ type: 'text', text: '看一下' }] }, turn);
-  const step = assistantNode(turn, 1, [reasoning('先看工作区。'), toolCall('c1', 'bash', { command: 'ls' })], 'interrupted');
-  const tool = chatNode('tool-call', { root: settledTool('c1', 'bash', { command: 'ls' }) }, turn, 1);
-  const html = renderTurn([user, step, tool], turn);
-  assert.match(html, /data-reader-reasoning-row/);
-  assert.match(html, /class="suffix">运行</);
-  assert.doesNotMatch(html, /data-reader-tool-call=/);
-  assert.match(html, /aria-expanded="false"/);
-});
-
-test('the process panel and the footer each sit inside their own BlockBoundary, never around the section', () => {
+test('the footer and every flow row sit inside their own BlockBoundary, never around the section', () => {
   // Server rendering has no error boundaries, so the isolation is pinned on the source shape.
   const source = readFileSync(new URL('../src/client/TurnSection.tsx', import.meta.url), 'utf8');
-  assert.match(source, /<BlockBoundary><ProcessPanel [\s\S]*?<\/BlockBoundary>/);
   assert.match(source, /<BlockBoundary><TurnFooter [^>]*\/><\/BlockBoundary>/);
   assert.doesNotMatch(source, /<BlockBoundary>\s*<section/);
   assert.match(source, /<section className=\{css\.turn\} data-reader-turn=/);

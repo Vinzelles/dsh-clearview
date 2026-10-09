@@ -1,5 +1,6 @@
-import type { ChatConversationViewNode } from '@deepseek-ai/dsh-client-ui-chat/client';
+import type { AssistantChatData, ChatConversationViewNode } from '@deepseek-ai/dsh-client-ui-chat/client';
 import type { PanelItem, ReasoningItem } from './process-steps.js';
+import { assistantSegments } from './projection.js';
 import { activityPhase, activitySummary, objectValue } from './tool-activity.js';
 
 type Getter = (key: string) => ChatConversationViewNode | undefined;
@@ -127,4 +128,15 @@ export function buildTranscript(items: readonly PanelItem[], get: Getter, turnCl
   }
   flush();
   return entries;
+}
+
+/** The trailing thought of an open turn while its step is still streaming reasoning; it renders under the status line. */
+export function liveThoughtKey(entries: readonly TranscriptEntry[], get: Getter, open: boolean): string | null {
+  const last = entries.at(-1);
+  if (!open || last?.kind !== 'thought') return null;
+  const node = get(last.item.nodeKey);
+  if (node?.kind !== 'assistant-step') return null;
+  const data = node.data as AssistantChatData;
+  if (data.status !== 'running' || data.blocks.at(-1)?.kind !== 'reasoning') return null;
+  return assistantSegments(data.blocks).at(-1)?.start === last.item.start ? last.key : null;
 }

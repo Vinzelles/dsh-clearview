@@ -1,22 +1,6 @@
-.turn { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.turn + .turn { margin-top: 20px; }
-.statusOnly { display: flex; align-items: center; min-height: var(--cv-row-height); color: var(--dsw-alias-label-secondary); font-size: var(--cv-font-secondary); }
-/* Panel narration reads like the process rows: 13px (host secondary size) on the 21px process line, in the same tertiary
-   colour as the thought text. The Markdown root sets its own font and primary colour, so inheriting from .narration is
-   not enough: the root is overridden, and block spacing is scaled down to match. */
-.narration { min-width: 0; margin: 2px 0 6px; color: var(--dsw-alias-label-tertiary); font-size: var(--cv-font-secondary); line-height: 21px; overflow-wrap: anywhere; }
-.narration [data-reader-text] > * { color: var(--dsw-alias-label-tertiary); font-size: var(--cv-font-secondary); line-height: 21px; }
-.narration [data-reader-text] :not(pre) > code { color: var(--dsw-alias-label-secondary); }
-.narration [data-reader-text] a > code { color: inherit; }
-.narration [data-reader-text] :where(p, ul, ol, blockquote) { margin: 8px 0; }
-/* The Markdown paragraph, list and heading rules set their own line height (the host theme's 1.75-style ratio gave 23px at 13px), so the process line goes on the blocks themselves, not just the root. */
-.narration [data-reader-text] :where(p, li, blockquote, h1, h2, h3, h4, h5, h6) { line-height: 21px; }
-.narration [data-reader-text] :where(h1, h2, h3, h4, h5, h6) { margin: 10px 0 4px; font-size: var(--cv-font-secondary); font-weight: 600; }
-.narration [data-reader-text] li > :where(ul, ol) { margin-top: 4px; }
-.narration [data-reader-text] li::marker { line-height: 21px; }
+.turn { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.flow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.input { margin: 6px 0; min-width: 0; }
+.prose { margin: 8px 0; min-width: 0; color: var(--cc-text-100); font-family: var(--cc-font-response); font-size: var(--cc-size-body); line-height: 1.6; overflow-wrap: anywhere; }
 .output { min-width: 0; overflow-wrap: anywhere; }
-.answer { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
-[data-reader-panel] + .answer { margin-top: 4px; }
-.stopped { align-self: flex-start; margin-top: 8px; padding: 1px 8px; border-radius: 999px; corner-shape: round; background: var(--dsw-alias-bg-module-platform); color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; font-weight: 500; }
-.terminal { margin: 0; color: var(--dsw-alias-label-caption); font-size: 12px; line-height: 18px; }
-@media (max-width: 600px) { .turn + .turn { margin-top: 16px; } }
+.stopped { color: var(--cc-text-500); font-size: var(--cc-size-small); }

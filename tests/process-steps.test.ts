@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { boundaryOf } from '../src/client/projection.ts';
 import {
-  categorySummary, elapsedLabel, groupSteps, layoutTurn, panelCounts, panelStatus, runningLabel, statusLabel, type PanelItem,
+  elapsedLabel, layoutTurn, panelStatus, runningLabel, statusLabel, type PanelItem,
 } from '../src/client/process-steps.ts';
 import { assistantNode, chatNode, nodeEntry, reasoning, settledTool, text, toolCall, toolEntry, turnLocation } from './support/chat-fixture.ts';
 
@@ -74,48 +74,6 @@ function think(step: number): PanelItem {
   return { kind: 'reasoning', key: `r:${step}`, nodeKey: `n:${step}`, start: 0, step };
 }
 
-test('without condensing every item stays visible, in time order, with no step grouping artefacts', () => {
-  const items = [think(1), tool('a', 1), tool('b', 2), tool('c', 3), tool('d', 4), think(5), tool('e', 5)];
-  const layout = groupSteps(items, { condense: false });
-  assert.equal(layout.earlier, null);
-  assert.deepEqual(layout.visible.map(item => item.key), items.map(item => item.key));
-  assert.ok(!('groups' in layout));
-});
-
-test('condensing keeps only the latest step group and summarizes the rest', () => {
-  const items = [think(1), tool('a', 1, 'read'), tool('b', 1, 'read'), think(2), tool('c', 2, 'bash'), think(3), tool('d', 3, 'write')];
-  const layout = groupSteps(items, { condense: true });
-  assert.deepEqual(layout.visible.map(item => item.key), ['r:3', 'reader-tool:d']);
-  assert.deepEqual(layout.earlier, { steps: 2, summary: '读取 2 个文件 · 运行 1 条命令' });
-  assert.equal(groupSteps(items.slice(0, 3), { condense: true }).earlier, null);
-});
-
-test('items without a step join the nearest step instead of creating their own group', () => {
-  const record: PanelItem = { kind: 'record', key: 'ctx', nodeKey: 'ctx', step: null };
-  const layout = groupSteps([record, think(1), tool('a', 1)], { condense: true });
-  assert.equal(layout.earlier, null);
-  assert.equal(layout.visible.length, 3);
-});
-
-test('category summary uses a fixed order and the first three non-zero counts', () => {
-  const items = [tool('a', 1, 'web_search'), tool('b', 1, 'grep'), tool('c', 1, 'write'), tool('d', 1, 'bash'), tool('e', 1, 'read'), tool('f', 1, 'skill')];
-  assert.equal(categorySummary(items), '读取 1 个文件 · 运行 1 条命令 · 写入 1 个文件');
-  assert.equal(categorySummary([think(1)]), '');
-});
-
-test('panel counts distinct steps, tools and failures', () => {
-  const turn = turnLocation({ steps: [1, 2] });
-  const failedCommand = chatNode('command', { outcome: { kind: 'error' } }, turn, 2);
-  const items: PanelItem[] = [
-    think(1),
-    { kind: 'tool', key: 't1', entry: toolEntry('t1', 1, settledTool('t1', 'bash', {}, { isError: true })), step: 1 },
-    { kind: 'tool', key: 't2', entry: toolEntry('t2', 2, settledTool('t2', 'read', {})), step: 2 },
-    { kind: 'record', key: failedCommand.key, nodeKey: failedCommand.key, step: 2 },
-    { kind: 'input', key: 'in', nodeKey: 'in', step: 3 },
-  ];
-  assert.deepEqual(panelCounts(items, getter(failedCommand), true), { steps: 2, tools: 2, failed: 2 });
-});
-
 test('panel status follows the turn boundary; an unresolved window stays neutral', () => {
   assert.equal(panelStatus(boundaryOf(turnLocation({ status: 'open' })), 0), 'running');
   assert.equal(panelStatus(boundaryOf(turnLocation({ status: 'open' })), 1), 'waiting');
@@ -147,13 +105,6 @@ test('running label names the current activity', () => {
   assert.equal(runningLabel(thinking, [node.key, waitingTool.key], getter(node, waitingTool)), '正在使用工具');
 });
 
-test('rows with no known step stay visible and never condense', () => {
-  const noStep = (callId: string): PanelItem => ({ kind: 'tool', key: `reader-tool:${callId}`, entry: toolEntry(callId, 0, undefined, toolCall(callId, 'bash')), step: null });
-  const layout = groupSteps([noStep('a'), noStep('b')], { condense: true });
-  assert.equal(layout.visible.length, 2);
-  assert.equal(layout.earlier, null);
-});
-
 test('a mid-turn window with unknown status keeps earlier text as narration and trailing text as the answer', () => {
   const turn = turnLocation({ status: 'unknown', steps: [4, 5] });
   const first = assistantNode(turn, 4, [text('先看一下'), toolCall('c1', 'bash')]);
@@ -168,18 +119,6 @@ test('a mid-turn window with unknown status keeps earlier text as narration and 
 test('panel status is unknown for a turn whose status is unknown', () => {
   assert.equal(panelStatus(boundaryOf(turnLocation({ status: 'unknown' })), 0), 'unknown');
   assert.equal(panelStatus(boundaryOf(turnLocation({ status: 'unknown' })), 2), 'unknown');
-});
-
-test('long runs of tool calls are never folded by the step grouping; clustering owns them', () => {
-  const items = Array.from({ length: 12 }, (_, index) => tool(`t${index + 1}`, 1));
-  assert.deepEqual(groupSteps(items, { condense: false }).visible, items);
-});
-
-test('eight single-tool steps merge into one range, so condensing keeps all of them', () => {
-  const items = Array.from({ length: 8 }, (_, index) => tool(`t${index + 1}`, index + 1));
-  const layout = groupSteps(items, { condense: true });
-  assert.equal(layout.earlier, null);
-  assert.deepEqual(layout.visible, items);
 });
 
 test('a successful command with text is listed as an output; failures and empty results are not', () => {

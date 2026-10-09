@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { PanelItem } from '../src/client/process-steps.ts';
-import { buildTranscript, diffStat, groupSummary, parseTodos, type TranscriptEntry } from '../src/client/transcript-model.ts';
-import { chatNode, settledTool, toolCall, toolEntry, turnLocation } from './support/chat-fixture.ts';
+import { buildTranscript, diffStat, groupSummary, liveThoughtKey, parseTodos, type TranscriptEntry } from '../src/client/transcript-model.ts';
+import { assistantNode, chatNode, reasoning, settledTool, text, toolCall, toolEntry, turnLocation } from './support/chat-fixture.ts';
 
 const turn = turnLocation({ steps: [1] });
 const none = () => undefined;
@@ -82,4 +82,18 @@ test('diffStat trims the common prefix and suffix', () => {
   assert.deepEqual(diffStat(null, 'x\ny'), { added: 2, removed: 0 });
   assert.deepEqual(diffStat('x\ny\nz', 'x\nz'), { added: 0, removed: 1 });
   assert.deepEqual(diffStat('same', 'same'), { added: 0, removed: 0 });
+});
+
+test('liveThoughtKey names the last entry only while it is the trailing reasoning of a running step in an open turn', () => {
+  const open = turnLocation({ status: 'open', steps: [1] });
+  const running = assistantNode(open, 1, [text('说明'), reasoning('想一想')], 'running');
+  const thought = { kind: 'reasoning' as const, key: `${running.key}:1`, nodeKey: running.key, start: 1, step: 1 };
+  const entries = buildTranscript([thought], none, false);
+  const get = (key: string) => key === running.key ? running : undefined;
+  assert.equal(liveThoughtKey(entries, get, true), thought.key);
+  assert.equal(liveThoughtKey(entries, get, false), null, 'closed turn');
+  const settled = assistantNode(open, 1, [text('说明'), reasoning('想一想')], 'settled');
+  assert.equal(liveThoughtKey(entries, key => key === settled.key ? settled : undefined, true), null, 'settled step');
+  assert.equal(liveThoughtKey([...entries, ...buildTranscript([say('b')], none, false)], get, true), null, 'thought not last');
+  assert.equal(liveThoughtKey([], get, true), null);
 });
