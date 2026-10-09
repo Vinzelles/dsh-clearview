@@ -74,7 +74,7 @@ test('every rounded rule sets corner-shape: round beside its token radius', () =
 test('the turn-trigger opening is a 24px row, not a padded card', () => {
   const opening = sheet('Opening');
   const button = /\.triggerButton \{([^}]*)\}/.exec(opening)?.[1] ?? '';
-  assert.match(button, /height: var\(--cv-row-height\)/);
+  assert.match(button, /height: 24px/);
   assert.match(button, /color: var\(--cc-text-300\)/);
   assert.doesNotMatch(button, /padding:\s*10px/);
   assert.doesNotMatch(/\.trigger \{([^}]*)\}/.exec(opening)?.[1] ?? '', /background|box-shadow|border-radius/);
@@ -118,11 +118,7 @@ test('no stylesheet under src/client widens its box with a negative horizontal m
   // Hover bleed past the text is drawn with side box-shadows (ink overflow). A negative side margin or an oversized width makes
   // rows poke out of a narrow column and gives the scroll container a horizontal scrollbar. Allow-list: `<file> <selector>`
   // pairs that are provably unable to widen the scroll area, each with the reason.
-  const allowed = new Map<string, string>([
-    // An inline anchor: its 3px transparent hit-area border is cancelled by the -3px margin, so the box is net zero width and
-    // it sits in text flow that already wraps at the container edge.
-    ['markdown/MarkdownText.module.css .markdown a', 'inline, net-zero width (3px border cancelled by -3px margin)'],
-  ]);
+  const allowed = new Map<string, string>();
   const sources: { name: string; text: string }[] = [];
   for (const entry of readdirSync(CLIENT, { recursive: true }) as string[]) {
     const name = entry.split(String.fromCharCode(92)).join('/');
@@ -154,7 +150,7 @@ test('hover bleed on process rows is drawn with side shadows in the hover colour
   for (const [file, selector] of [['Line', 'button.button'], ['FileChanges', '.header']] as const) {
     const css = sheet(file);
     const hover = new RegExp(String.raw`${selector.replace('.', String.raw`\.`)}:hover[^{]*\{([^}]*)\}`).exec(css)?.[1] ?? '';
-    const colour = file === 'Line' ? '--cc-hover' : '--dsw-alias-interactive-bg-hover';
+    const colour = file === 'Line' ? '--cc-hover' : '--cc-hover';
     assert.ok(hover.includes(`box-shadow: 6px 0 0 var(${colour}), -6px 0 0 var(${colour})`), `${file} ${selector}`);
   }
 });
@@ -200,13 +196,33 @@ test('reader root defines Claude tokens for light and dark', () => {
   assert.match(text, /\.root\s*\{[^}]*background:\s*var\(--cc-bg-100\)/s);
 });
 
-const MIGRATED = new Set(['Reader.module.css', 'Line.module.css', 'ToolRow.module.css', 'ToolDetails.module.css', 'ToolGroupRow.module.css', 'ThoughtRow.module.css', 'LiveThought.module.css', 'RecordRows.module.css', 'UserBubble.module.css', 'PlanCard.module.css', 'StatusLine.module.css', 'Opening.module.css']);
+const stylesheets = (): string[] => {
+  const names: string[] = [];
+  for (const dir of ['', 'markdown/', 'native/']) {
+    for (const file of readdirSync(new URL(dir, CLIENT)).filter(name => name.endsWith('.module.css'))) names.push(dir + file);
+  }
+  return names;
+};
 
 test('only the remap block in Reader.module.css names host colour tokens', () => {
-  const names = readdirSync(CLIENT).filter(name => name.endsWith('.module.css') && MIGRATED.has(name));
+  const names = stylesheets();
+  assert.ok(names.length > 20, 'the scan found the stylesheets');
   for (const name of names) {
     let text = readFileSync(new URL(name, CLIENT), 'utf8');
-    if (name === 'Reader.module.css') text = text.replace(/\/\* host-remap:start[^*]*\*\/[\s\S]*?\/\* host-remap:end \*\//, '');
-    assert.doesNotMatch(text, /var\(--dsw-/, `${name} reads a host colour token`);
+    if (name === 'Reader.module.css') text = text.replace(/\/\* host-remap:start[\s\S]*?\/\* host-remap:end \*\//, '');
+    assert.doesNotMatch(text, /var\(--dsw-/, `${name} reads a host token`);
   }
+});
+
+test('retired --cv-* panel, inset, font and row-height variables are not referenced', () => {
+  for (const name of stylesheets()) {
+    assert.doesNotMatch(readFileSync(new URL(name, CLIENT), 'utf8'), /--cv-(?:panel|inset|font|line-body|row-height)/, name);
+  }
+});
+
+test('answer prose uses the Claude response font and code uses the mono stack', () => {
+  const markdown = readFileSync(new URL('markdown/MarkdownText.module.css', CLIENT), 'utf8');
+  assert.match(markdown, /var\(--cc-font-mono\)/);
+  assert.match(markdown, /var\(--cc-link\)/);
+  assert.match(sheet('TurnSection'), /font-family:\s*var\(--cc-font-response\)/);
 });

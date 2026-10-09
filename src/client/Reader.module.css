@@ -81,8 +81,8 @@
   --cc-success-bg: hsl(127 100% 13.9% / .45);
   --cc-link: hsl(210 65.5% 67.1%);
 }
-.column { display: flex; flex-direction: column; gap: 22px; width: 100%; padding-bottom: 24px; max-width: var(--dsh-chat-content-width, 748px); min-width: 0; margin: 0 auto; }
-.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--cc-text-500); font-size: 12px; line-height: 18px; }
+.column { display: flex; flex-direction: column; gap: 28px; width: 100%; padding-bottom: 24px; max-width: var(--dsh-chat-content-width, 748px); min-width: 0; margin: 0 auto; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--cc-text-500); font-size: var(--cc-size-small); line-height: 18px; }
 .switchButton { display: inline-flex; align-items: center; gap: 8px; padding: 2px 8px; border: 0; border-radius: 8px; corner-shape: round; background: transparent; color: var(--cc-text-500); font: inherit; white-space: nowrap; cursor: pointer; transition: background-color var(--cv-fast) ease, color var(--cv-fast) ease; }
 .switchButton:hover { background: var(--cc-hover); color: var(--cc-text-300); }
 .switchLabel[data-checked=true] { color: var(--cc-text-300); }
@@ -141,22 +141,21 @@
 .processFrame { min-width: 0; }
 .processContents { display: flow-root; min-width: 0; }
 
-.notice { padding: 10px 14px; border-radius: 8px; corner-shape: round; background: var(--cc-bg-200); color: var(--cc-text-300); font-size: var(--cc-size-small); line-height: 21px; overflow-wrap: anywhere; }
-.error { padding: 10px 14px; border-radius: 8px; corner-shape: round; background: color-mix(in srgb, var(--cc-danger) 10%, transparent); color: var(--cc-danger); font-size: var(--cc-size-small); line-height: 21px; overflow-wrap: anywhere; }
+.notice { padding: 10px 14px; border: 1px solid var(--cc-border); border-radius: 10px; corner-shape: round; background: var(--cc-bg-200); color: var(--cc-text-300); font-size: var(--cc-size-small); line-height: 21px; overflow-wrap: anywhere; }
+.error { padding: 10px 14px; border: 1px solid var(--cc-border); border-radius: 10px; corner-shape: round; background: var(--cc-bg-200); color: var(--cc-danger); font-size: var(--cc-size-small); line-height: 21px; overflow-wrap: anywhere; }
 .unknown { padding: 10px 14px; border-radius: 8px; corner-shape: round; background: var(--cc-bg-200); font-size: var(--cc-size-small); line-height: 21px; }
 .unknown p { margin: 0 0 6px; }
 .attention {
   display: flex; flex-direction: column; gap: 2px;
   padding: 10px 14px;
-  border-radius: 12px; corner-shape: round;
-  background: var(--cc-bg-000);
-  box-shadow: 0 0 0 .5px color-mix(in srgb, var(--cc-link) 45%, transparent);
+  border: 1px solid var(--cc-border); border-radius: 10px; corner-shape: round;
+  background: var(--cc-bg-200);
   color: var(--cc-text-100); font-size: var(--cc-size-small); line-height: 20px;
 }
 .attention span { color: var(--cc-text-300); }
 .attention.isEntering { opacity: 0; transform: translateY(4px); transition: none; }
 .attention.isIn { opacity: 1; transform: none; transition: opacity var(--cv-swap) var(--cv-ease), transform var(--cv-swap) var(--cv-ease); }
-.historyButton { align-self: center; padding: 4px 12px; border: 0; border-radius: 8px; corner-shape: round; background: var(--cc-hover); color: var(--cc-text-300); font: inherit; font-size: 12px; cursor: pointer; transition: color var(--cv-fast) ease, opacity var(--cv-fast) ease; }
+.historyButton { align-self: center; padding: 4px 12px; border: 1px solid var(--cc-border); border-radius: 8px; corner-shape: round; background: var(--cc-bg-000); color: var(--cc-text-300); font: inherit; font-size: var(--cc-size-small); cursor: pointer; transition: color var(--cv-fast) ease, opacity var(--cv-fast) ease; }
 .historyButton:hover:not(:disabled) { color: var(--cc-text-100); }
 .historyButton:disabled { opacity: .55; cursor: default; }
 .empty { padding: 40px 0; color: var(--cc-text-500); text-align: center; }

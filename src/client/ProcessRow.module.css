@@ -1,18 +1,18 @@
-.separator { flex: none; width: 2px; height: 2px; margin: 0 8px; border-radius: 999px; corner-shape: round; background: var(--dsw-alias-label-caption); }
+.separator { flex: none; width: 2px; height: 2px; margin: 0 8px; border-radius: 999px; corner-shape: round; background: var(--cc-text-500); }
 .chevron { flex: none; stroke: currentColor; fill: none; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; transition: transform var(--cv-size) var(--cv-ease); }
 .chevron[data-open=true] { transform: rotate(90deg); }
 .inset {
   margin: 2px 0 6px calc(22px + var(--dsh-content-font-delta, 0px));
   padding: 8px 12px;
   min-width: 0;
-  border-radius: var(--dsw-radius-md); corner-shape: round;
-  background: var(--cv-inset-bg);
-  color: var(--dsw-alias-label-tertiary);
-  font-size: var(--cv-font-secondary);
+  border-radius: 8px; corner-shape: round;
+  background: var(--cc-bg-200);
+  color: var(--cc-text-500);
+  font-size: var(--cc-size-ui);
   line-height: 21px;
   overflow-wrap: anywhere;
 }
-.insetError { background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 8%, var(--cv-inset-bg)); color: var(--dsw-alias-label-secondary); }
-.errorText { margin: 0; font: 12px/18px var(--ds-font-family-code, ui-monospace, monospace); white-space: pre-wrap; }
+.insetError { background: var(--cc-danger-bg); color: var(--cc-text-300); }
+.errorText { margin: 0; font: var(--cc-size-small)/18px var(--cc-font-mono); white-space: pre-wrap; }
 [data-motion=off] .chevron { transition: none; }
 @media (prefers-reduced-motion: reduce) { .chevron { transition: none; } }

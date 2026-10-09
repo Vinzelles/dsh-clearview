@@ -5,99 +5,65 @@
 .markdown {
   min-width: 0;
   overflow-wrap: anywhere;
-  font: var(--dsw-font-markdown-base);
-  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--cc-text-100);
 }
 
 .markdown strong {
   font-weight: 600;
 }
 
-.markdown h1 {
-  font: var(--dsw-font-markdown-h1);
-  margin: 32px 0 16px;
+.markdown :where(h1, h2, h3, h4, h5, h6) {
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 1.1em 0 .5em;
+  color: var(--cc-text-100);
 }
 
-.markdown h2 {
-  font: var(--dsw-font-markdown-h2);
-  margin: 32px 0 16px;
-}
-
-.markdown h3 {
-  font: var(--dsw-font-markdown-h3);
-  margin: 32px 0 16px;
-}
-
-.markdown h4 {
-  font: var(--dsw-font-markdown-h4);
-  margin: 16px 0;
-}
-
-.markdown :where(h5, h6) {
-  font: var(--dsw-font-markdown-base-strong);
-  margin: 16px 0;
-}
+.markdown h1 { font-size: 1.375em; }
+.markdown h2 { font-size: 1.25em; }
+.markdown h3 { font-size: 1.125em; }
+.markdown :where(h4, h5, h6) { font-size: 1em; }
 
 .markdown :where(h1, h2, h3, h4, h5, h6) strong {
   font-weight: inherit;
 }
 
 .markdown p {
-  margin: 16px 0;
-}
-
-/* Tighten h4–h6 against a following list (design: 8px gap). */
-.markdown :where(h4, h5, h6) + :where(ul, ol) {
-  margin-top: 8px;
-}
-
-.markdown :where(h4, h5, h6):has(+ :where(ul, ol)) {
-  margin-bottom: 8px;
+  margin: 0 0 .75em;
 }
 
 .markdown a {
-  /* deepsuite markdown.css uses brand-text (blue in newDesign); this sheet
-     keeps design-platform brand-text as near-black, so links use the blue
-     business-primary alias instead. */
-  color: var(--dsw-alias-state-business-primary);
-  transition: box-shadow var(--ds-transition-duration) var(--ds-ease-in-out);
-  position: relative;
-  text-decoration: none;
-  /* Transparent hit-area padding; literal zero-alpha only (no painted color). */
-  border-left: 3px solid rgb(255 255 255 / 0);
-  border-right: 3px solid rgb(255 255 255 / 0);
-  border-top: 2px solid rgb(255 255 255 / 0);
-  border-bottom: 2px solid rgb(255 255 255 / 0);
-  margin-left: -3px;
-  margin-right: -3px;
+  color: var(--cc-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .markdown a:hover,
 .markdown a:focus {
   outline: none;
-  text-decoration: underline var(--dsw-alias-state-business-primary);
 }
 
 .markdown a:focus-visible {
-  box-shadow: 0 0 0 2px var(--dsw-alias-state-business-primary);
+  box-shadow: 0 0 0 2px var(--cc-link);
 }
 
 .markdown :where(ul, ol) {
-  margin: 16px 0;
-  padding-left: 18px;
+  margin: 0 0 .75em;
+  padding-left: 1.4em;
 }
 
 .markdown li:not(:first-child) {
-  margin-top: 6px;
+  margin-top: .25em;
 }
 
 .markdown li > :where(ul, ol) {
-  margin-top: 4px;
+  margin-top: .25em;
 }
 
 .markdown li::marker {
-  line-height: 28px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--cc-text-300);
 }
 
 /* Nested ol under ul/ol: markers inside (models sometimes emit this shape). */
@@ -111,14 +77,13 @@
 }
 
 .markdown li > p {
-  margin: 8px 0;
+  margin: .25em 0;
 }
 
 .markdown li > *:first-child {
   margin-top: 0;
 }
 
-/* Keep list-nested code-block vertical margins (design: +4px vs other last children). */
 .markdown li > *:last-child:not(:global(.md-code-block)) {
   margin-bottom: 0;
 }
@@ -127,19 +92,26 @@
   display: block;
   border: none;
   height: 1px;
-  margin: 32px 0;
-  background: var(--dsw-alias-border-l2);
+  margin: 1.5em 0;
+  background: var(--cc-border);
 }
 
 .markdown blockquote {
-  border-left: 2px solid var(--dsw-alias-label-caption);
-  margin: 16px 0 0;
-  padding-left: 14px;
+  border-left: 2px solid var(--cc-border-strong);
+  margin: 0 0 .75em;
+  padding-left: 12px;
+  color: var(--cc-text-300);
 }
 
 .markdown pre {
-  margin: 16px 0;
-  font-family: var(--ds-font-family-code);
+  margin: 0 0 .75em;
+  padding: 10px 12px;
+  border: 1px solid var(--cc-border);
+  border-radius: 10px;
+  corner-shape: round;
+  background: var(--cc-bg-200);
+  font-family: var(--cc-font-mono);
+  font-size: var(--cc-size-code);
   overflow: auto;
 }
 
@@ -147,17 +119,21 @@
   display: inline-flex;
   align-items: center;
   box-sizing: border-box;
-  font: var(--dsw-font-markdown-code);
-  font-family: var(--ds-font-family-code);
-  font-size: 0.875em !important;
-  background-color: var(--dsw-alias-markdown-inline-code);
-  border-radius: 6px;
-  padding: 0 5px;
+  font-family: var(--cc-font-mono);
+  font-size: .85em;
+  background: var(--cc-bg-300);
+  border: .5px solid var(--cc-border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--cc-danger);
+}
+
+.markdown a > code {
+  color: inherit;
 }
 
 .markdown :where(h1, h2, h3, h4, h5, h6) code {
-  font: inherit;
-  font-family: var(--ds-font-family-code);
+  font-size: .85em;
 }
 
 .markdown :global(.katex-display) {
@@ -168,7 +144,7 @@
 
 .markdown input[type='checkbox'] {
   margin: 0 8px 0 0;
-  accent-color: var(--dsw-alias-label-secondary);
+  accent-color: var(--cc-text-300);
 }
 
 /* The wrapper is a scroll container and must never be wider than its column: border-box with an explicit 100% width and zero
@@ -206,7 +182,7 @@
    the sheet's link focus color. */
 .tableScroll:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--dsw-alias-state-business-primary);
+  box-shadow: 0 0 0 2px var(--cc-link);
 }
 
 /* Many-column tables (the renderer's `md-table-wide` hook) keep their
@@ -214,6 +190,8 @@
    the wrapper through the hook (deepsuite chat TableWrapper parity). */
 .tableScroll table {
   border-collapse: collapse;
+  font-family: var(--cc-font-ui);
+  font-size: var(--cc-size-ui);
   width: max-content;
   max-width: max-content;
 }
@@ -230,9 +208,10 @@
 .tableScroll th {
   text-align: start;
   padding: 10px 16px;
-  border-bottom: 1px solid var(--dsw-alias-border-l3);
+  border-bottom: 1px solid var(--cc-border);
   border-top: none;
-  font: var(--dsw-font-markdown-table-head);
+  background: var(--cc-bg-200);
+  font-weight: 600;
   max-width: 320px;
   max-width: min(30vw, 320px);
   min-width: 100px;
@@ -240,8 +219,7 @@
 
 .tableScroll td {
   padding: 10px 16px;
-  border-bottom: 1px solid var(--dsw-alias-border-l2);
-  font: var(--dsw-font-markdown-table);
+  border-bottom: 1px solid var(--cc-border);
   max-width: 320px;
   max-width: min(30vw, 320px);
   min-width: 100px;
@@ -257,7 +235,7 @@
 }
 
 .tableScroll table code {
-  font-size: 13px;
+  font-size: var(--cc-size-code);
 }
 
 .markdown > *:first-child,
@@ -271,7 +249,7 @@
 }
 
 .imageAlt {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--cc-text-500);
   font-style: italic;
 }
 
@@ -282,7 +260,7 @@
   height: auto;
   margin: 0;
   border-radius: 8px;
-  background: var(--dsw-alias-bg-base);
+  background: var(--cc-bg-100);
   object-fit: contain;
 }
 
@@ -296,7 +274,7 @@
   border: none;
   background: none;
   font: inherit;
-  color: var(--dsw-alias-state-business-primary);
+  color: var(--cc-link);
   text-decoration: none;
   cursor: pointer;
 }
@@ -304,6 +282,6 @@
 .fileMention:hover,
 .fileMention:focus {
   outline: none;
-  text-decoration: underline var(--dsw-alias-state-business-primary);
+  text-decoration: underline var(--cc-link);
   text-underline-offset: 3px;
 }

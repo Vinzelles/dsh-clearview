@@ -10,7 +10,7 @@
 }
 
 .chevron {
-  color: var(--dsw-alias-label-secondary);
+  color: var(--cc-text-300);
 }
 
 .body {
@@ -22,14 +22,14 @@
   padding: 10px 16px 12px 12px;
   border: none;
   border-radius: 8px;
-  background: var(--dsw-alias-markdown-code-block);
-  color: var(--dsw-alias-label-tertiary);
+  background: var(--cc-bg-200);
+  color: var(--cc-text-500);
   font: 400 11px/16px var(--ds-font-family-code);
 }
 
 .text {
   margin: 0;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--cc-text-300);
   font: inherit;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
