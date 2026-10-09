@@ -1,0 +1,25 @@
+.live { min-width: 0; }
+.viewport {
+  font-family: var(--cc-font-response);
+  font-style: italic;
+  font-size: var(--cc-size-ui);
+  line-height: 1.65;
+  color: var(--cc-text-300);
+  max-height: calc(1.65em * 6);
+  overflow-y: auto;
+  scrollbar-width: none;
+  margin: 0 0 8px 7px;
+  padding-left: 14px;
+  border-left: 1px solid var(--cc-border);
+}
+.viewport::-webkit-scrollbar { display: none; }
+.viewport[data-scrolled="true"] { mask-image: linear-gradient(to bottom, transparent 0, #000 1.6em); }
+.resume {
+  border: 0;
+  background: none;
+  padding: 0 0 0 21px;
+  color: var(--cc-text-500);
+  font: inherit;
+  font-size: var(--cc-size-small);
+  cursor: pointer;
+}

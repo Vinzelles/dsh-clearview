@@ -1,0 +1,11 @@
+.thought { min-width: 0; }
+.text {
+  font-family: var(--cc-font-response);
+  font-style: italic;
+  font-size: calc(var(--cc-size-ui));
+  line-height: 1.65;
+  color: var(--cc-text-300);
+  margin: 4px 0 8px 7px;
+  padding-left: 14px;
+  border-left: 1px solid var(--cc-border);
+}

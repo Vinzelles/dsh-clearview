@@ -237,7 +237,7 @@ test('reader root defines Claude tokens for light and dark', () => {
   assert.match(text, /\.root\s*\{[^}]*background:\s*var\(--cc-bg-100\)/s);
 });
 
-const MIGRATED = new Set(['Reader.module.css', 'Line.module.css', 'ToolRow.module.css', 'ToolDetails.module.css', 'ToolGroupRow.module.css']);
+const MIGRATED = new Set(['Reader.module.css', 'Line.module.css', 'ToolRow.module.css', 'ToolDetails.module.css', 'ToolGroupRow.module.css', 'ThoughtRow.module.css', 'LiveThought.module.css']);
 
 test('only the remap block in Reader.module.css names host colour tokens', () => {
   const names = readdirSync(CLIENT).filter(name => name.endsWith('.module.css') && MIGRATED.has(name));
