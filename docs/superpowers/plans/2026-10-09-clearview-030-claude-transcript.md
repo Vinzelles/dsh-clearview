@@ -1700,11 +1700,11 @@ Expected: `prototype/` is gone from the feature branch's working tree and presen
 
 This task is run by the controller, not a task implementer.
 
-- [ ] **Step 1: Whole-branch review** — dispatch the final reviewer over `main..feat/clearview-030-claude-transcript` against the spec; apply fixes; re-run all gates.
+- [x] **Step 1: Whole-branch review** — final spec/quality and bounded lifecycle/performance reviews completed; fixes applied. Fresh 364/364 tests, TypeScript compilation, build, externals and browser syntax passed. Three real reader cases passed. First-view performance did not meet the original target; the user explicitly accepted the measured +35.4ms exception on 2026-10-09 while retaining complete prose and motion (see spec acceptance note).
 
 - [ ] **Step 2: Merge** — after the user approves: fast-forward `main` in `D:/Khabarovsk/K.Develop/dsh/dsh-clearview` to the feature branch (main is clean at 8b8aa60 plus the spec commit lineage); run `npm test` there.
 
-- [ ] **Step 3: Package** — `npm pack` in the worktree; record sha256 of `lib/client.js`, `lib/dsh-clearview.js` and the tgz in `.planning/clearview-0200-redesign-20261005/build-sha256.txt`; run `release/prepare-package.mjs` from PowerShell (Git Bash tar fails on `D:`) into a new extract dir `release/clearview-030/` (a reused dir triggers `PLUGIN_PACKAGE_ID_CONFLICT`).
+- [x] **Step 3: Package** — assemble a clean source package at `release/clearview-030-final/package` using fresh independent TypeScript output, then `npm pack` there. This excludes 24 obsolete generated files without deleting the original output (that cleanup was denied by automatic policy). Record bundle/archive sha256 in `build-sha256.txt`; use `release/prepare-030-final.mjs` and `update-030-final.json`. The archive has 491 files and matches the live-verified client bundle; no fonts, prototype, screenshots or caches are included. Older `clearview-030` output is superseded and must not be used.
 
 - [ ] **Step 4: Candidate** — with cwd `D:/Khabarovsk/K.Develop/dsh`: write `release/update.json` for the new package dir (same shape as the 0.2.1 one), `node staging/input-clipboard-fix-20260921/ipc.mjs plugins.update .planning/clearview-0200-redesign-20261005/release/update.json`, then `node staging/input-clipboard-fix-20260921/wait-operation.mjs plugin-operation` until it settles; verify the candidate's hashes match Step 3. Give the user the publish / apply commands (publish is theirs to run).
 
