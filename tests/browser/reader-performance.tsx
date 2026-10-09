@@ -7,7 +7,6 @@ import { injectCompatStyles } from 'fixture-source/compat/styles.ts';
 import { cachedSnapshot } from 'fixture-source/compat/reader-root.ts';
 import { turnMeta, turnMetaText } from 'fixture-source/turn-meta.ts';
 declare const __BASELINE__: boolean;
-declare const __EXPAND_EARLIER__: boolean;
 const failures: string[] = [];
 const check = (condition: unknown, message: string) => { if (!condition)
     failures.push(message); };
@@ -123,14 +122,8 @@ async function reader() {
     injectCompatStyles();
     flushSync(() => root.render(<Reader {...props}/>));
     await wait(600);
-    // Default path: the open turn condenses its 20 earlier steps behind [data-reader-earlier], so they are not
-    // rendered during the measured window. Variant: open that range first so every row is present throughout.
-    if (__EXPAND_EARLIER__) {
-        host.querySelector<HTMLButtonElement>('[data-reader-earlier]')?.click();
-        await wait(600);
-    }
     historyBlockRenders = 0;
-    const toolRowsBeforeStream = host.querySelectorAll('[data-reader-tool-call], [data-reader-cluster]').length;
+    const toolRowsBeforeStream = host.querySelectorAll('[data-reader-tool-call], [data-reader-group]').length;
     let toolRowsAtHeavyCheck = -1;
     const frames: number[] = [], commits: number[] = [], scrolls: number[] = [];
     let last = 0, lastInput = 0, animations = 0, blur = false;
@@ -165,7 +158,7 @@ async function reader() {
             if (word) {
                 heavyChecked = true;
                 reader.dataset.dshcpHeavy = 'on';
-                toolRowsAtHeavyCheck = host.querySelectorAll('[data-reader-tool-call], [data-reader-cluster]').length;
+                toolRowsAtHeavyCheck = host.querySelectorAll('[data-reader-tool-call], [data-reader-group]').length;
                 heavyPreserved = getComputedStyle(word).filter.includes('blur(');
                 // A visible shimmer decoration that really animates (a running Web Animation or a CSS animation), not just a rendered node.
                 shimmerPreserved = shimmers.some(node => getComputedStyle(node).display !== 'none' && (node.getAnimations({ subtree: true }).length > 0 || getComputedStyle(node).animationName !== 'none'));
@@ -182,13 +175,10 @@ async function reader() {
     performance.mark('clearview-stream-end');
     check(host.querySelectorAll('[data-reader-turn]').length === 21, 'full Reader turn count');
     check(!host.querySelector('[data-reader-block-error]'), 'Reader error boundary');
-    const earlier = host.querySelector<HTMLButtonElement>('[data-reader-earlier]');
-    earlier?.click();
-    await wait(300);
-    // Consecutive tool calls merge into collapsed cluster rows; open them so the member tool rows are present.
-    const clusterRows = host.querySelectorAll('[data-reader-cluster]').length;
-    for (const cluster of host.querySelectorAll<HTMLElement>('[data-reader-cluster][data-expanded="false"]'))
-        cluster.querySelector<HTMLElement>('[data-disclosure-row]')?.click();
+    // Every step is a transcript line of its own; consecutive operations would fold into [data-reader-group] lines,
+    // so open any folded group before counting the member tool rows (a single call stays one row and is always mounted).
+    for (const group of host.querySelectorAll<HTMLElement>('[data-reader-group] button[aria-expanded="false"]'))
+        group.click();
     await wait(400);
     check(host.querySelectorAll('[data-reader-tool-call]').length === 20, 'tool rows missing');
     check(animations > 0 && blur, 'original blur animation was not active');
@@ -208,7 +198,7 @@ async function reader() {
     flushSync(() => append(text += '补充说明。'.repeat(8), false));
     await wait(250);
     check(host.scrollTop <= paused + 2, 'manual upward scroll did not pause follow');
-    const jump = host.querySelector<HTMLButtonElement>('[data-reader-activity-pill], [data-reader-jump]');
+    const jump = host.querySelector<HTMLButtonElement>('[data-reader-jump]');
     check(!!jump, 'back-to-latest control missing');
     jump?.click();
     await wait(80);

@@ -9,7 +9,7 @@ import { TurnSection } from '../src/client/TurnSection.tsx';
 import { assistantNode, chatNode, chatOf, reasoning, settledTool, text, toolCall, turnLocation } from './support/chat-fixture.ts';
 import { sessionHook } from './support/session.ts';
 
-function renderTurn(nodes: ReturnType<typeof chatNode>[], turn: ReturnType<typeof turnLocation> | undefined, options: { expanded?: Record<string, boolean>; groupTurn?: number | null; actions?: Partial<ReaderActions>; pending?: unknown } = {}) {
+function renderTurn(nodes: ReturnType<typeof chatNode>[], turn: ReturnType<typeof turnLocation> | undefined, options: { expanded?: Record<string, boolean>; groupTurn?: number | null; pinnedKeys?: string[]; actions?: Partial<ReaderActions>; pending?: unknown } = {}) {
   const chat = chatOf(nodes, turn ? [turn] : []);
   const group = { key: 'turn:1', turn: options.groupTurn === undefined ? 1 : options.groupTurn, keys: nodes.map(node => node.key) };
   const props = {
@@ -19,7 +19,7 @@ function renderTurn(nodes: ReturnType<typeof chatNode>[], turn: ReturnType<typeo
     renderSlotChain: (_n: string, _o: unknown, value: { fallback: unknown }) => value.fallback,
     loadImage: async () => 'blob:x',
     contextT: (key: string) => key,
-    group, pinnedKeys: [], rewindHidden: new Set(), rewindSpans: [],
+    group, pinnedKeys: options.pinnedKeys ?? [], rewindHidden: new Set(), rewindSpans: [],
   };
   const original = console.error;
   console.error = (...args: unknown[]) => { if (!String(args[0]).includes('useLayoutEffect')) original(...args); };
@@ -44,7 +44,7 @@ test('a completed turn keeps its narration, groups operations into one line and 
   assert.match(html, /我先检查一下。/);
   assert.match(html, /data-reader-flow/);
   assert.match(html, new RegExp(`<article[^>]*data-reader-answer="true"[^>]*data-reader-key="${second.key}"`));
-  for (const retired of ['data-reader-panel', 'data-reader-process=', 'data-reader-earlier', 'data-reader-cluster', '前 \d+ 步', '次工具', '毫秒']) {
+  for (const retired of ['data-reader-panel', 'data-reader-process=', 'data-reader-earlier', 'data-reader-cluster', '前 \\d+ 步', '次工具', '毫秒']) {
     assert.doesNotMatch(html, new RegExp(retired), retired);
   }
   assert.doesNotMatch(html, /data-reader-status-line/);
@@ -98,6 +98,32 @@ test('an errored turn shows a red status line', () => {
   const tool = chatNode('tool-call', { root: settledTool('c1', 'bash', { command: 'ls' }) }, turn, 1);
   const html = renderTurn([chatNode('user', { content: [{ type: 'text', text: '跑一下' }] }, turn), step, tool], turn);
   assert.match(html, /data-reader-status-line[^>]*data-phase="error"/);
+});
+
+test('the flow carries the attributes text-selection pinning reads, and a pinned turn still renders its narration', () => {
+  const { turn, nodes } = completedTurn();
+  const html = renderTurn(nodes, turn);
+  assert.match(html, /<div[^>]*data-reader-flow="true"[^>]*data-reader-process-key="turn:1"/);
+  const pinned = renderTurn(nodes, turn, { pinnedKeys: ['turn:1'] });
+  assert.match(pinned, /data-reader-process-key="turn:1"/);
+  assert.match(pinned, /我先检查一下。/);
+});
+
+test('a turn of unknown status shows neither the running nor a red status line', () => {
+  const turn = turnLocation({ status: 'unknown', steps: [4] });
+  const html = renderTurn([assistantNode(turn, 4, [text('部分说明'), toolCall('c9', 'read')])], turn);
+  assert.doesNotMatch(html, /data-reader-status-line/);
+  assert.match(html, /部分说明/);
+});
+
+test('an aborted turn without an answer ends with a red status line', () => {
+  const turn = turnLocation({ status: 'closed', reason: 'aborted', steps: [1] });
+  const step = assistantNode(turn, 1, [text('准备写入'), toolCall('c1', 'write', { path: 'a.ts' })], 'interrupted');
+  const started = chatNode('tool-call', { root: { callId: 'c1', name: 'write', phase: 'start', argsRaw: '{"path":"a.ts"}', turn: 1, step: 1, time: 0, subCalls: [] } }, turn, 1);
+  const html = renderTurn([chatNode('user', { content: [{ type: 'text', text: '写文件' }] }, turn), step, started], turn);
+  assert.match(html, /data-reader-status-line[^>]*data-phase="interrupted"/);
+  assert.doesNotMatch(html, /data-reader-answer/);
+  assert.match(html, /准备写入/);
 });
 
 test('a scheduled trigger opens its turn without a generic card', () => {
