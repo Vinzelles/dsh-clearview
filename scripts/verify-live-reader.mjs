@@ -8,6 +8,8 @@
 // requests and aborts if there is more than the host's own blank startup session.
 // READER_SESSIONS entries are title prefixes, or "#<id suffix>" to pick one session row by id.
 // READER_CONDITIONS=0 skips the font-size / theme / reduced-motion matrix (narrow still runs).
+// The theme check only flips document.body's data-ds-dark-theme attribute inside the headless page; no host preference is written.
+// Pass also requires the retired 0.2.x selectors (panel / cluster / earlier / activity pill ...) to count 0.
 // Side effects to expect: (1) loading the DSH page makes the host open its own blank startup
 // session; (2) the 复制回答 check clicks the real copy button, and headless Chrome may write the
 // answer text to your real system clipboard (the profile is isolated, the OS clipboard is not);
@@ -153,6 +155,8 @@ try {
   await send('Page.navigate', { url: base });
   if (!await until("!!document.querySelector('[data-composer-seat]')", 30000)) throw new Error('DSH did not finish loading');
 
+  // Selectors of the 0.2.x layout that must not exist any more (counted only to assert 0).
+  const retiredSelector = '[data-reader-panel],[data-reader-process],[data-reader-cluster],[data-reader-earlier],[data-reader-narration],[data-reader-activity-pill],[data-reader-reasoning-card],[data-reader-reasoning-row]';
   const collect = `(() => {
     const root = document.querySelector('[data-dsh-clearview]');
     if (!root) return null;
@@ -160,7 +164,18 @@ try {
     return {
       version: root.getAttribute('data-dsh-clearview'),
       turns: all('section[data-reader-turn]').length,
-      panels: all('[data-reader-panel]').map(panel => panel.getAttribute('data-status')),
+      lines: all('[data-reader-line]').length,
+      groups: all('[data-reader-group]').map(node => node.getAttribute('data-group-state')),
+      flows: all('[data-reader-flow]').length,
+      statusLines: all('[data-reader-status-line]').map(node => node.getAttribute('data-phase')),
+      liveThoughts: all('[data-reader-live-thought]').length,
+      settledThoughts: all('[data-reader-reasoning]').length,
+      bubbles: all('[data-reader-user-bubble]').map(node => node.getAttribute('data-clamped')),
+      plans: all('[data-reader-plan]').length,
+      toolCalls: all('[data-reader-tool-call]').length,
+      narration: all('[data-reader-flow] [data-reader-key]').length,
+      jump: all('[data-reader-jump]').length,
+      retired: root.querySelectorAll(${JSON.stringify(retiredSelector)}).length,
       blockErrors: all('[data-reader-block-error]').map(node => node.getAttribute('data-reader-block-error')),
       triggers: all('[data-reader-trigger]').map(node => node.getAttribute('data-reader-trigger')),
       records: [...new Set(all('[data-reader-record-kind]').map(node => node.getAttribute('data-reader-record-kind')))],
@@ -171,52 +186,40 @@ try {
       dark: document.body.hasAttribute('data-ds-dark-theme'),
     };
   })()`;
-  // Geometry / style evidence. Reads computed styles only. Wide rows, shimmer clipping,
-  // inset backgrounds, the reasoning preview and per-size font metrics.
+  // Geometry / style evidence. Reads computed styles only: row heights, tool summaries, fonts,
+  // reader background and horizontal overflow.
   const measure = `(() => {
     const root = document.querySelector('[data-dsh-clearview]');
     if (!root) return null;
     const all = (selector, scope = root) => [...scope.querySelectorAll(selector)];
     const cs = node => getComputedStyle(node);
-    const rows = all('[data-disclosure-row]');
+    const lines = all('[data-reader-line]');
     const heights = {};
-    for (const row of rows) { const height = Math.round(row.getBoundingClientRect().height * 10) / 10; heights[height] = (heights[height] ?? 0) + 1; }
-    const summaries = all('[data-reader-tool-call] [data-disclosure-row] span[title]');
+    for (const line of lines) { const height = Math.round(line.getBoundingClientRect().height * 10) / 10; heights[height] = (heights[height] ?? 0) + 1; }
+    const summaries = all('[data-reader-tool-call] [data-reader-line] span[title]');
     const clipped = summaries.filter(node => node.scrollWidth > node.clientWidth + 1);
-    const wrapper = node => { let p = node.parentElement; const chain = []; while (p && !p.hasAttribute('data-disclosure-row') && chain.length < 4) { chain.push({ cls: String(p.className).slice(0, 40), overflow: cs(p).overflow, scrollWidth: p.scrollWidth, clientWidth: p.clientWidth }); p = p.parentElement; } return chain; };
-    const details = all('[data-reader-tool-details]');
-    const cards = all('[data-reader-reasoning-card]');
-    const reasoning = all('[data-reader-reasoning]').map(node => {
-      const rowText = node.querySelector('[data-reader-reasoning-row]')?.textContent ?? '';
-      const text = node.querySelector('[data-reader-reasoning-text]');
-      const viewport = node.querySelector('[data-reader-reasoning-scroll]');
-      const card = node.querySelector('[data-reader-reasoning-card]');
-      return { row: rowText.slice(0, 80), cardLive: card?.getAttribute('data-live') ?? null,
-        textStart: text?.textContent.trim().slice(0, 40) ?? null, scrollTop: viewport?.scrollTop ?? null, scrollHeight: viewport?.scrollHeight ?? null, clientHeight: viewport?.clientHeight ?? null };
-    });
-    const sample = selector => { const node = root.querySelector(selector); return node ? { size: cs(node).fontSize, line: cs(node).lineHeight } : null; };
+    const sample = node => node ? { size: cs(node).fontSize, line: cs(node).lineHeight, family: cs(node).fontFamily.slice(0, 120) } : null;
+    const prose = root.querySelector('[data-reader-answer]') ?? root.querySelector('[data-reader-flow] [data-reader-key]');
+    const code = root.querySelector('[data-reader-answer] code, [data-reader-flow] code');
+    let backdrop = root; while (backdrop && /^rgba\\(0, 0, 0, 0\\)$|^transparent$/.test(cs(backdrop).backgroundColor)) backdrop = backdrop.parentElement;
     const scroller = document.querySelector('[data-conversation-scroll]');
     return {
       viewport: { width: innerWidth, height: innerHeight },
-      rowCount: rows.length, rowHeights: heights,
+      lineCount: lines.length, lineHeights: heights,
       toolSummaries: summaries.length, clippedSummaries: clipped.length,
-      clippedSample: clipped.slice(0, 3).map(node => ({ textOverflow: cs(node).textOverflow, text: node.textContent.slice(0, 40), scrollWidth: node.scrollWidth, clientWidth: node.clientWidth, wrappers: wrapper(node) })),
-      insetToken: cs(root).getPropertyValue('--dsw-alias-markdown-code-block').trim() || null,
-      insetBackground: details.slice(0, 2).map(node => cs(node).backgroundColor),
-      reasoningCardBackground: cards.slice(0, 2).map(node => cs(node).backgroundColor),
-      reasoning: reasoning.slice(0, 6),
-      fonts: { answer: sample('[data-reader-answer] p'), toolRow: sample('[data-reader-tool-call] [data-disclosure-row]'), panelHeader: sample('[data-reader-panel] button'), meta: sample('[data-reader-answer-actions] > span:not([role])'), user: sample('[data-reader-anchor]:not(article)') },
-      overflowX: { scrollerStyle: scroller ? cs(scroller).overflowX : null, page: document.documentElement.scrollWidth > document.documentElement.clientWidth, scroller: scroller ? scroller.scrollWidth > scroller.clientWidth + 1 : null, root: root.scrollWidth > root.clientWidth + 1 },
+      fonts: { prose: sample(prose), line: sample(root.querySelector('[data-reader-line]')), code: sample(code), toolLine: sample(root.querySelector('[data-reader-tool-call] [data-reader-line]')),
+        user: sample(root.querySelector('[data-reader-user-bubble]')), anthropicSerifLoaded: document.fonts.check('16px anthropic-serif') },
+      rootBackground: cs(root).backgroundColor, backdropBackground: backdrop ? cs(backdrop).backgroundColor : null,
+      overflowX: { page: document.documentElement.scrollWidth > document.documentElement.clientWidth, scroller: scroller ? scroller.scrollWidth > scroller.clientWidth + 1 : null, root: root.scrollWidth > root.clientWidth + 1 },
       // Elements that stick out past the reader root's right edge (a horizontal-overflow culprit hunt).
       overflowing: (() => { const edge = root.getBoundingClientRect().right + 1; return all('*').filter(node => node.getBoundingClientRect().right > edge && node.getBoundingClientRect().width > 0).slice(0, 6)
         .map(node => ({ tag: node.tagName, cls: String(node.className).slice(0, 50), attrs: [...node.attributes].filter(a => a.name.startsWith('data-reader')).map(a => a.name).join(' '), right: Math.round(node.getBoundingClientRect().right), edge: Math.round(edge) })); })(),
       coverage: (() => {
         const tally = (selector, attribute) => { const counts = {}; for (const node of all(selector)) { const key = node.getAttribute(attribute) ?? ''; counts[key] = (counts[key] ?? 0) + 1; } return counts; };
-        return { toolCategories: tally('[data-reader-tool-call]', 'data-tool-category'), toolPhases: tally('[data-reader-tool-call]', 'data-tool-phase'),
-          reasoningRows: all('[data-reader-reasoning]').length, clusters: all('[data-reader-cluster]').length, clusterMembers: all('[data-reader-cluster] [data-reader-tool-call]').length,
-          childCalls: all('[aria-label="子调用"] [data-reader-tool-call]').length, earlierButtons: all('[data-reader-earlier]').length, notices: all('[data-reader-notice]').length };
+        return { toolCategories: tally('[data-reader-tool-call]', 'data-tool-category'), toolPhases: tally('[data-reader-tool-call]', 'data-tool-phase'), groupStates: tally('[data-reader-group]', 'data-group-state'),
+          childCalls: all('[aria-label="子调用"] [data-reader-tool-call]').length, notices: all('[data-reader-notice]').length };
       })(),
-      floating: { activity: !!root.querySelector('[data-reader-activity-pill]'), jump: !!root.querySelector('[data-reader-jump]') },
+      floating: { jump: !!root.querySelector('[data-reader-jump]') },
     };
   })()`;
   // Only a session row in the sidebar tree is ever clicked (never a workspace row).
@@ -274,353 +277,86 @@ try {
     await evaluate("(() => { const scroller = document.querySelector('[data-conversation-scroll]'); if (scroller) scroller.scrollTop = 0; })()");
     await delay(500);
     await shot(`${name}-top`);
-    // Open the first panel that holds a tool row (clicking an already open
-    // header would collapse it), then expand a tool row inside that panel.
-    item.panelOpened = await evaluate(`(() => {
-      const panels = [...document.querySelectorAll('[data-dsh-clearview] [data-reader-panel]')];
-      const panel = panels.find(node => node.querySelector('[data-reader-disclosure][data-expanded="false"]')) ?? panels[0];
-      if (!panel) return false;
-      panel.setAttribute('data-live-check', 'panel');
-      const header = panel.querySelector('[data-reader-disclosure][data-expanded="false"] > button');
-      header?.click();
+    // Open the first closed group (clicking an already open one would collapse it), then the first
+    // closed tool row. Only local disclosure state is toggled.
+    item.groupOpened = await evaluate(`(() => {
+      const group = [...document.querySelectorAll('[data-dsh-clearview] [data-reader-group]')].find(node => node.querySelector('button[aria-expanded="false"]'));
+      if (!group) return null;
+      group.setAttribute('data-live-check', 'group');
+      const button = group.querySelector('button[aria-expanded="false"]');
+      button.click();
+      return { state: group.getAttribute('data-group-state'), label: button.textContent.slice(0, 60) };
+    })()`);
+    await delay(700);
+    item.groupAfter = item.groupOpened ? await evaluate("document.querySelector('[data-live-check=group]')?.getAttribute('data-expanded') ?? null") : null;
+    item.toolOpened = await evaluate(`(() => {
+      const button = document.querySelector('[data-dsh-clearview] [data-reader-tool-call] button[aria-expanded="false"]');
+      if (!button) return false;
+      button.scrollIntoView({ block: 'center' });
+      button.click();
       return true;
     })()`);
-    await delay(500);
-    // 0.2.1 visual contract, measured with every panel open and every cluster still in its default state.
-    await evaluate("[...document.querySelectorAll('[data-dsh-clearview] [data-reader-disclosure][data-expanded=\"false\"] > button')].slice(0, 12).forEach(button => button.click())");
-    await delay(900);
-    await evaluate("document.querySelector('[data-dsh-clearview] [data-reader-panel]')?.scrollIntoView({ block: 'start' })");
-    await delay(500);
-    await shot(`${name}-panel-default`);
-    item.polish = await evaluate(`(() => {
-      const root = document.querySelector('[data-dsh-clearview]');
-      if (!root) return null;
-      const all = selector => [...root.querySelectorAll(selector)];
-      const visible = node => { const box = node.getBoundingClientRect(); return box.width > 0 && box.height > 0; };
-      const clusters = all('[data-reader-cluster]').map(node => ({ state: node.getAttribute('data-cluster-state'), expanded: node.getAttribute('data-expanded'),
-        title: node.querySelector('[data-disclosure-row]')?.textContent.slice(0, 50), members: node.querySelectorAll('[data-reader-tool-call], [data-reader-record-kind]').length }));
-      const text = root.innerText;
-      const panels = all('[data-reader-panel]');
-      const panelStyle = panels.slice(0, 3).map(panel => { const style = getComputedStyle(panel); const header = panel.querySelector(':scope > [data-reader-disclosure] > button');
-        return { status: panel.getAttribute('data-status'), background: style.backgroundColor, boxShadow: style.boxShadow, radius: style.borderRadius, headerHeight: header ? Math.round(header.getBoundingClientRect().height * 10) / 10 : null,
-          headerColor: header ? getComputedStyle(header.querySelector('span:nth-of-type(2)') ?? header).color : null, headerText: header?.textContent.slice(0, 60) }; });
-      const failedHeader = all('[data-reader-panel][data-status="error"] > [data-reader-disclosure] > button, [data-reader-panel][data-status="interrupted"] > [data-reader-disclosure] > button')[0];
-      const metas = panels.slice(0, 2).map(panel => { const tag = panel.querySelector(':scope > [data-reader-disclosure] > button > span:last-of-type'); return tag ? { size: getComputedStyle(tag).fontSize, line: getComputedStyle(tag).lineHeight } : null; });
-      return {
-        clusterCount: clusters.length, clusterMembers: clusters.reduce((sum, item) => sum + item.members, 0), clusterStates: clusters.reduce((out, item) => { out[item.state] = (out[item.state] ?? 0) + 1; return out; }, {}),
-        clusterExpandedDefault: clusters.filter(item => item.expanded === 'true').length, clusterSample: clusters.slice(0, 4),
-        stepLabelsVisible: (text.match(/步骤\\s*\\d/g) ?? []).length, stepGroupAttributes: all('[data-reader-step]').length,
-        toolCallEnglishVisible: (text.match(/Tool call/g) ?? []).length, toolCallSamples: [...text.matchAll(/.{0,30}Tool call.{0,30}/g)].slice(0, 3).map(match => match[0]), stepSamples: [...text.matchAll(/.{0,30}步骤\\s*\\d.{0,30}/g)].slice(0, 3).map(match => match[0]), toolCallEnglishInDom: (root.textContent.match(/Tool call/g) ?? []).length,
-        previewAttributes: all('[data-preview]').length,
-        reasoningInsetsVisible: all('[data-reader-reasoning-card]').filter(node => visible(node) && node.getAttribute('data-live') !== 'true').length, reasoningRows: all('[data-reader-reasoning]').length,
-        toolTitles: [...new Set(all('[data-reader-tool-call] [data-disclosure-row]').map(row => row.textContent.slice(0, 14)))].slice(0, 12),
-        panels: panelStyle, failedHeaderColor: failedHeader ? getComputedStyle(failedHeader.querySelector('span:nth-of-type(2)') ?? failedHeader).color : null, metas,
-      };
-    })()`);
-    // A settled thought followed by exactly one settled tool call / record renders as one thought row with a short
-    // suffix (class *suffix*); its tool row only exists once the thought row is opened.
-    const mergedScope = '[data-dsh-clearview] [data-reader-reasoning]:has([class*="suffix"])';
-    const openMerged = scope => evaluate(`(() => { const rows = [...document.querySelectorAll(${JSON.stringify(scope + ' [data-reader-reasoning-row][aria-expanded="false"]')})].slice(0, 80); rows.forEach(row => row.click()); return rows.length; })()`);
-    item.rowCensus = await evaluate(`(() => {
-      const root = document.querySelector('[data-dsh-clearview]'); const scroller = document.querySelector('[data-conversation-scroll]');
-      const sr = scroller.getBoundingClientRect(); const composerTop = document.querySelector('[data-composer-seat]')?.getBoundingClientRect().top ?? innerHeight;
-      const top = sr.top; const bottom = Math.min(sr.bottom, composerTop);
-      const inWindow = node => { const box = node.getBoundingClientRect(); return box.height > 0 && box.bottom > top && box.top < bottom; };
-      const rows = [...root.querySelectorAll('[data-reader-reasoning-row], [data-reader-cluster] [data-disclosure-row], [data-reader-tool-call] [data-disclosure-row], [data-reader-record-kind] [data-disclosure-row], [data-reader-panel] > [data-reader-disclosure] > button')];
-      const thoughts = [...root.querySelectorAll('[data-reader-reasoning]')];
-      const merged = thoughts.filter(node => node.querySelector('[class*="suffix"]'));
-      const standalone = [...root.querySelectorAll('[data-reader-tool-call]')].filter(node => !node.closest('[data-reader-cluster]') && !node.closest('[data-reader-reasoning]') && !node.parentElement.closest('[aria-label="子调用"]'));
-      const order = [...root.querySelectorAll('[data-reader-reasoning], [data-reader-tool-call], [data-reader-cluster]')].filter(node => !node.closest('[data-reader-cluster]') || node.hasAttribute('data-reader-cluster')).filter(node => node.hasAttribute('data-reader-cluster') || node.hasAttribute('data-reader-reasoning') || (!node.closest('[data-reader-reasoning]') && !node.parentElement.closest('[aria-label="子调用"]')));
-      let thoughtThenStandaloneTool = 0;
-      order.forEach((node, index) => { if (node.hasAttribute('data-reader-reasoning') && !node.querySelector('[class*="suffix"]') && order[index + 1]?.hasAttribute('data-reader-tool-call')) thoughtThenStandaloneTool++; });
-      return { thoughtRows: thoughts.length, mergedThoughtRows: merged.length, mergedSuffixes: [...new Set(merged.map(node => node.querySelector('[class*="suffix"]').textContent))].slice(0, 8),
-        standaloneToolRows: standalone.length, clusters: root.querySelectorAll('[data-reader-cluster]').length, thoughtThenStandaloneTool,
-        visibleRowsInWindow: rows.filter(inWindow).length, fullyVisibleRows: rows.filter(node => { const box = node.getBoundingClientRect(); return box.top >= top && box.bottom <= bottom; }).length, windowHeight: Math.round(bottom - top) };
-    })()`);
-    item.narration = await evaluate(`(() => {
-      const root = document.querySelector('[data-dsh-clearview]');
-      const probe = document.createElement('span'); probe.style.color = 'var(--dsw-alias-label-secondary)'; root.appendChild(probe); const secondary = getComputedStyle(probe).color; probe.style.color = 'var(--dsw-alias-label-primary)'; const primary = getComputedStyle(probe).color; probe.style.color = 'var(--dsw-alias-label-tertiary)'; const tertiary = getComputedStyle(probe).color; probe.remove();
-      const paragraph = scope => [...root.querySelectorAll(scope + ' [data-reader-text] > *')].find(node => node.textContent.trim().length > 12 && !/^(PRE|UL|OL|TABLE|H[1-6])$/.test(node.tagName));
-      const describe = node => node ? { tag: node.tagName, cls: String(node.className).slice(0, 30), color: getComputedStyle(node).color, weight: getComputedStyle(node).fontWeight, size: getComputedStyle(node).fontSize, line: getComputedStyle(node).lineHeight, text: node.textContent.slice(0, 30) } : null;
-      const inline = (scope, tag) => { const node = root.querySelector(scope + ' [data-reader-text] ' + tag); return node ? { color: getComputedStyle(node).color, weight: getComputedStyle(node).fontWeight, parentColor: getComputedStyle(node.parentElement).color } : null; };
-      return { secondary, primary, tertiary, narration: describe(paragraph('[data-reader-narration]')), answer: describe(paragraph('[data-reader-answer]')), narrationInner: describe(paragraph('[data-reader-narration]')?.querySelector('p, li')), answerInner: describe(paragraph('[data-reader-answer]')?.querySelector('p, li')),
-        narrationInline: { code: inline('[data-reader-narration]', 'code'), strong: inline('[data-reader-narration]', 'strong'), link: inline('[data-reader-narration]', 'a') },
-        answerInline: { code: inline('[data-reader-answer]', 'code'), strong: inline('[data-reader-answer]', 'strong'), link: inline('[data-reader-answer]', 'a') } };
-    })()`);
-    for (const [label, scope] of [['narration', '[data-reader-narration]'], ['answer', '[data-reader-answer]']]) {
-      const pick = `(() => [...document.querySelectorAll('[data-dsh-clearview] ${scope} [data-reader-text] > *')].find(item => item.textContent.trim().length > 12 && !/^(PRE|UL|OL|TABLE|H[1-6])$/.test(item.tagName)))()`;
-      if (!await evaluate(`(() => { const node = ${pick}; if (!node) return false; node.scrollIntoView({ block: 'center' }); return true; })()`)) continue;
-      await delay(700);
-      // scrollIntoView can leave the node under the sticky header; bring it to a fixed spot with the scroller itself.
-      await evaluate(`(() => { const node = ${pick}; const scroller = document.querySelector('[data-conversation-scroll]'); if (node && scroller) scroller.scrollTop += node.getBoundingClientRect().top - 360; })()`);
-      await delay(700);
-      // Measure after the scroll has settled: the reader may adjust the position once more.
-      const box = await evaluate(`(() => { const node = ${pick}; const r = node.getBoundingClientRect(); return { x: Math.max(0, r.left - 24), y: Math.max(0, r.top - 12), width: r.width + 48, height: Math.min(r.height + 24, 160) }; })()`);
+    await delay(700);
+    item.toolDetails = await evaluate("!!document.querySelector('[data-reader-tool-details]')");
+    await shot(`${name}-group-tool-open`);
+    item.measured = await evaluate(measure);
+    // Prose / thought / bubble / plan close-ups: one crop each, from the first match.
+    for (const [label, selector] of [['answer', '[data-reader-answer]'], ['narration', '[data-reader-flow] [data-reader-key]'], ['thought', '[data-reader-reasoning]'], ['bubble', '[data-reader-user-bubble]'], ['plan', '[data-reader-plan]']]) {
+      if (!await evaluate(`(() => { const node = document.querySelector(${JSON.stringify('[data-dsh-clearview] ' + selector)}); if (!node) return false; node.scrollIntoView({ block: 'center' }); return true; })()`)) continue;
+      await delay(600);
+      const box = await evaluate(`(() => { const r = document.querySelector(${JSON.stringify('[data-dsh-clearview] ' + selector)}).getBoundingClientRect(); return { x: Math.max(0, r.left - 24), y: Math.max(0, r.top - 12), width: r.width + 48, height: Math.min(r.height + 24, 220) }; })()`);
       const { data } = await send('Page.captureScreenshot', { format: 'png', clip: { ...box, scale: 2 } });
       writeFileSync(join(out, `${name}-${label}-crop.png`), Buffer.from(data, 'base64'));
     }
-    item.merged = null;
-    if (await evaluate(`!!document.querySelector(${JSON.stringify(mergedScope)})`)) {
-      await evaluate(`document.querySelector(${JSON.stringify(mergedScope)}).setAttribute('data-live-anim', 'merged')`);
-      await evaluate("document.querySelector('[data-live-anim=merged]').scrollIntoView({ block: 'center' })");
-      await delay(400);
-      const closed = await evaluate("(() => { const node = document.querySelector('[data-live-anim=merged]'); return { toolRowBefore: !!node.querySelector('[data-reader-tool-call]'), rowText: node.querySelector('[data-reader-reasoning-row]').textContent.slice(0, 80), height: Math.round(node.querySelector('[data-reader-reasoning-row]').getBoundingClientRect().height * 10) / 10 }; })()");
-      await shot(`${name}-merged-closed`);
-      await evaluate("document.querySelector('[data-live-anim=merged] [data-reader-reasoning-row]').click()");
-      await delay(900);
-      const opened = await evaluate("(() => { const node = document.querySelector('[data-live-anim=merged]'); const text = node.querySelector('[data-reader-reasoning-text]'); const tool = node.querySelector('[data-reader-tool-call], [data-reader-record-kind]'); return { thoughtText: !!text, toolRowAfter: !!tool, toolKind: tool?.hasAttribute('data-reader-tool-call') ? 'tool' : tool ? 'record' : null, textBeforeTool: !!(text && tool && (text.compareDocumentPosition(tool) & Node.DOCUMENT_POSITION_FOLLOWING)) }; })()");
-      await evaluate("document.querySelector('[data-live-anim=merged]').scrollIntoView({ block: 'center' })");
-      await delay(300);
-      await shot(`${name}-merged-open`);
-      const toolOpen = await evaluate("(() => { const row = document.querySelector('[data-live-anim=merged] [data-reader-tool-call] [data-disclosure-row], [data-live-anim=merged] [data-reader-record-kind] [data-disclosure-row]'); if (!row) return null; row.click(); return true; })()");
-      await delay(800);
-      const toolDetails = toolOpen ? await evaluate("(() => { const node = document.querySelector('[data-live-anim=merged]'); const row = node.querySelector('[data-reader-tool-call] [data-disclosure-row], [data-reader-record-kind] [data-disclosure-row]'); return { rowExpanded: row.getAttribute('aria-expanded'), details: !!node.querySelector('[data-reader-tool-details]'), raw: !!node.querySelector('[data-reader-record-kind] pre, [data-reader-record-kind] [role=tree]') }; })()") : null;
-      await shot(`${name}-merged-tool-open`);
-      item.merged = { closed, opened, toolOpen, toolDetails };
-      // Leave it closed for the later probes.
-      if (toolOpen) await evaluate("document.querySelector('[data-live-anim=merged] [data-reader-tool-call] [data-disclosure-row], [data-live-anim=merged] [data-reader-record-kind] [data-disclosure-row]')?.click()");
-      await delay(500);
-      await evaluate("document.querySelector('[data-live-anim=merged] [data-reader-reasoning-row]').click()");
-      await delay(700);
-      await evaluate("document.querySelector('[data-live-anim=merged]')?.removeAttribute('data-live-anim')");
-    }
-    // Collapse-body animation: sampled every frame inside the page. data-clip must be present while the height
-    // animates (computed overflow hidden), gone afterwards (overflow visible), with no height jump at the end.
-    const animationProbe = (containerSelector, triggerSelector, direction) => evaluate(`new Promise(resolve => {
-      const container = document.querySelector(${JSON.stringify(containerSelector)});
-      if (!container) { resolve(null); return; }
-      const bodyOf = () => container.querySelector(':scope > [data-ud-motion="reader-collapse-size"]');
-      const trigger = container.querySelector(${JSON.stringify(triggerSelector)});
-      const frames = []; const start = performance.now();
-      trigger.click();
-      const tick = () => {
-        const body = bodyOf(); const now = Math.round(performance.now() - start);
-        if (body) { const box = body.getBoundingClientRect(); const style = getComputedStyle(body); frames.push({ t: now, clip: body.hasAttribute('data-clip'), h: Math.round(box.height * 10) / 10, scrollHeight: body.scrollHeight, overflow: style.overflowX + '/' + style.overflowY, opacity: Math.round(Number(style.opacity) * 100) / 100, display: style.display }); }
-        else frames.push({ t: now, gone: true });
-        if (now < 800) requestAnimationFrame(tick); else finish();
-      };
-      const finish = () => {
-        const withBody = frames.filter(frame => !frame.gone);
-        const clipFrames = withBody.filter(frame => frame.clip);
-        const lastClipIndex = frames.map(frame => !!frame.clip).lastIndexOf(true);
-        const next = lastClipIndex >= 0 ? frames[lastClipIndex + 1] : null;
-        const jump = next && !next.gone ? Math.abs(next.h - frames[lastClipIndex].h) : null;
-        const settled = withBody.filter(frame => !frame.clip).slice(-1)[0] ?? null;
-        resolve({ direction: ${JSON.stringify(direction)}, frameCount: frames.length, clipFrames: clipFrames.length, clipDurationMs: clipFrames.length ? clipFrames.at(-1).t - clipFrames[0].t : 0,
-          clipOverflowAllHidden: clipFrames.every(frame => frame.overflow === 'hidden/hidden'), settledOverflow: settled ? settled.overflow : null, settledClipLeft: withBody.slice(-1)[0] ? withBody.slice(-1)[0].clip : null,
-          jump, lastClipHeight: lastClipIndex >= 0 ? frames[lastClipIndex].h : null, nextHeight: next && !next.gone ? next.h : null,
-          settledHeightVsContent: settled ? Math.abs(settled.h - settled.scrollHeight) : null, bodyGoneAtEnd: frames.at(-1).gone === true, heights: frames.filter((frame, index) => index % 3 === 0).map(frame => frame.gone ? 'gone' : frame.h + (frame.clip ? 'c' : '')) });
-      };
-      requestAnimationFrame(tick);
-    })`);
-    item.animations = {};
-    const panelSelector = '[data-dsh-clearview] [data-reader-panel]';
-    item.animations.panel = [await animationProbe(panelSelector, ':scope > [data-reader-disclosure] > button', 'collapse'), null];
-    await delay(300);
-    item.animations.panel[1] = await animationProbe(panelSelector, ':scope > [data-reader-disclosure] > button', 'expand');
-    await delay(300);
-    await evaluate("(() => { const cluster = document.querySelector('[data-dsh-clearview] [data-reader-cluster][data-expanded=\"false\"]'); if (cluster) cluster.setAttribute('data-live-anim', 'cluster'); })()");
-    item.animations.cluster = await evaluate("!!document.querySelector('[data-live-anim=cluster]')") ? [await animationProbe('[data-live-anim=cluster]', '[data-disclosure-row]', 'expand'), null] : null;
-    if (item.animations.cluster) { await delay(300); item.animations.cluster[1] = await animationProbe('[data-live-anim=cluster]', '[data-disclosure-row]', 'collapse'); await delay(300); }
-    await evaluate("(() => { const row = document.querySelector('[data-dsh-clearview] [data-reader-reasoning-row][aria-expanded=\"false\"]'); row?.closest('[data-reader-reasoning]')?.setAttribute('data-live-anim', 'reasoning'); })()");
-    item.animations.reasoning = await evaluate("!!document.querySelector('[data-live-anim=reasoning]')") ? [await animationProbe('[data-live-anim=reasoning]', '[data-reader-reasoning-row]', 'expand'), null] : null;
-    if (item.animations.reasoning) { await delay(300); item.animations.reasoning[1] = await animationProbe('[data-live-anim=reasoning]', '[data-reader-reasoning-row]', 'collapse'); await delay(300); }
-    if (await evaluate(`!!document.querySelector(${JSON.stringify(mergedScope)} + ' [data-reader-reasoning-row][aria-expanded="false"]')`)) {
-      await evaluate(`document.querySelector(${JSON.stringify(mergedScope + ' [data-reader-reasoning-row][aria-expanded="false"]')}).closest('[data-reader-reasoning]').setAttribute('data-live-anim', 'merged')`);
-      item.animations.merged = [await animationProbe('[data-live-anim=merged]', '[data-reader-reasoning-row]', 'expand'), null];
-      await delay(300);
-      item.animations.merged[1] = await animationProbe('[data-live-anim=merged]', '[data-reader-reasoning-row]', 'collapse');
-      await delay(300);
-      await evaluate("document.querySelector('[data-live-anim=merged]')?.removeAttribute('data-live-anim')");
-    }
-    // 前 N 步 inserts rows into the (already open) panel body: it must not turn the body's clip on or leave it on.
-    if (await evaluate("!!document.querySelector('[data-dsh-clearview] [data-reader-earlier]')")) {
-      await evaluate("document.querySelector('[data-dsh-clearview] [data-reader-earlier]').closest('[data-reader-panel]').setAttribute('data-live-anim', 'earlier')");
-      item.animations.earlier = await animationProbe('[data-live-anim=earlier]', '[data-reader-earlier]', 'earlier');
-      await delay(300);
-    }
-    // Narrow-width overflow in each disclosure state, then hover bleed at full width (side shadows, not clipped).
-    const overflowProbe = async label => { const measured = await evaluate(measure); return { label, ...measured?.overflowX, overflowing: measured?.overflowing ?? null }; };
+    // Open every remaining group and tool row in a bounded batch so the narrow-width probe sees the widest layout.
+    await evaluate("[...document.querySelectorAll('[data-dsh-clearview] [data-reader-group] button[aria-expanded=\"false\"], [data-dsh-clearview] [data-reader-tool-call] button[aria-expanded=\"false\"]')].slice(0, 24).forEach(button => button.click())");
+    await delay(900);
+    // Narrow-width overflow with everything opened.
     const setWidth = width => send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
-    const clickFirst = selector => evaluate(`(() => { const node = document.querySelector(${JSON.stringify(selector)}); if (!node) return false; node.click(); return true; })()`);
-    item.narrowStates = [];
     await setWidth(480);
     await delay(800);
-    item.narrowStates.push(await overflowProbe('panels open, clusters collapsed'));
-    await shot(`${name}-narrow-collapsed`);
-    await evaluate("document.querySelectorAll('[data-dsh-clearview] [data-reader-cluster][data-expanded=\"false\"] [data-disclosure-row]').forEach(row => row.click())");
-    await delay(800);
-    item.narrowStates.push(await overflowProbe('clusters opened'));
-    if (await openMerged('[data-dsh-clearview]')) { await delay(900); item.narrowStates.push(await overflowProbe('merged thought rows opened')); }
-    if (await clickFirst('[data-dsh-clearview] [data-reader-earlier]')) { await delay(800); item.narrowStates.push(await overflowProbe('前 N 步 opened')); }
-    if (await clickFirst('[data-dsh-clearview] [data-reader-reasoning-row][aria-expanded="false"]')) { await delay(800); item.narrowStates.push(await overflowProbe('reasoning row opened')); }
-    if (await clickFirst('[data-dsh-clearview] [data-reader-tool-call] [data-disclosure-row]')) { await delay(800); item.narrowStates.push(await overflowProbe('tool row opened')); }
-    await evaluate("document.querySelector('[data-dsh-clearview] [data-reader-tool-call]')?.scrollIntoView({ block: 'center' })");
-    await delay(400);
+    item.narrow = await evaluate(measure);
     await shot(`${name}-narrow-opened`);
+    await evaluate("(() => { const scroller = document.querySelector('[data-conversation-scroll]'); if (scroller) scroller.scrollTop = scroller.scrollHeight; })()");
+    await delay(500);
+    await shot(`${name}-narrow-bottom`);
+    item.narrowBottom = await evaluate(measure);
     await setWidth(1440);
     await delay(800);
-    const bleedProbe = `(selector => {
-      const el = document.querySelector(selector); if (!el) return null;
-      const style = getComputedStyle(el); const box = el.getBoundingClientRect();
-      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let textBox = null;
-      for (let node = walker.nextNode(); node; node = walker.nextNode()) { if (node.textContent.trim()) { const range = document.createRange(); range.selectNodeContents(node); textBox = range.getBoundingClientRect(); break; } }
-      const clippedBy = [];
-      for (let parent = el.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
-        const parentStyle = getComputedStyle(parent);
-        if (/(hidden|clip|auto|scroll)/.test(parentStyle.overflowX)) { const parentBox = parent.getBoundingClientRect(); if (parentBox.left > box.left - 6 + 0.5 || parentBox.right < box.right + 6 - 0.5) clippedBy.push({ tag: parent.tagName, cls: String(parent.className).slice(0, 40), overflowX: parentStyle.overflowX, left: Math.round(parentBox.left), right: Math.round(parentBox.right) }); }
-      }
-      return { hovered: el.matches(':hover'), background: style.backgroundColor, boxShadow: style.boxShadow, left: Math.round(box.left * 10) / 10, right: Math.round(box.right * 10) / 10, width: Math.round(box.width), height: Math.round(box.height * 10) / 10, textLeft: textBox ? Math.round(textBox.left * 10) / 10 : null, clippedBy };
-    })`;
-    item.hoverBleed = {};
-    for (const [key, selector] of [['panelHeader', '[data-dsh-clearview] [data-reader-panel] > [data-reader-disclosure] > button'], ['cluster', '[data-dsh-clearview] [data-reader-cluster] [data-disclosure-row]'],
-      ['toolRow', '[data-dsh-clearview] [data-reader-tool-call] [data-disclosure-row]'], ['reasoningRow', '[data-dsh-clearview] [data-reader-reasoning-row]'], ['mergedRow', '[data-dsh-clearview] [data-reader-reasoning]:has([class*="suffix"]) [data-reader-reasoning-row]'], ['fileChanges', '[data-dsh-clearview] [data-reader-file-changes] > button']]) {
+    // Hover look of the row kinds (hover only, no click).
+    item.hover = {};
+    for (const [key, selector] of [['line', '[data-dsh-clearview] [data-reader-line] button'], ['toolLine', '[data-dsh-clearview] [data-reader-tool-call] [data-reader-line] button'], ['fileChanges', '[data-dsh-clearview] [data-reader-file-changes] > button']]) {
       await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
       await delay(200);
-      const before = await evaluate(`${bleedProbe}(${JSON.stringify(selector)})`);
-      if (!before) { item.hoverBleed[key] = null; continue; }
-      await hover(selector, 0.15);
-      const after = await evaluate(`${bleedProbe}(${JSON.stringify(selector)})`);
-      item.hoverBleed[key] = { before, after, textShift: before.textLeft !== null && after.textLeft !== null ? Math.round((after.textLeft - before.textLeft) * 10) / 10 : null };
-      const { data } = await send('Page.captureScreenshot', { format: 'png', clip: { x: Math.max(0, after.left - 24), y: Math.max(0, (await evaluate(`document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect().top`)) - 8), width: after.width + 48, height: after.height + 16, scale: 2 } });
-      writeFileSync(join(out, `${name}-hover-${key}.png`), Buffer.from(data, 'base64'));
-      await shot(`${name}-hover-${key}-full`);
+      if (!await hover(selector, 0.15)) { item.hover[key] = null; continue; }
+      item.hover[key] = await evaluate(`(() => { const node = document.querySelector(${JSON.stringify(selector)}); const style = getComputedStyle(node); const box = node.getBoundingClientRect(); return { hovered: node.matches(':hover'), background: style.backgroundColor, left: Math.round(box.left), right: Math.round(box.right), height: Math.round(box.height * 10) / 10 }; })()`);
+      await shot(`${name}-hover-${key}`);
     }
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
-    await evaluate("document.querySelectorAll('[data-dsh-clearview] [data-reader-cluster][data-expanded=\"false\"] [data-disclosure-row]').forEach(row => row.click())");
-    await delay(900);
-    await openMerged('[data-dsh-clearview]');
-    await delay(700);
-    item.clustersOpened = await evaluate(`(() => [...document.querySelectorAll('[data-dsh-clearview] [data-reader-cluster]')].map(node => { const title = node.querySelector('[data-disclosure-row]')?.textContent ?? ''; const topCalls = [...node.querySelectorAll('[data-reader-tool-call]')].filter(call => !call.parentElement.closest('[aria-label=\"子调用\"]')); const calls = topCalls.length; const nested = node.querySelectorAll('[data-reader-tool-call]').length - calls; const records = node.querySelectorAll('[data-reader-record-kind]').length; const claimed = Number(title.match(/(\\d+) 次工具调用/)?.[1] ?? NaN); return { title: title.slice(0, 40), claimedCalls: claimed, calls, nested, records, ok: Number.isNaN(claimed) ? null : claimed === calls }; }))()`);
-    await evaluate("document.querySelector('[data-dsh-clearview] [data-reader-cluster]')?.scrollIntoView({ block: 'center' })");
-    await delay(400);
-    await shot(`${name}-clusters-open`);
-    await evaluate("(() => { const scroller = document.querySelector('[data-conversation-scroll]'); if (scroller) scroller.scrollTop = scroller.scrollHeight; })()");
-    await delay(700);
-    item.bottomGap = await evaluate(`(() => {
-      const root = document.querySelector('[data-dsh-clearview]'); const composer = document.querySelector('[data-composer-seat]');
-      if (!root || !composer) return null;
-      const blocks = [...root.querySelectorAll('[data-reader-file-changes], [data-reader-turn-footer], [data-reader-answer], [data-reader-panel], [data-reader-attention]')].filter(node => node.getBoundingClientRect().height > 0);
-      const lastContent = Math.max(...blocks.map(node => node.getBoundingClientRect().bottom));
-      return { composerTop: Math.round(composer.getBoundingClientRect().top), lastContentBottom: Math.round(lastContent), gap: Math.round(composer.getBoundingClientRect().top - lastContent), rootBottom: Math.round(root.getBoundingClientRect().bottom) };
+    // Group toggle: aria-expanded must flip on click and flip back (local state only).
+    item.groupToggle = await evaluate(`(async () => {
+      const group = document.querySelector('[data-dsh-clearview] [data-reader-group]');
+      const button = group?.querySelector('button[aria-expanded]');
+      if (!button) return null;
+      const before = button.getAttribute('aria-expanded');
+      button.click(); await new Promise(done => setTimeout(done, 500));
+      const during = button.getAttribute('aria-expanded');
+      button.click(); await new Promise(done => setTimeout(done, 500));
+      return { before, during, after: button.getAttribute('aria-expanded') };
     })()`);
-    await shot(`${name}-bottom-gap`);
-    await evaluate("document.querySelector('[data-dsh-clearview] [data-reader-panel]')?.scrollIntoView({ block: 'start' })");
-    await delay(400);
-    // Consecutive tool calls are merged into collapsed cluster rows and single calls into their thought row; open both so the member tool rows can be measured.
-    await openMerged('[data-live-check=panel]');
-    await delay(500);
-    await evaluate("document.querySelectorAll('[data-live-check=panel] [data-reader-cluster][data-expanded=\"false\"] [data-disclosure-row]').forEach(row => row.click())");
-    await delay(500);
-    await evaluate("document.querySelector('[data-live-check=panel]')?.scrollIntoView({ block: 'start' })");
-    await shot(`${name}-panel-open`);
-    item.measuredPanel = await evaluate(measure);
-    // Row hover state before and after a pointer move (hover only, no click).
-    const rowState = `(() => {
-      const row = document.querySelector('[data-live-check=panel] [data-reader-tool-call] [data-disclosure-row]');
-      if (!row) return null;
-      const style = node => ({ cls: String(node.getAttribute('class') ?? '').split(' ').map(name => name.replace(/^_|_[a-z0-9]+_\d+$/g, '')).join(' ').slice(0, 40), opacity: getComputedStyle(node).opacity, display: getComputedStyle(node).display });
-      return { hovered: row.matches(':hover'), height: row.getBoundingClientRect().height, background: getComputedStyle(row).backgroundColor,
-        leading: [...row.querySelectorAll('svg')].slice(0, 3).map(node => ({ ...style(node), parent: style(node.parentElement) })) };
-    })()`;
-    item.rowHover = null;
-    if (await evaluate("!!document.querySelector('[data-live-check=panel] [data-reader-tool-call] [data-disclosure-row]')")) {
-      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
-      const before = await evaluate(rowState);
-      await hover('[data-live-check=panel] [data-reader-tool-call] [data-disclosure-row]');
-      item.rowHover = { before, after: await evaluate(rowState) };
-      await shot(`${name}-row-hover`);
-      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
-    }
-    // A failed tool row: red title / end, and the error summary inset below it.
-    item.failedRow = await evaluate(`(() => {
-      const tool = document.querySelector('[data-live-check=panel] [data-reader-tool-call][data-tool-phase="failed"]');
-      if (!tool) return null;
-      tool.scrollIntoView({ block: 'center' });
-      const row = tool.querySelector('[data-disclosure-row]');
-      const summary = tool.children[1];
-      const style = node => node ? getComputedStyle(node) : null;
-      return { text: row.textContent.slice(0, 120), height: row.getBoundingClientRect().height, titleColor: style(row.querySelector('span:not([class*="icon"]):not([class*="leading"])'))?.color ?? null,
-        errorBackground: style(summary)?.backgroundColor ?? null, errorFont: style(summary?.firstElementChild ?? summary)?.font.slice(0, 80) ?? null, errorText: summary?.textContent.slice(0, 100) ?? null };
+    // Clamped user bubbles: the expand control is a plain local toggle.
+    item.bubbleClamp = await evaluate(`(async () => {
+      const bubble = document.querySelector('[data-dsh-clearview] [data-reader-user-bubble][data-clamped="true"]');
+      if (!bubble) return null;
+      bubble.scrollIntoView({ block: 'center' });
+      const button = bubble.querySelector('button[aria-expanded]') ?? bubble.closest('[data-reader-anchor]')?.querySelector('button[aria-expanded]');
+      if (!button) return { clamped: true, button: false };
+      const before = button.getAttribute('aria-expanded'); const height = bubble.getBoundingClientRect().height;
+      button.click(); await new Promise(done => setTimeout(done, 500));
+      const grown = bubble.getBoundingClientRect().height;
+      button.click(); await new Promise(done => setTimeout(done, 300));
+      return { clamped: true, button: true, before, after: button.getAttribute('aria-expanded'), height, grown };
     })()`);
-    if (item.failedRow) { await delay(400); await shot(`${name}-failed-row`); }
-    await evaluate("document.querySelector('[data-live-check=panel] [data-reader-earlier]')?.click()");
-    await delay(500);
-    await evaluate("document.querySelectorAll('[data-live-check=panel] [data-reader-cluster][data-expanded=\"false\"] [data-disclosure-row]').forEach(row => row.click())");
-    await delay(500);
-    item.toolOpened = await evaluate(`(() => {
-      const panel = document.querySelector('[data-live-check=panel]');
-      panel?.querySelector('[data-reader-earlier]')?.click();
-      const row = panel?.querySelector('[data-reader-tool-call] [data-disclosure-row]');
-      row?.click();
-      return !!row;
-    })()`);
-    await delay(500);
-    item.toolDetails = await evaluate("!!document.querySelector('[data-reader-tool-details]')");
-    await shot(`${name}-tool-open`);
-    item.measuredTool = await evaluate(measure);
-    if (await evaluate("!!document.querySelector('[data-reader-inspect]')")) {
-      await evaluate("document.querySelector('[data-reader-inspect]').click()");
-      await delay(800);
-      item.inspectTab = await selectedTab();
-      await clickTab('阅读');
-      await delay(800);
-    }
-    if (await evaluate("!!document.querySelector('[data-dsh-clearview] [data-reader-show-in-chat]')")) {
-      await evaluate("document.querySelector('[data-dsh-clearview] [data-reader-show-in-chat]').click()");
-      await delay(800);
-      item.showInChatTab = await selectedTab();
-      await clickTab('阅读');
-      await delay(800);
-    }
-    // Coverage of the node kinds a session has: triggers, panel statuses, records, 「前 N 步」.
-    // Only local disclosure state is toggled (panel headers, trigger / record rows, 「前 N 步」).
-    const scrollShot = async (selector, label) => {
-      const found = await evaluate(`(() => { const node = document.querySelector(${JSON.stringify(selector)}); if (!node) return false; node.scrollIntoView({ block: 'center' }); return true; })()`);
-      if (found) { await delay(500); await shot(`${name}-${label}`); }
-      return found;
-    };
-    await evaluate("[...document.querySelectorAll('[data-dsh-clearview] [data-reader-disclosure][data-expanded=\"false\"] > button')].slice(0, 12).forEach(button => button.click())");
-    await delay(900);
-    const cov = item.coverage = { triggers: {}, panels: {}, records: {}, earlier: [] };
-    cov.counts = await evaluate("(() => { const root = document.querySelector('[data-dsh-clearview]'); const tally = (selector, attribute) => { const out = {}; root.querySelectorAll(selector).forEach(node => { const key = node.getAttribute(attribute) ?? ''; out[key] = (out[key] ?? 0) + 1; }); return out; }; return { turnResults: tally('section[data-reader-turn]', 'data-reader-turn-result'), panelStatuses: tally('[data-reader-panel]', 'data-status'), triggers: tally('[data-reader-trigger]', 'data-reader-trigger'), records: tally('[data-reader-record-kind]', 'data-reader-record-kind'), stoppedTags: [...root.querySelectorAll('*')].filter(node => node.children.length === 0 && node.textContent.trim() === '已停止').length }; })()");
-    for (const type of Object.keys(cov.counts.triggers)) {
-      cov.triggers[type] = await evaluate(`(() => { const node = document.querySelector('[data-dsh-clearview] [data-reader-trigger="${type}"]'); const button = node.querySelector('button'); button.click(); return { title: button.textContent.slice(0, 60), height: button.getBoundingClientRect().height }; })()`);
-      await delay(400);
-      cov.triggers[type].shot = await scrollShot(`[data-reader-trigger="${type}"]`, `trigger-${type}`);
-      cov.triggers[type].body = await evaluate(`document.querySelector('[data-reader-trigger="${type}"]')?.textContent.slice(0, 160)`);
-    }
-    for (const status of Object.keys(cov.counts.panelStatuses).filter(value => value !== 'done')) {
-      cov.panels[status] = await evaluate(`(() => { const panel = document.querySelector('[data-dsh-clearview] [data-reader-panel][data-status="${status}"]'); const header = panel.querySelector(':scope > [data-reader-disclosure]'); return { header: header.textContent.slice(0, 80), open: header.getAttribute('data-expanded'), clusters: panel.querySelectorAll('[data-reader-cluster]').length }; })()`);
-      cov.panels[status].shot = await scrollShot(`[data-reader-panel][data-status="${status}"]`, `panel-${status}`);
-    }
-    for (const kind of Object.keys(cov.counts.records)) {
-      cov.records[kind] = await evaluate(`(() => { const record = document.querySelector('[data-dsh-clearview] [data-reader-record-kind="${kind}"]'); const row = record.querySelector('[data-disclosure-row]'); row.click(); return { title: row.textContent.slice(0, 80), height: row.getBoundingClientRect().height, tone: record.getAttribute('data-record-tone') }; })()`);
-      await delay(500);
-      cov.records[kind].shot = await scrollShot(`[data-reader-record-kind="${kind}"]`, `record-${kind}`);
-      cov.records[kind].body = await evaluate(`document.querySelector('[data-reader-record-kind="${kind}"]')?.textContent.slice(0, 200)`);
-      cov.records[kind].showInChat = await evaluate(`!!document.querySelector('[data-reader-record-kind="${kind}"] [data-reader-show-in-chat]')`);
-      if (cov.records[kind].showInChat) {
-        await evaluate(`document.querySelector('[data-reader-record-kind="${kind}"] [data-reader-show-in-chat]').click()`);
-        await delay(900);
-        cov.records[kind].showInChatTab = await selectedTab();
-        await shot(`${name}-record-${kind}-in-chat`);
-        await clickTab('阅读');
-        await delay(900);
-      }
-    }
-    // 「前 N 步」: the panel keeps only the latest steps while a turn did not finish well.
-    for (let nth = 0; nth < 3; nth++) {
-      const before = await evaluate(`(() => { const button = document.querySelector('[data-dsh-clearview] [data-reader-earlier]'); if (!button) return null; const panel = button.closest('[data-reader-panel]'); const total = panel.querySelector(':scope > [data-reader-disclosure]').textContent.match(/(\\d+) 步/)?.[1] ?? null; button.setAttribute('data-live-earlier', '1'); panel.setAttribute('data-live-earlier-panel', '1'); return { text: button.textContent.trim().slice(0, 80), height: button.getBoundingClientRect().height, status: panel.getAttribute('data-status'), headerSteps: total, clustersBefore: panel.querySelectorAll('[data-reader-cluster]').length, toolsBefore: panel.querySelectorAll('[data-reader-tool-call]').length, reasoningBefore: panel.querySelectorAll('[data-reader-reasoning]').length }; })()`);
-      if (!before) break;
-      await scrollShot('[data-live-earlier]', `earlier-closed-${nth}`);
-      await evaluate("document.querySelector('[data-live-earlier]').click()");
-      await delay(700);
-      const after = await evaluate("(() => { const panel = document.querySelector('[data-live-earlier-panel]'); return { buttonGone: !panel.querySelector('[data-reader-earlier]'), clustersAfter: panel.querySelectorAll('[data-reader-cluster]').length, toolsAfter: panel.querySelectorAll('[data-reader-tool-call]').length, clusterMembersAfter: panel.querySelectorAll('[data-reader-cluster] [data-reader-tool-call]').length, reasoningAfter: panel.querySelectorAll('[data-reader-reasoning]').length, headerTools: panel.querySelector(':scope > [data-reader-disclosure]').textContent.match(/(\\d+) 次工具/)?.[1] ?? null }; })()");
-      await scrollShot('[data-live-earlier-panel]', `earlier-open-${nth}`);
-      cov.earlier.push({ ...before, ...after });
-      await evaluate("document.querySelectorAll('[data-live-earlier],[data-live-earlier-panel]').forEach(node => { node.removeAttribute('data-live-earlier'); node.removeAttribute('data-live-earlier-panel'); })");
-    }
     guardCreates();
     // 阅读 → 对话 → 阅读 round trips (tab switches only): the reader remounts and restores its position;
     // any exception thrown meanwhile lands in report.exceptions and fails the run.
@@ -635,73 +371,96 @@ try {
       item.roundTrips.push({ readerWhileOnChat, readerBack: await evaluate("!!document.querySelector('[data-dsh-clearview] section[data-reader-turn]')") });
     }
     item.roundTripExceptions = report.exceptions.length - exceptionsBefore;
-    // Conditions first, while the reader still has the whole pane: narrow width, host font
-    // size 13/14/16, dark / light, reduced motion. Opening a file below adds a right
-    // sidebar that would crowd these screenshots, so that happens last.
-    item.focusLog = [];
-    const focusPanel = async () => {
-      const probe = "(() => { const panel = document.querySelector('[data-dsh-clearview] [data-reader-panel]'); panel?.scrollIntoView({ block: 'start' }); return panel ? Math.round(panel.getBoundingClientRect().top) : null; })()";
-      await evaluate(probe);
+    // Conditions, while the reader still has the whole pane: host font size 13/14/16, dark / light,
+    // reduced motion. Opening a file below adds a right sidebar that would crowd these screenshots.
+    const focusGroup = async () => {
+      await evaluate("document.querySelector('[data-dsh-clearview] [data-reader-group]')?.scrollIntoView({ block: 'start' })");
       await delay(350);
-      item.focusLog.push(await evaluate(probe));
     };
-    await send('Emulation.setDeviceMetricsOverride', { width: 480, height: 900, deviceScaleFactor: 1, mobile: false });
-    await delay(600);
-    await focusPanel();
-    await delay(300);
-    await shot(`${name}-narrow`);
-    item.measuredNarrow = await evaluate(measure);
-    await evaluate("(() => { const scroller = document.querySelector('[data-conversation-scroll]'); if (scroller) scroller.scrollTop = scroller.scrollHeight; })()");
-    await delay(500);
-    await shot(`${name}-narrow-bottom`);
-    item.narrowBottom = await evaluate(measure);
-    await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
     if (conditions) {
     item.fontSizes = {};
     for (const size of ['13px', '14px', '16px']) {
       await evaluate(`document.body.style.setProperty('--dsh-content-font-size', '${size}')`);
       await delay(400);
-      await focusPanel();
-      await delay(300);
+      await focusGroup();
       item.fontSizes[size] = (await evaluate(measure))?.fonts;
       await shot(`${name}-font-${size}`);
     }
     await evaluate("document.body.style.setProperty('--dsh-content-font-size', '14px')");
-    await focusPanel();
-    for (const scheme of ['light', 'dark']) {
-      await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+    await focusGroup();
+    // Theme check. The host theme does not follow prefers-color-scheme, so the attribute is flipped on
+    // document.body of this throwaway headless page only (no host setting is written) and restored after.
+    item.theme = {};
+    for (const mode of ['dark', 'light']) {
+      await evaluate(mode === 'dark' ? "(() => { document.body.setAttribute('data-ds-dark-theme', ''); document.documentElement.style.colorScheme = 'dark'; })()" : "(() => { document.body.removeAttribute('data-ds-dark-theme'); document.documentElement.style.colorScheme = 'light'; })()");
       await delay(600);
-      await focusPanel();
-      await delay(300);
-      item[`scheme-${scheme}`] = await evaluate("document.body.hasAttribute('data-ds-dark-theme')");
-      await shot(`${name}-scheme-${scheme}`);
+      await focusGroup();
+      const measured = await evaluate(measure);
+      item.theme[mode] = { attribute: await evaluate("document.body.hasAttribute('data-ds-dark-theme')"), rootBackground: measured?.rootBackground, backdropBackground: measured?.backdropBackground };
+      await shot(`${name}-theme-${mode}`);
     }
-    await send('Emulation.setEmulatedMedia', { features: [] });
-    // The host theme does not follow prefers-color-scheme, so the real light theme needs the user's
-    // own setting. As a stand-in, flip the theme attribute on this throwaway page only (no setting is
-    // written) so the --dsw-alias-* light tokens can be eyeballed; it is not the host's light theme.
-    item.lightSimulation = await evaluate("(() => { document.body.removeAttribute('data-ds-dark-theme'); document.documentElement.style.colorScheme = 'light'; return !document.body.hasAttribute('data-ds-dark-theme'); })()");
-    await delay(600);
-    await focusPanel();
-    await delay(300);
-    await shot(`${name}-light-simulated`);
     await evaluate("(() => { document.body.setAttribute('data-ds-dark-theme', ''); document.documentElement.style.colorScheme = 'dark'; })()");
     await delay(400);
-    const transitions = "(() => { const read = selector => { const node = document.querySelector(selector); return node ? getComputedStyle(node).transitionDuration : null; }; return { panelHeader: read('[data-reader-panel] > [data-reader-disclosure] > button'), toolRow: read('[data-reader-tool-call] [data-disclosure-row]'), reasoningRow: read('[data-reader-reasoning-row]') }; })()";
+    const transitions = "(() => { const read = selector => { const node = document.querySelector(selector); return node ? getComputedStyle(node).transitionDuration : null; }; return { line: read('[data-reader-line] button'), toolLine: read('[data-reader-tool-call] [data-reader-line] button') }; })()";
     item.defaultTransitions = await evaluate(transitions);
     item.motionDefault = await evaluate("document.querySelector('[data-dsh-clearview]')?.getAttribute('data-motion')");
     await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
     await delay(400);
     item.reducedMotion = await evaluate("document.querySelector('[data-dsh-clearview]')?.getAttribute('data-motion')");
     item.reducedMotionTransitions = await evaluate(transitions);
-    await focusPanel();
-    await delay(400);
+    await focusGroup();
     await shot(`${name}-reduced-motion`);
     await send('Emulation.setEmulatedMedia', { features: [] });
     }
-    // Hover look of the collapsed file-changes header (hover only): background plus side bleed.
+    // Coverage of the node kinds a session has: triggers, records. Only local disclosure state is toggled.
+    const scrollShot = async (selector, label) => {
+      const found = await evaluate(`(() => { const node = document.querySelector(${JSON.stringify(selector)}); if (!node) return false; node.scrollIntoView({ block: 'center' }); return true; })()`);
+      if (found) { await delay(500); await shot(`${name}-${label}`); }
+      return found;
+    };
+    const cov = item.coverage = { triggers: {}, records: {} };
+    cov.counts = await evaluate("(() => { const root = document.querySelector('[data-dsh-clearview]'); const tally = (selector, attribute) => { const out = {}; root.querySelectorAll(selector).forEach(node => { const key = node.getAttribute(attribute) ?? ''; out[key] = (out[key] ?? 0) + 1; }); return out; }; return { turnResults: tally('section[data-reader-turn]', 'data-reader-turn-result'), groupStates: tally('[data-reader-group]', 'data-group-state'), triggers: tally('[data-reader-trigger]', 'data-reader-trigger'), records: tally('[data-reader-record-kind]', 'data-reader-record-kind'), stoppedTags: [...root.querySelectorAll('*')].filter(node => node.children.length === 0 && node.textContent.trim() === '已停止').length }; })()");
+    for (const type of Object.keys(cov.counts.triggers)) {
+      cov.triggers[type] = await evaluate(`(() => { const node = document.querySelector('[data-dsh-clearview] [data-reader-trigger="${type}"]'); const button = node.querySelector('button'); button.click(); return { title: button.textContent.slice(0, 60), height: button.getBoundingClientRect().height }; })()`);
+      await delay(400);
+      cov.triggers[type].shot = await scrollShot(`[data-reader-trigger="${type}"]`, `trigger-${type}`);
+      cov.triggers[type].body = await evaluate(`document.querySelector('[data-reader-trigger="${type}"]')?.textContent.slice(0, 160)`);
+    }
+    for (const kind of Object.keys(cov.counts.records)) {
+      cov.records[kind] = await evaluate(`(() => { const record = document.querySelector('[data-dsh-clearview] [data-reader-record-kind="${kind}"]'); const row = record.querySelector('button') ?? record; row.click(); return { title: row.textContent.slice(0, 80), height: row.getBoundingClientRect().height, tone: record.getAttribute('data-record-tone') }; })()`);
+      await delay(500);
+      cov.records[kind].shot = await scrollShot(`[data-reader-record-kind="${kind}"]`, `record-${kind}`);
+      cov.records[kind].body = await evaluate(`document.querySelector('[data-reader-record-kind="${kind}"]')?.textContent.slice(0, 200)`);
+      cov.records[kind].showInChat = await evaluate(`!!document.querySelector('[data-reader-record-kind="${kind}"] [data-reader-show-in-chat]')`);
+      if (cov.records[kind].showInChat) {
+        await evaluate(`document.querySelector('[data-reader-record-kind="${kind}"] [data-reader-show-in-chat]').click()`);
+        await delay(900);
+        cov.records[kind].showInChatTab = await selectedTab();
+        await shot(`${name}-record-${kind}-in-chat`);
+        await clickTab('阅读');
+        await delay(900);
+      }
+    }
+    if (await evaluate("!!document.querySelector('[data-reader-inspect]')")) {
+      await evaluate("document.querySelector('[data-reader-inspect]').click()");
+      await delay(800);
+      item.inspectTab = await selectedTab();
+      await clickTab('阅读');
+      await delay(800);
+    }
+    guardCreates();
+    // Gap between the last transcript block and the composer.
     await evaluate("(() => { const scroller = document.querySelector('[data-conversation-scroll]'); if (scroller) scroller.scrollTop = scroller.scrollHeight; })()");
     await delay(400);
+    item.bottomGap = await evaluate(`(() => {
+      const root = document.querySelector('[data-dsh-clearview]'); const composer = document.querySelector('[data-composer-seat]');
+      if (!root || !composer) return null;
+      const blocks = [...root.querySelectorAll('[data-reader-file-changes], [data-reader-turn-footer], [data-reader-answer], [data-reader-group], [data-reader-status-line], [data-reader-attention]')].filter(node => node.getBoundingClientRect().height > 0);
+      const lastContent = Math.max(...blocks.map(node => node.getBoundingClientRect().bottom));
+      return { composerTop: Math.round(composer.getBoundingClientRect().top), lastContentBottom: Math.round(lastContent), gap: Math.round(composer.getBoundingClientRect().top - lastContent) };
+    })()`);
+    await shot(`${name}-bottom-gap`);
+    // Hover look of the collapsed file-changes header (hover only): background plus side bleed.
     if (await hover('[data-dsh-clearview] [data-reader-file-changes] > button', 0.1)) {
       item.changesHover = await evaluate("(() => { const node = document.querySelector('[data-dsh-clearview] [data-reader-file-changes] > button'); const style = getComputedStyle(node); const root = document.querySelector('[data-dsh-clearview]').getBoundingClientRect(); const box = node.getBoundingClientRect(); return { hovered: node.matches(':hover'), background: style.backgroundColor, boxShadow: style.boxShadow, left: Math.round(box.left), right: Math.round(box.right), rootRight: Math.round(root.right) }; })()");
       await shot(`${name}-changes-hover`);
@@ -740,7 +499,7 @@ report.profileRemoved = !existsSync(profile);
 if (report.sessionCountAfter === undefined) report.sessionCountAfter = await sessionCount().catch(() => null);
 const readerErrors = report.exceptions.concat(report.consoleErrors).filter(text => /clearview|data-reader|dsh-clearview/i.test(text));
 report.pass = (!intercept || report.replacements + report.spliced > 0)
-  && report.sessions.every(item => item.opened && item.readerMounted && item.initial?.version === expectedVersion && item.initial.blockErrors.length === 0 && item.final?.blockErrors.length === 0)
+  && report.sessions.every(item => item.opened && item.readerMounted && item.initial?.version === expectedVersion && item.initial.blockErrors.length === 0 && item.final?.blockErrors.length === 0 && item.initial.retired === 0 && item.final?.retired === 0)
   && readerErrors.length === 0 && report.handlerErrors.length === 0 && report.profileRemoved
   && report.sessionCreates <= 1 && report.sessionCountBefore === report.sessionCountAfter;
 report.readerErrors = readerErrors;
