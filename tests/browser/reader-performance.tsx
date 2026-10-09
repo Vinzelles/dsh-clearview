@@ -221,7 +221,7 @@ async function reader() {
         check(snap?.chat.timeline.turns.get(21)?.status === 'closed', 'DOM compat snapshot stale');
         check(!!snap && turnMetaText(turnMeta(snap.chat.timeline.turns.get(21))) !== '', 'turn footer missing after fine-grained subscriptions');
     }
-    const result = { frameP95: quantile(frames, .95), frameMax: Math.max(...frames), framesOver25: frames.filter(n => n > 25).length, samples: frames.length, commitP95: quantile(commits, .95), historyBlockRenders, chatSubscribers: chat.subscriberCount(), sessionSubscribers: sess.subscriberCount(), pendingSubscribers: pend.subscriberCount(), peakAnimations: animations, blurActive: blur, heavyPreserved, shimmerPreserved, scrollRange: Math.max(...scrolls) - Math.min(...scrolls), maxActiveChars: text.length, turns: 21, tools: 20, expandEarlier: __EXPAND_EARLIER__, toolRowsDuringStream: { beforeStream: toolRowsBeforeStream, atHeavyCheck: toolRowsAtHeavyCheck }, earlierClicked: !!earlier, clusterRowsAfterEarlier: clusterRows };
+    const result = { frameP95: quantile(frames, .95), frameMax: Math.max(...frames), framesOver25: frames.filter(n => n > 25).length, samples: frames.length, commitP95: quantile(commits, .95), historyBlockRenders, chatSubscribers: chat.subscriberCount(), sessionSubscribers: sess.subscriberCount(), pendingSubscribers: pend.subscriberCount(), peakAnimations: animations, blurActive: blur, heavyPreserved, shimmerPreserved, scrollRange: Math.max(...scrolls) - Math.min(...scrolls), maxActiveChars: text.length, turns: 21, tools: 20, toolRowsDuringStream: { beforeStream: toolRowsBeforeStream, atHeavyCheck: toolRowsAtHeavyCheck } };
     flushSync(() => root.render(null));
     return result;
 }
