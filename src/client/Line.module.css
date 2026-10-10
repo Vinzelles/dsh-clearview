@@ -1,16 +1,22 @@
 .line { min-width: 0; }
-.button { display: flex; align-items: center; gap: 8px; box-sizing: border-box; width: 100%; min-height: 28px; margin: 0; padding: 0; border: 0; border-radius: 6px; background: transparent; box-shadow: 6px 0 0 transparent, -6px 0 0 transparent; color: var(--cc-text-300); font: inherit; font-size: var(--cc-size-ui); line-height: 20px; text-align: left; }
+.button { display: flex; align-items: center; gap: 8px; box-sizing: border-box; width: 100%; min-height: var(--cv-row-height, 32px); margin: 0; padding: 5px 8px; border: 0; border-radius: var(--cv-row-radius, 8px); background: transparent; box-shadow: none; color: var(--cc-text-300); font-family: var(--cc-font-ui, ui-sans-serif, system-ui, sans-serif); font-size: var(--cv-process-size, calc(13px + var(--dsh-content-font-delta, 0px))); font-weight: 400; font-style: normal; line-height: 20px; text-align: left; }
 button.button { cursor: pointer; }
-button.button:hover { background: var(--cc-hover); box-shadow: 6px 0 0 var(--cc-hover), -6px 0 0 var(--cc-hover); }
+.button { transition: background-color var(--cv-fast) var(--cv-ease), color var(--cv-fast) var(--cv-ease); }
+.button[aria-expanded="true"] { background: var(--cv-row-open, var(--cc-hover)); }
+.button:hover, .button:focus-visible { background: var(--cv-row-hover, var(--cc-hover)); }
+.button:focus-visible { outline: 1px solid var(--cc-border-strong); outline-offset: -1px; }
 .chevron { width: 12px; height: 12px; flex: none; fill: none; stroke: var(--cc-text-500); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; transition: transform var(--cv-fast) var(--cv-ease); }
 .chevron[data-open="true"] { transform: rotate(90deg); }
 .icon { display: inline-flex; width: 16px; height: 16px; flex: none; align-items: center; justify-content: center; color: var(--cc-text-500); }
-.label { flex: none; color: var(--cc-text-300); white-space: nowrap; }
-.target { min-width: 0; overflow: hidden; color: var(--cc-text-100); font-size: calc(var(--cc-size-small) + .5px); text-overflow: ellipsis; white-space: nowrap; }
-.trailing { flex: none; color: var(--cc-text-500); font-size: var(--cc-size-small); white-space: nowrap; }
+.label { flex: 0 1 auto; min-width: 0; color: var(--cc-text-300); white-space: normal; overflow-wrap: anywhere; }
+.target { flex: 1 1 0; min-width: 0; overflow: hidden; color: var(--cc-text-100); font-size: inherit; text-overflow: ellipsis; white-space: nowrap; }
+.trailing { flex: 0 1 auto; min-width: 0; color: var(--cc-text-500); font-size: inherit; overflow-wrap: anywhere; }
+.hint { flex: none; margin-left: auto; color: var(--cc-text-500); white-space: nowrap; }
+.button:hover .hint, .button:focus-visible .hint { color: var(--cc-text-300); }
 .trailing [data-add] { color: var(--cc-success); }
 .trailing [data-del] { color: var(--cc-danger); }
 .line[data-tone="failed"] .icon, .line[data-tone="failed"] .trailing { color: var(--cc-danger); }
 .label[data-shimmer] { background: linear-gradient(90deg, var(--cc-text-300) 0%, var(--cc-text-100) 45%, var(--cc-text-300) 70%); background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: cc-shimmer 2s linear infinite; }
 @keyframes cc-shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
-@media (prefers-reduced-motion: reduce) { .label[data-shimmer] { animation: none; color: var(--cc-text-300); background: none; } .chevron { transition: none; } }
+[data-motion=off] .button, [data-motion=off] .chevron { transition: none; }
+@media (prefers-reduced-motion: reduce) { .label[data-shimmer] { animation: none; color: var(--cc-text-300); background: none; } .button, .chevron { transition: none; } }

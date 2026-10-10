@@ -7,12 +7,12 @@ export function statusVerb(label: string): string {
   return label.startsWith('正在') ? `${label}…` : label;
 }
 
-/** The end of an open (or just stopped) turn: Claude's spark, the current verb and the clocks. */
+/** A compact activity indicator, the current verb and secondary timing. */
 export function StatusLine({ phase, label, elapsed, thinking, motion }: { phase: StatusPhase; label: string; elapsed: string | null; thinking: string | null; motion: boolean }) {
   const running = phase === 'running';
   const meta = [elapsed, thinking ? `已思考 ${thinking}` : null].filter(Boolean).join(' · ');
   return <div className={css.line} data-reader-status-line data-phase={phase} role="status">
-    <span className={css.spark} aria-hidden="true" data-spin={running && motion ? true : undefined}>✻</span>
+    <span className={css.indicator} aria-hidden="true" data-spin={running && motion ? true : undefined} />
     <span className={css.verb} data-shimmer={running && motion ? true : undefined}>{statusVerb(label)}</span>
     {meta && <span className={css.meta}>{meta}</span>}
   </div>;

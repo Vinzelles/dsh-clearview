@@ -1,5 +1,5 @@
 .record { min-width: 0; }
-.detail { margin: 2px 0 8px 22px; min-width: 0; padding: 8px 12px; border: 1px solid var(--cc-border); border-radius: 10px; background: var(--cc-bg-200); color: var(--cc-text-300); font-size: var(--cc-size-code); line-height: 20px; overflow-wrap: anywhere; }
+.detail { margin: 6px 8px 12px var(--cv-indent); min-width: 0; padding: 12px; border: 1px solid var(--cv-detail-border); border-radius: var(--cv-detail-radius); background: var(--cv-surface); color: var(--cc-text-300); font-size: var(--cc-size-code); line-height: 20px; overflow-wrap: anywhere; }
 .section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .label { margin: 0; color: var(--cc-text-300); font-size: var(--cc-size-small); line-height: 18px; font-weight: 500; }
 .raw { margin: 0; max-height: 320px; overflow: auto; padding: 10px 12px; border-radius: 6px; background: var(--cc-bg-300); color: var(--cc-text-300); font: var(--cc-size-code)/18px var(--cc-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }

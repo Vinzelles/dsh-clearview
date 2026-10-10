@@ -10,7 +10,11 @@ export function scrollMetrics(port: { scrollHeight: number; clientHeight: number
 }
 
 /** A streaming thought: a short viewport that follows the newest text until the reader takes over. */
-export function LiveThought({ follow, motion, children }: { follow: boolean; motion: boolean; children: ReactNode }) {
+export function LiveThought({ follow, motion, children, live = true, onManualReadChange }: {
+  follow: boolean; motion: boolean; children: ReactNode; live?: boolean;
+  /** Wheel/scroll reading has no focus or selection for the parent to pin. */
+  onManualReadChange?: (reading: boolean) => void;
+}) {
   const { resumeSignal = 0 } = useReaderActions();
   const seenResumeSignal = useRef(resumeSignal);
   const viewport = useRef<HTMLDivElement>(null);
@@ -44,7 +48,8 @@ export function LiveThought({ follow, motion, children }: { follow: boolean; mot
     if (hasSelection()) return;
     finishRef.current?.cancel();
     setFollowing(true);
-  }, [hasSelection]);
+    onManualReadChange?.(false);
+  }, [hasSelection, onManualReadChange]);
   useLayoutEffect(() => {
     if (seenResumeSignal.current === resumeSignal) return;
     seenResumeSignal.current = resumeSignal;
@@ -55,7 +60,7 @@ export function LiveThought({ follow, motion, children }: { follow: boolean; mot
     const port = viewport.current;
     const text = content.current;
     if (!port || !text) return;
-    if (allowed) finishRef.current?.cancel();
+    if (allowed || jumping) finishRef.current?.cancel();
     let clientHeight = port.clientHeight;
     let tail = scrollMetrics(port).tail;
     let frame = 0;
@@ -99,9 +104,11 @@ export function LiveThought({ follow, motion, children }: { follow: boolean; mot
       frame = requestAnimationFrame(loop);
     };
     const onScroll = () => {
-      if ((tracking || jumping || finishRef.current) && Math.abs(port.scrollTop - lastTop.current) > 1) pause();
+      if ((tracking || jumping || finishRef.current) && Math.abs(port.scrollTop - lastTop.current) > 1) {
+        pause(); onManualReadChange?.(true);
+      }
     };
-    const onWheel = () => { if (tracking || jumping || finishRef.current) pause(); };
+    const onWheel = () => { pause(); onManualReadChange?.(true); };
     const onSelection = () => { if (hasSelection()) pause(); };
     const onVisibility = () => { if (!document.hidden && canFollow()) run(); };
     const observer = new ResizeObserver(() => { refresh(); if (tracking) run(); });
@@ -132,6 +139,7 @@ export function LiveThought({ follow, motion, children }: { follow: boolean; mot
         const glide = (time: number) => {
           glideFrame = 0;
           if (finishRef.current !== token) return;
+          if (!port.isConnected || hasSelection() || document.hidden) { token.cancel(); return; }
           const next = followAdvance(glideState, end, time);
           glideState = next;
           port.scrollTop = next.pos;
@@ -142,15 +150,20 @@ export function LiveThought({ follow, motion, children }: { follow: boolean; mot
         glideFrame = requestAnimationFrame(glide);
       }
     };
-  }, [allowed, jumping, pause, hasSelection]);
+  }, [allowed, jumping, pause, hasSelection, onManualReadChange]);
+  // Effect cleanup above may start a finish glide when permission changes. An
+  // actual unmount must cancel it, including React's still-connected cleanup phase.
+  useLayoutEffect(() => () => finishRef.current?.cancel(), []);
 
-  return <div className={css.live} data-reader-live-thought data-following={follow && following}>
+  const resumeLabel = follow ? '继续跟随' : onManualReadChange ? '结束回看' : null;
+
+  return <div className={css.live} data-reader-live-thought={live || undefined} data-following={follow && following}>
     <div ref={viewport} id={viewportId} className={css.viewport} data-reader-reasoning-scroll role="region"
       aria-label={`思考内容${overflow ? '，可滚动阅读' : ''}`} tabIndex={overflow ? 0 : undefined} data-scrolled={scrolled}
       onScroll={() => setScrolled((viewport.current?.scrollTop ?? 0) > 0)}
       onPointerDown={pause} onFocus={pause}>
       <div ref={content} data-reader-reasoning-text>{children}</div>
     </div>
-    {!following && <button type="button" className={css.resume} aria-controls={viewportId} onClick={resume}>继续跟随</button>}
+    {!following && resumeLabel && <button type="button" className={css.resume} aria-controls={viewportId} onClick={resume}>{resumeLabel}</button>}
   </div>;
 }

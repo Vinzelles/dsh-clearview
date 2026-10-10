@@ -146,13 +146,14 @@ test('no stylesheet under src/client widens its box with a negative horizontal m
   assert.deepEqual(offenders, []);
 });
 
-test('hover bleed on process rows is drawn with side shadows in the hover colour', () => {
-  for (const [file, selector] of [['Line', 'button.button'], ['FileChanges', '.header']] as const) {
+test('process and file-change disclosures keep hover feedback inside the shared hit area', () => {
+  for (const file of ['Line', 'FileChanges']) {
     const css = sheet(file);
-    const hover = new RegExp(String.raw`${selector.replace('.', String.raw`\.`)}:hover[^{]*\{([^}]*)\}`).exec(css)?.[1] ?? '';
-    const colour = file === 'Line' ? '--cc-hover' : '--cc-hover';
-    assert.ok(hover.includes(`box-shadow: 6px 0 0 var(${colour}), -6px 0 0 var(${colour})`), `${file} ${selector}`);
+    assert.match(css, /background: var\(--cv-row-hover/);
+    assert.match(css, /min-height: var\(--cv-row-height/);
+    assert.match(css, /padding: 5px 8px/);
   }
+  assert.doesNotMatch(sheet('Line'), /box-shadow:\s*6px/);
 });
 
 test('a settled-open collapse body does not clip; it clips only while closed or animating', async () => {
@@ -168,7 +169,7 @@ test('a settled-open collapse body does not clip; it clips only while closed or 
   assert.equal(renderToStaticMarkup(createElement(CollapseBody, { open: false, motion: true }, createElement('span', null, 'x'))), '');
 });
 
-test('narration and answer share one serif prose class on the Claude tokens', () => {
+test('narration and answer share one primary prose class', () => {
   const prose = /\.prose \{([^}]*)\}/.exec(sheet('TurnSection'))?.[1] ?? '';
   assert.match(prose, /font-family: var\(--cc-font-response\)/);
   assert.match(prose, /font-size: var\(--cc-size-body\)/);
@@ -184,7 +185,7 @@ test('the Markdown table wrapper never exceeds its column', () => {
   assert.match(wrapper, /contain: inline-size/);
 });
 
-test('reader root defines Claude tokens for light and dark', () => {
+test('reader root preserves the compatibility palette for light and dark', () => {
   const text = sheet('Reader');
   for (const name of ['--cc-bg-100', '--cc-bg-200', '--cc-bg-300', '--cc-text-100', '--cc-text-300', '--cc-text-500', '--cc-border', '--cc-danger', '--cc-success', '--cc-brand', '--cc-font-ui', '--cc-font-response', '--cc-font-mono', '--cc-size-body']) {
     assert.match(text, new RegExp(`${name}:`), name);
@@ -214,17 +215,18 @@ test('only the remap block in Reader.module.css names host colour tokens', () =>
   }
 });
 
-test('retired --cv-* panel, inset, font and row-height variables are not referenced', () => {
+test('retired process-panel and inset surfaces are not reintroduced', () => {
   for (const name of stylesheets()) {
-    assert.doesNotMatch(readFileSync(new URL(name, CLIENT), 'utf8'), /--cv-(?:panel|inset|font|line-body|row-height)/, name);
+    assert.doesNotMatch(readFileSync(new URL(name, CLIENT), 'utf8'), /--cv-(?:panel-bg|panel-ring|inset-bg|font-body|line-body)/, name);
   }
 });
 
-test('answer prose uses the Claude response font and code uses the mono stack', () => {
+test('answer prose resolves to the shared sans stack and code uses mono', () => {
   const markdown = readFileSync(new URL('markdown/MarkdownText.module.css', CLIENT), 'utf8');
   assert.match(markdown, /var\(--cc-font-mono\)/);
   assert.match(markdown, /var\(--cc-link\)/);
   assert.match(sheet('TurnSection'), /font-family:\s*var\(--cc-font-response\)/);
+  assert.match(sheet('Reader'), /--cc-font-response:\s*var\(--cc-font-ui\)/);
   for (const file of ['native/ContextInjectionRow.module.css', 'native/SystemPromptRow.module.css']) {
     const css = readFileSync(new URL(file, CLIENT), 'utf8');
     assert.match(css, /var\(--cc-font-mono\)/, `${file} uses the same code font as the reader`);

@@ -173,9 +173,9 @@ async function focusedLifecycles(chat: any, sess: any, prefs: any, props: any) {
         callId: id, call: { name, argsRaw: raw }, subCalls: [], callTime: Date.now() - 1000,
         ...(returned ? { kind: 'tool-call', content, isError: false, time: Date.now() } : {})
     });
-    const mount = async (value: any) => {
+    const mount = async (value: any, motion = false) => {
         await clear(); flushSync(() => root.render(null));
-        flushSync(() => { chat.set(value); prefs.set({ ...saved.prefs, motion: false }); sess.set({ ...saved.session, running: true }); root.render(<Reader {...fixtureProps}/>); });
+        flushSync(() => { chat.set(value); prefs.set({ ...saved.prefs, motion }); sess.set({ ...saved.session, running: true }); root.render(<Reader {...fixtureProps}/>); });
         await wait(100);
     };
     const select = async (element: Element | null, label: string) => {
@@ -198,6 +198,50 @@ async function focusedLifecycles(chat: any, sess: any, prefs: any, props: any) {
         return { tab, detail: row?.querySelector<HTMLElement>('[data-reader-tool-details]') ?? null, panel: row?.querySelector<HTMLElement>('[role="tabpanel"]') ?? null };
     };
     try {
+        // Exercise the real TurnSection seat, not a standalone scrolling div.
+        // Wheel reading owns neither focus nor selection and used to disappear at tool arrival.
+        evidence.reasoningFollow = [];
+        for (const motion of [false, true]) {
+            let reason = '限高思考逐行输出，保留完整原文并跟随最新内容。\n'.repeat(45);
+            let value = seed([{ kind: 'reasoning', text: reason }]); await mount(value, motion);
+            const seat = scope().querySelector<HTMLElement>('[data-reader-live-seat]')!;
+            const port = seat?.querySelector<HTMLElement>('[data-reader-reasoning-scroll]')!;
+            check(!!port && port.scrollHeight > port.clientHeight, 'reasoning follow: overflowing live viewport missing');
+            if (!port) continue;
+            const tail = () => port.scrollHeight - port.clientHeight;
+            const cap = port.clientHeight;
+            check(Math.abs(port.clientHeight - 128) <= 1, 'reasoning follow: live viewport must retain the original 128px cap');
+            reason += '新增长文本。\n'.repeat(6);
+            value = assistant(value, 'life-a', [{ kind: 'reasoning', text: reason }], 'running'); await publish(value);
+            await wait(1100);
+            check(Math.abs(port.scrollTop - tail()) <= 2, 'reasoning follow: growth did not reach the tail');
+            port.dispatchEvent(new WheelEvent('wheel', { deltaY: -80, bubbles: true }));
+            port.scrollTop = Math.max(0, port.scrollTop - 90); await wait(80);
+            const pausedTop = port.scrollTop;
+            reason += '暂停期间继续收到的文字。\n'.repeat(5);
+            value = assistant(value, 'life-a', [{ kind: 'reasoning', text: reason }], 'running'); await publish(value);
+            check(Math.abs(port.scrollTop - pausedTop) <= 1, 'reasoning follow: growth moved a wheel-paused viewport');
+            value = assistant(value, 'life-a', [{ kind: 'reasoning', text: reason }], 'settled');
+            value = tool(value, call('wheel-read')); await publish(value);
+            check(seat.isConnected && Math.abs(port.scrollTop - pausedTop) <= 1, 'reasoning -> tool lost wheel reading position');
+            value = assistant(value, 'life-b', [{ kind: 'reasoning', text: '下一步思考。'.repeat(70) }], 'running', 1); await publish(value);
+            check(seat.isConnected && Math.abs(port.scrollTop - pausedTop) <= 1, 'tool -> next step lost wheel reading position');
+            check(seat.querySelector('[data-reader-reasoning-text]')?.textContent === reason, 'paused seat dropped reasoning text on settle');
+            const resume = [...seat.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '结束回看');
+            check(!!resume, 'wheel-paused thought has no resume action');
+            resume?.focus(); await wait(40);
+            resume?.click(); await wait(120);
+            check(!seat.isConnected, 'explicit resume did not release the old wheel-reading seat');
+            const thought = scope().querySelector<HTMLElement>('[data-reader-flow] [data-reader-reasoning]');
+            disclosure(thought)?.click(); await wait(400);
+            const history = thought?.querySelector<HTMLElement>('[data-reader-reasoning-scroll]');
+            check(!!history && history.clientHeight <= 128 && history.scrollHeight > history.clientHeight, 'settled thought lost its capped scroll viewport');
+            check(history?.textContent === reason, 'settled thought does not expose the complete reasoning');
+            history?.focus(); await wait(80);
+            check(![...thought!.querySelectorAll('button')].some(button => button.textContent === '继续跟随'), 'historical thought offers an ineffective resume action');
+            evidence.reasoningFollow.push({ motion, cap, pausedTop, historyHeight: history?.clientHeight, fullText: history?.textContent === reason });
+        }
+
         // Focus holds A first. Only after B exists do we select A, then transfer focus to B.
         const reason = '思考 A 正在阅读，出现 B 后仍要保留 A 的真实选区。'.repeat(100);
         let value = seed([{ kind: 'reasoning', text: reason }]); await mount(value);
@@ -715,7 +759,7 @@ async function reader() {
         host.scrollTop = 0;
         await frame();
         const scope = host.querySelector<HTMLElement>('[data-dsh-clearview]')!;
-        host.style.background = getComputedStyle(scope).backgroundColor;
+        host.style.background = getComputedStyle(scope).getPropertyValue('--cc-bg-100');
         const styleOf = (selector: string) => {
             const node = scope.querySelector<HTMLElement>(selector);
             if (!node) return null;
@@ -754,10 +798,10 @@ async function reader() {
             const expectedBody = getComputedStyle(probe).fontSize; probe.remove();
             check(facts.prose?.size === expectedBody && Math.abs(parseFloat(facts.prose?.lineHeight ?? '') - parseFloat(expectedBody) * 1.6) < .12, `${theme}/${innerWidth}: prose differs from host size/reader line-height`);
             check(facts.background === 'rgba(0, 0, 0, 0)', `${theme}/${innerWidth}: reader background is not transparent`);
-            check(facts.prose?.weight === '400' && /anthropic-serif|Georgia/.test(facts.prose?.font ?? ''), `${theme}/${innerWidth}: actual prose weight/family differs from spec`);
+            check(facts.prose?.weight === '400' && /anthropic-sans|sans-serif/.test(facts.prose?.font ?? ''), `${theme}/${innerWidth}: actual prose weight/family differs from spec`);
             check(facts.commandCode?.size === '13px', `${theme}/${innerWidth}: actual command code is not 13px`);
             check(/anthropic-mono|Cascadia Mono|monospace/.test(facts.commandCode?.font ?? ''), `${theme}/${innerWidth}: actual command code is not mono`);
-            check(facts.line?.size === '14px' && facts.bubble?.size === '15px', `${theme}/${innerWidth}: UI/bubble size differs from spec`);
+            check(facts.line?.size === '13px' && facts.bubble?.size === '15px', `${theme}/${innerWidth}: process/bubble size differs from spec`);
             check(!facts.overflow && facts.overflowingElements.length === 0, `${theme}/${innerWidth}: visible horizontal overflow`);
         }
         return facts;

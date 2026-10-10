@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { cssEscape } from './css-escape.js';
+import { useVisibleReadingWidth } from './reading-viewport.js';
 import { FileChangesPanel } from './FileChanges.js';
 import { JumpButton } from './JumpButton.js';
 import { viewRequestAction } from './view-request.js';
@@ -26,6 +27,7 @@ export function Reader(rawProps: ReaderProps) {
   // props.useSession；热路径按 chat/session/pending 域直接在宿主选择，避免全量订阅。
   const props = useCompatReaderProps(rawProps);
   const root = useRef<HTMLDivElement>(null);
+  useVisibleReadingWidth(root);
   const activatedAt = useRef(Date.now());
   const selectStructure = useMemo(createReaderStructureSelector, [props.sessionId]);
   const { visibleOrder, groups, hidden: rewindHidden, spans: rewindSpans, latestUserKey } = useChatSelector(props.useSession, selectStructure);

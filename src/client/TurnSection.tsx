@@ -47,7 +47,7 @@ function useSegment(useSession: ReaderProps['useSession'], nodeKey: string, star
 /** The answer zone and the panel's narration show the same body segment under one reveal identity. */
 const revealKeyOf = (nodeKey: string, start: number) => `${nodeKey}:${start}`;
 
-const ThoughtSegment = memo(function ThoughtSegment({ useSession, nodeKey, start, pinned, onRead, ...render }: SegmentProps & { onRead: () => void }) {
+const ThoughtSegment = memo(function ThoughtSegment({ useSession, nodeKey, start, pinned, onRead, followStep, ...render }: SegmentProps & { onRead: () => void; followStep: number | null }) {
   const { motion } = useReaderActions();
   const { data, part } = useSegment(useSession, nodeKey, start);
   const durationMs = useMemo(() => {
@@ -57,16 +57,17 @@ const ThoughtSegment = memo(function ThoughtSegment({ useSession, nodeKey, start
     return end == null ? null : Math.max(0, end - timing.stepStartTime);
   }, [data]);
   if (!data || !part) return null;
-  return <ThoughtRow durationMs={durationMs} motion={motion} onRead={onRead}>
+  return <ThoughtRow durationMs={durationMs} motion={motion} onRead={onRead} follow={data.step === followStep && !pinned}>
     <Blocks {...render} blocks={part.blocks} holdFormatting={pinned} startedAt={data.time} interrupted={data.status === 'interrupted'} liveText />
   </ThoughtRow>;
 });
 
-const LiveSegment = memo(function LiveSegment({ useSession, nodeKey, start, pinned, follow, ...render }: SegmentProps & { follow: boolean }) {
+const LiveSegment = memo(function LiveSegment({ useSession, nodeKey, start, pinned, follow, onManualReadChange, ...render }: SegmentProps & { follow: boolean; onManualReadChange: (key: string, reading: boolean) => void }) {
   const { motion } = useReaderActions();
+  const manualRead = useCallback((reading: boolean) => onManualReadChange(`${nodeKey}:${start}`, reading), [nodeKey, start, onManualReadChange]);
   const { data, part } = useSegment(useSession, nodeKey, start);
   if (!data || !part) return null;
-  return <LiveThought follow={follow} motion={motion}>
+  return <LiveThought follow={follow} motion={motion} onManualReadChange={manualRead}>
     <Blocks {...render} blocks={part.blocks} streaming={data.status === 'running' && data.blocks.at(-1)?.kind === 'reasoning'} holdFormatting={pinned} startedAt={data.time} liveText />
   </LiveThought>;
 });
@@ -148,11 +149,22 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
   const liveKey = useMemo(() => liveThoughtKey(entries, get, open), [entries, get, open]);
   const live = liveKey ? entries.at(-1) as Extract<TranscriptEntry, { kind: 'thought' }> : null;
   const [focusedLive, setFocusedLive] = useState<string | null>(null);
+  const [manualLive, setManualLive] = useState<ReadonlySet<string>>(() => new Set());
+  const manualRead = useCallback((key: string, reading: boolean) => {
+    // The exit button itself receives focus before click. Removing it need not emit blur.
+    if (!reading) setFocusedLive(previous => previous === key ? null : previous);
+    setManualLive(previous => {
+      if (previous.has(key) === reading) return previous;
+      const next = new Set(previous);
+      if (reading) next.add(key); else next.delete(key);
+      return next;
+    });
+  }, []);
   const selectedLive = entries.filter((entry): entry is Extract<TranscriptEntry, { kind: 'thought' }> => entry.kind === 'thought' && pinnedKeys.includes(entry.key));
   const flowPinned = pinnedKeys.includes(group.key) || selectedLive.length > 0;
   // Keep the selected/focused thought's existing DOM until reading ends, even when a new step starts.
   const liveSeats = entries.filter((entry): entry is Extract<TranscriptEntry, { kind: 'thought' }> => entry.kind === 'thought'
-    && (entry.key === liveKey || entry.key === focusedLive || pinnedKeys.includes(entry.key)));
+    && (entry.key === liveKey || entry.key === focusedLive || manualLive.has(entry.key) || pinnedKeys.includes(entry.key)));
   const processId = useId();
   const choiceKey = `process:${props.sessionId}:${group.key}`;
   const processChoice = props.useStore(state => state.expanded[choiceKey]);
@@ -173,6 +185,7 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
     const next = event.detail > 0 ? pointerChoice.current ?? !processOpen : !processOpen;
     pointerChoice.current = null;
     setDismissReading(!next && readingProcess);
+    if (!next) setManualLive(new Set());
     setProcessFocused(false);
     props.actions.setExpanded(choiceKey, next);
   }, [props.actions, choiceKey, processOpen, readingProcess]);
@@ -192,12 +205,12 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
       case 'input': return <BlockBoundary><InputBubble {...shared} useSession={props.useSession} nodeKey={item.nodeKey} /></BlockBoundary>;
       case 'narration': return <BlockBoundary><BodySegment {...shared} useSession={props.useSession} nodeKey={item.nodeKey} start={item.start} answer={item.answer}
         pinned={flowPinned || pinnedKeys.includes(item.nodeKey)} fileMentions={item.answer && item.key === lastAnswerKey ? mentions : undefined} /></BlockBoundary>;
-      case 'reasoning': return <BlockBoundary><ThoughtSegment {...shared} useSession={props.useSession} nodeKey={item.nodeKey} start={item.start} pinned={flowPinned} onRead={noop} /></BlockBoundary>;
+      case 'reasoning': return <BlockBoundary><ThoughtSegment {...shared} useSession={props.useSession} nodeKey={item.nodeKey} start={item.start} pinned={flowPinned} onRead={noop} followStep={open ? boundary.latestStep : null} /></BlockBoundary>;
       case 'media': return <BlockBoundary><ToolImages {...shared} entries={[item.entry]} /></BlockBoundary>;
       case 'output': return <BlockBoundary><CommandOutput {...shared} useSession={props.useSession} nodeKey={item.nodeKey} /></BlockBoundary>;
       case 'notice': return <BlockBoundary><TurnNotice useSession={props.useSession} nodeKey={item.nodeKey} /></BlockBoundary>;
     }
-  }, [shared, props.useSession, props.contextT, closed, noop, flowPinned, pinnedKeys, mentions, lastAnswerKey]);
+  }, [shared, props.useSession, props.contextT, closed, open, boundary.latestStep, noop, flowPinned, pinnedKeys, mentions, lastAnswerKey]);
   const renderMedia = useCallback((item: PanelItem): ReactNode => item.kind === 'tool'
     ? <BlockBoundary><ToolImages {...shared} entries={[item.entry]} /></BlockBoundary> : null, [shared]);
   const renderEntry = (entry: TranscriptEntry): ReactNode => {
@@ -251,7 +264,7 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
       elapsed={elapsedLabel(turn, now, status)} thinking={thinking} motion={motion} />}
     {liveSeats.map(seat => <div key={seat.key} data-reader-live-seat data-reader-key={seat.key} data-reader-process-key={group.key}
       onFocusCapture={() => setFocusedLive(seat.key)} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusedLive(null); }}>
-      <BlockBoundary><LiveSegment {...shared} useSession={props.useSession} nodeKey={seat.item.nodeKey} start={seat.item.start} pinned={flowPinned} follow={seat.key === liveKey && boundary.latestStep === liveData?.step} /></BlockBoundary>
+      <BlockBoundary><LiveSegment {...shared} useSession={props.useSession} nodeKey={seat.item.nodeKey} start={seat.item.start} pinned={flowPinned} follow={seat.key === liveKey && boundary.latestStep === liveData?.step} onManualReadChange={manualRead} /></BlockBoundary>
     </div>)}
     {stopped && <StatusLine phase={status === 'interrupted' ? 'interrupted' : 'error'} label={terminal ?? statusLabel(status, boundary.reason, '')} elapsed={elapsedLabel(turn, now, status)} thinking={null} motion={motion} />}
     {closed && <BlockBoundary><TurnFooter turn={turn} answerText={answerText} /></BlockBoundary>}

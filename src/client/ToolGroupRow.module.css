@@ -1,13 +1,6 @@
 .group { min-width: 0 }
-.group > [data-reader-line] > button > [data-reader-line-label] { flex: 1 1 auto; min-width: 0; white-space: normal; }
-.group[data-group-state="settled"] > [data-reader-line] > button {
-  min-height: 32px; padding: 3px 8px;
-  background: var(--cc-bg-200); border: 1px solid var(--cc-border);
-  box-shadow: none; font-weight: 500;
-}
-.group[data-group-state="settled"] > [data-reader-line] > button:hover { background: var(--cc-hover); border-color: var(--cc-border-strong); box-shadow: none; }
-.group[data-group-state="settled"] > [data-reader-line] > button > svg { stroke: var(--cc-text-300); stroke-width: 1.8; }
-.disclosureHint { margin-left: 8px; color: var(--cc-text-300); font-weight: 400; }
-.members { margin: 2px 0 6px 7px; padding-left: 14px; border-left: 1px solid var(--cc-border); min-width: 0 }
+/* Rail at 22px; member rows begin at the shared 28px indent, including the 1px rail. */
+.members { margin: 0 0 0 var(--cv-rail-offset, 22px); padding-left: calc(var(--cv-indent, 28px) - var(--cv-rail-offset, 22px) - 1px); border-left: 1px solid transparent; min-width: 0 }
+.group[data-expanded="true"] > .members:not([data-single="true"]) { margin-top: 4px; margin-bottom: 8px; border-left-color: var(--cv-detail-border); }
 .members:empty { display: none }
 .members[data-single="true"] { margin: 0; padding-left: 0; border-left: 0 }

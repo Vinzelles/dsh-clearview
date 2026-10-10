@@ -253,7 +253,7 @@ test('fonts.prose measures the paragraph and independently resolves/removes its 
   const end = source.indexOf(quote + ';', start + 1) + 1;
   const expression = runInNewContext(source.slice(start, end));
   for (const delta of [-1, 0, 2, 0.5]) {
-    const paragraph = { tagName: 'P' }, command = { tagName: 'CODE' };
+    const paragraph = { tagName: 'P', getBoundingClientRect: () => ({ left: 0, right: 100, width: 100 }) }, command = { tagName: 'CODE' };
     let attached = false, created = 0, removed = 0, probeSize = '';
     const deltaProbe = { tagName: 'SPAN', style: { cssText: '', setProperty: (name: string, value: string, priority: string) => {
       assert.equal(name, 'font-size');
@@ -319,6 +319,22 @@ function numericTypographyGate() {
   const end = source.indexOf('// END TYPOGRAPHY GATE');
   return runInNewContext(source.slice(start, end) + '\ntypographyGate') as (fonts: Record<string, unknown>) => { pass: boolean; proseSize: boolean; proseLine: boolean; commandSize: boolean };
 }
+
+test('visible-width gate rejects offscreen prose even when all scrollWidth checks pass', () => {
+  const source = readFileSync(new URL('../scripts/verify-live-reader.mjs', import.meta.url), 'utf8');
+  const start = source.indexOf('// BEGIN VISIBLE WIDTH GATE');
+  const end = source.indexOf('// END VISIBLE WIDTH GATE');
+  const gate = runInNewContext(source.slice(start, end) + '\nvisibleWidthGate') as (state: unknown) => boolean;
+  const rect = (left: number, right: number) => ({ left, right, width: right - left });
+  const state = { viewport: { width: 480 }, overflowX: { page: false, scroller: false, root: false },
+    horizontalBounds: { root: rect(20, 460), column: rect(20, 460), prose: rect(20, 460), scroller: rect(20, 460) } };
+  assert.equal(gate(state), true);
+  assert.equal(gate({ ...state, horizontalBounds: { ...state.horizontalBounds, prose: rect(-140, 320) } }), false);
+  assert.equal(gate({ ...state, horizontalBounds: { ...state.horizontalBounds, column: rect(20, 700) } }), false);
+  assert.equal(gate({ ...state, horizontalBounds: { ...state.horizontalBounds, scroller: rect(146, 344) } }), false);
+  assert.equal(gate({ ...state, horizontalBounds: { root: rect(-78, 334), scroller: rect(-78, 344), column: rect(0, 334), prose: rect(16, 318) } }), true, 'a clipped host is acceptable only when the reading column and prose remain visible');
+  assert.equal(gate({ viewport: { width: 480 } }), false, 'missing geometry cannot count as visible');
+});
 
 test('typography gate compares paragraph to independent host size, ratio 1.6 and command size 13 plus delta', () => {
   const gate = numericTypographyGate();

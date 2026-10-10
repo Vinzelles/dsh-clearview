@@ -28,6 +28,24 @@ function typographyGate(fonts) {
 }
 // END TYPOGRAPHY GATE
 
+// BEGIN VISIBLE WIDTH GATE: equal scroll/client widths do not prove that text is on screen.
+function visibleWidthGate(state) {
+  const width = state?.viewport?.width;
+  const bounds = state?.horizontalBounds;
+  if (!Number.isFinite(width) || width <= 0 || !bounds) return false;
+  const clip = bounds.scroller;
+  const left = Math.max(0, clip?.left ?? 0);
+  const right = Math.min(width, clip?.right ?? width);
+  if (!Number.isFinite(left) || !Number.isFinite(right) || right <= left) return false;
+  // The host pane itself may be clipped; the column must use only its visible intersection.
+  return ['column', 'prose'].every(key => {
+    const box = bounds[key];
+    return box && [box.left, box.right, box.width].every(Number.isFinite)
+      && box.width > 0 && box.left >= left - 1 && box.right <= right + 1;
+  });
+}
+// END VISIBLE WIDTH GATE
+
 // The reader must report the version this worktree is released as.
 const expectedVersion = JSON.parse(readFileSync(resolve('package.json'), 'utf8')).version;
 const base = process.env.DSH_TEST_URL || 'http://127.0.0.1:3193';
@@ -263,12 +281,18 @@ try {
     finally { deltaProbe.remove(); }
     let backdrop = root; while (backdrop && /^rgba\\(0, 0, 0, 0\\)$|^transparent$/.test(cs(backdrop).backgroundColor)) backdrop = backdrop.parentElement;
     const scroller = document.querySelector('[data-conversation-scroll]');
+    const box = node => {
+      if (!node) return null;
+      const rect = node.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, width: rect.width };
+    };
     return {
       viewport: { width: innerWidth, height: innerHeight },
+      horizontalBounds: { root: box(root), column: box(root.firstElementChild), prose: box(prose), scroller: box(scroller) },
       lineCount: lines.length, lineHeights: heights,
       toolSummaries: summaries.length, clippedSummaries: clipped.length,
       fonts: { delta, hostBodySize, prose: sample(prose), command: sample(command), line: sample(root.querySelector('[data-reader-line]')), code: sample(code), toolLine: sample(root.querySelector('[data-reader-tool-call] [data-reader-line]')),
-        user: sample(root.querySelector('[data-reader-user-bubble]')), serif: { fontSetCheck: document.fonts.check('16px anthropic-serif'), loaded: [...document.fonts].some(face => face.family.replace(/["']/g, '') === 'anthropic-serif' && face.status === 'loaded'), cssStack: prose ? cs(prose).fontFamily : null } },
+        user: sample(root.querySelector('[data-reader-user-bubble]')), response: { fontSetCheck: document.fonts.check('14px anthropic-sans'), loaded: [...document.fonts].some(face => face.family.replace(/["']/g, '') === 'anthropic-sans' && face.status === 'loaded'), cssStack: prose ? cs(prose).fontFamily : null } },
       rootBackground: cs(root).backgroundColor, backdropBackground: backdrop ? cs(backdrop).backgroundColor : null,
       hierarchy: (() => {
         const thoughts = all('[data-reader-reasoning]');
@@ -276,14 +300,21 @@ try {
         const groups = all('[data-reader-group][data-group-state="settled"] > [data-reader-line] > button');
         const thoughtAndToolMixed = thoughts.filter(node => node.querySelector('[data-reader-tool-call], [data-reader-group]') || node.closest('[data-reader-tool-call], [data-reader-group]')).length;
         const groupAffordance = groups.map(button => ({
-          expanded: button.getAttribute('aria-expanded'), hint: button.querySelector('[data-reader-group-hint]')?.textContent,
+          expanded: button.getAttribute('aria-expanded'), hint: button.querySelector('[data-reader-line-hint]')?.textContent,
           background: cs(button).backgroundColor, border: cs(button).borderTopWidth, minHeight: cs(button).minHeight,
         }));
         const bodyPrimary = !!prose && cs(prose).color === primaryColor;
         const bodyDistinct = !!prose && !!label && primaryColor !== secondaryColor && cs(label).color === secondaryColor && cs(prose).color !== cs(label).color;
-        const groupsDistinct = groupAffordance.length > 0 && groupAffordance.every(row => row.background !== 'rgba(0, 0, 0, 0)' && row.background !== cs(root).backgroundColor && Number.parseFloat(row.border) >= 1 && Number.parseFloat(row.minHeight) >= 32 && row.hint === (row.expanded === 'true' ? '收起详情' : '展开详情'));
-        return { body: sample(prose), process: sample(label), primaryColor, secondaryColor, bodyPrimary, bodyDistinct, thoughts: thoughts.length, thoughtAndToolMixed, groupAffordance, groupsDistinct,
-          pass: bodyPrimary && bodyDistinct && thoughts.length > 0 && thoughtAndToolMixed === 0 && groupsDistinct };
+        const groupsClear = groupAffordance.length > 0 && groupAffordance.every(row => Number.parseFloat(row.border) === 0 && Number.parseFloat(row.minHeight) >= 32 && row.hint === (row.expanded === 'true' ? '收起' : '展开'));
+        const thoughtButtons = all('[data-reader-reasoning] > [data-reader-line] > button');
+        const rowStyle = button => {
+          const style = cs(button);
+          return Object.fromEntries(['minHeight', 'paddingTop', 'paddingBottom', 'paddingLeft', 'paddingRight', 'fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'borderTopWidth', 'borderRadius'].map(key => [key, style[key]]));
+        };
+        const thoughtStyle = thoughtButtons[0] ? rowStyle(thoughtButtons[0]) : null;
+        const processRowsConsistent = !!thoughtStyle && groups.length > 0 && groups.every(button => JSON.stringify(rowStyle(button)) === JSON.stringify(thoughtStyle));
+        return { body: sample(prose), process: sample(label), primaryColor, secondaryColor, bodyPrimary, bodyDistinct, thoughts: thoughts.length, thoughtAndToolMixed, groupAffordance, groupsClear, thoughtStyle, processRowsConsistent,
+          pass: bodyPrimary && bodyDistinct && thoughts.length > 0 && thoughtAndToolMixed === 0 && groupsClear && processRowsConsistent };
       })(),
       overflowX: { page: document.documentElement.scrollWidth > document.documentElement.clientWidth, scroller: scroller ? scroller.scrollWidth > scroller.clientWidth + 1 : null, root: root.scrollWidth > root.clientWidth + 1 },
       // Elements that stick out past the reader root's right edge (a horizontal-overflow culprit hunt).
@@ -717,10 +748,12 @@ try {
         && turnToggle.before.expanded === 'false' && turnToggle.opened.expanded === 'true' && turnToggle.closed.expanded === 'false'
         && [turnToggle.before, turnToggle.opened, turnToggle.closed].every(state => state.pass && state.answersVisible && state.domRetained) : 'uncovered',
       planTickCenter: item.planTick ? item.planTick.pass : 'uncovered',
+      visibleWidth1440: visibleWidthGate(item.measured),
+      visibleWidth480: visibleWidthGate(item.narrow) && visibleWidthGate(item.narrowBottom),
       overflow1440: covered('geometry1440', noOverflow(item.measured)), overflow480: covered('geometry480', item.narrow && item.narrowBottom ? noOverflow(item.narrow) && noOverflow(item.narrowBottom) : null),
-      proseCssStack: !item.measured?.fonts?.prose ? 'n/a' : family.startsWith('anthropic-serif') ? 'declared' : 'fallback-stack',
+      proseCssStack: !item.measured?.fonts?.prose ? 'n/a' : family.startsWith('anthropic-sans') ? 'declared' : 'fallback-stack',
       // CSS stack and FontFace loaded status are evidence, never proof of the font used for a glyph.
-      fontLoaded: item.measured?.fonts?.serif?.loaded ?? null,
+      fontLoaded: item.measured?.fonts?.response?.loaded ?? null,
       typography: item.typography.every(state => state.pass) && Object.values(item.typographyMatrix).every(state => state.pass),
       hierarchy: [item.measured, item.narrow, item.narrowBottom].every(state => state?.hierarchy?.pass) && Object.values(item.theme ?? {}).every(theme => theme.hierarchy?.pass)
         && !!item.closedGroupVisible?.visible && item.closedGroupVisible.inViewport && item.closedGroupVisible.hit && item.closedGroupVisible.width > 0 && item.closedGroupVisible.height >= 32,
@@ -733,7 +766,7 @@ try {
       themeBackground: [item.measured, item.narrow, item.narrowBottom].every(state => state?.rootBackground === 'rgba(0, 0, 0, 0)')
         && (!item.theme || item.theme.dark.matches && item.theme.light.matches),
     };
-    item.checks.pass = item.checks.overflow1440 && item.checks.overflow480 && item.checks.themeBackground !== false
+    item.checks.pass = item.checks.overflow1440 && item.checks.overflow480 && item.checks.visibleWidth1440 && item.checks.visibleWidth480 && item.checks.themeBackground !== false
       && item.checks.completedFoldDefault !== false && item.checks.interruptedOpenDefault !== false && item.checks.turnToggle !== false && item.checks.planTickCenter !== false
       && item.checks.typography && item.checks.hierarchy && item.checks.groupToggle && item.checks.groupOpened && item.checks.toolDetails && item.checks.bubbleToggle && item.checks.roundTrips && item.checks.copy;
     guardCreates();

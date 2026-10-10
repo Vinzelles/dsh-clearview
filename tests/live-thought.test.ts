@@ -27,12 +27,13 @@ test('reduced motion keeps following (no resume button) and the viewport is a na
 
 // A deterministic hook/effect driver supplies the two owned DOM refs and scroll events.
 // It exercises the real component's callbacks, effect cleanup and context updates.
-function thoughtInteraction(motion = false) {
+function thoughtInteraction(motion = false, onManualReadChange?: (reading: boolean) => void) {
   const internals = (React as any).__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
   const slots: any[] = [];
   let cursor = 0;
   let signal = 0;
   let follow = true;
+  let resized = () => {};
   let selected = false;
   let effects: (() => void)[] = [];
   const listeners = new Map<string, () => void>();
@@ -73,19 +74,19 @@ function thoughtInteraction(motion = false) {
   const oldSelection = document.getSelection;
   const oldObserver = globalThis.ResizeObserver;
   document.getSelection = (() => selected ? { isCollapsed: false, anchorNode: text, focusNode: text, rangeCount: 0 } : null) as never;
-  globalThis.ResizeObserver = class { observe() {} disconnect() {} } as never;
+  globalThis.ResizeObserver = class { constructor(callback: () => void) { resized = callback; } observe() {} disconnect() {} } as never;
   const render = () => {
     cursor = 0; effects = [];
     const previous = internals.ReactCurrentDispatcher.current;
     internals.ReactCurrentDispatcher.current = dispatcher;
     let row;
-    try { row = LiveThought({ follow, motion, children: 'streaming thought' }); }
+    try { row = LiveThought({ follow, motion, onManualReadChange, children: 'streaming thought' }); }
     finally { internals.ReactCurrentDispatcher.current = previous; }
     const viewport = row.props.children[0];
     viewport.ref.current = port;
     viewport.props.children.ref.current = text;
     effects.forEach(effect => effect());
-    return { following: row.props['data-following'], pause: viewport.props.onPointerDown, focus: viewport.props.onFocus, resume: row.props.children[1]?.props?.onClick };
+    return { following: row.props['data-following'], pause: viewport.props.onPointerDown, focus: viewport.props.onFocus, resume: row.props.children[1]?.props?.onClick, resumeLabel: row.props.children[1]?.props?.children };
   };
   return {
     render, port, listeners,
@@ -98,6 +99,8 @@ function thoughtInteraction(motion = false) {
     select: (value: boolean) => { selected = value; },
     signal: () => { signal++; render(); return render(); },
     follow: (value: boolean) => { follow = value; return render(); },
+    motion: (value: boolean) => { motion = value; return render(); },
+    grow: (height: number) => { port.scrollHeight = height; resized(); },
     dispose: () => {
       for (const slot of slots) slot?.cleanup?.();
       globalThis.requestAnimationFrame = oldFrame;
@@ -120,6 +123,98 @@ test('page resume signal restores a locally paused thought and reduced-motion ta
     assert.equal(thought.render().following, false, 'same context generation does not undo new reading intent');
     assert.equal(thought.signal().following, true, 'a second explicit request resumes again');
     assert.equal(thought.follow(false).following, false, 'external follow permission is still required');
+  } finally { thought.dispose(); }
+});
+
+test('historical reading has no ineffective follow button; a held former-live seat can end reading', () => {
+  const history = thoughtInteraction();
+  try {
+    history.follow(false).focus();
+    assert.equal(history.render().resume, undefined);
+  } finally { history.dispose(); }
+  const changes: boolean[] = [];
+  const held = thoughtInteraction(false, reading => changes.push(reading));
+  try {
+    held.render(); held.listeners.get('wheel')!();
+    assert.equal(held.render().resumeLabel, '继续跟随');
+    held.follow(false);
+    assert.equal(held.render().resumeLabel, '结束回看');
+    held.render().resume();
+    assert.deepEqual(changes, [true, false]);
+  } finally { held.dispose(); }
+});
+
+test('wheel reading is reported to the seat owner until explicit resume', () => {
+  const reading: boolean[] = [];
+  const thought = thoughtInteraction(true, value => reading.push(value));
+  try {
+    thought.render();
+    thought.listeners.get('wheel')!();
+    thought.render();
+    assert.equal(reading.at(-1), true);
+    thought.follow(false);
+    assert.equal(reading.at(-1), true, 'step end must not release manual reading');
+    thought.render().resume();
+    assert.equal(reading.at(-1), false);
+  } finally { thought.dispose(); }
+});
+
+test('unmount while catching up cancels the finishing glide', () => {
+  const thought = thoughtInteraction(true);
+  try {
+    thought.render().pause(); thought.render();
+    thought.port.scrollTop = 10;
+    thought.signal(); thought.tick();
+    assert.ok(thought.port.scrollTop < 199);
+  } finally { thought.dispose(); }
+  assert.equal(thought.pendingFrames(), 0, 'no detached viewport animation may survive cleanup');
+});
+
+test('growth wakes the parked controller, wheel pauses it, and resume catches up', () => {
+  for (const motion of [false, true]) {
+    const thought = thoughtInteraction(motion);
+    try {
+      thought.render();
+      for (let i = 0; i < 120; i++) thought.tick();
+      thought.grow(460);
+      for (let i = 0; i < 120; i++) thought.tick();
+      assert.ok(thought.port.scrollTop > 359);
+      thought.listeners.get('wheel')!(); thought.render();
+      thought.port.scrollTop = 25;
+      thought.grow(600);
+      for (let i = 0; i < 120; i++) thought.tick();
+      assert.equal(thought.port.scrollTop, 25);
+      thought.signal();
+      for (let i = 0; i < 120; i++) thought.tick();
+      assert.ok(thought.port.scrollTop > 499);
+    } finally { thought.dispose(); }
+  }
+});
+
+test('ending follow glides without a jump and still allows manual interruption', () => {
+  const thought = thoughtInteraction(true);
+  try {
+    thought.render(); thought.grow(1000); thought.tick();
+    const before = thought.port.scrollTop;
+    thought.follow(false);
+    assert.equal(thought.port.scrollTop, before, 'permission changes cannot jump to the tail');
+    thought.tick();
+    assert.ok(thought.port.scrollTop >= before && thought.port.scrollTop - before <= 100);
+    thought.listeners.get('wheel')!(); thought.render();
+    const paused = thought.port.scrollTop;
+    for (let i = 0; i < 120; i++) thought.tick();
+    assert.equal(thought.port.scrollTop, paused);
+  } finally { thought.dispose(); }
+});
+
+test('turning motion off during catch-up cannot leave a glide that scrolls backwards', () => {
+  const thought = thoughtInteraction(true);
+  try {
+    thought.render(); thought.grow(1000); thought.tick();
+    thought.motion(false);
+    assert.equal(thought.port.scrollTop, 900);
+    thought.tick();
+    assert.equal(thought.port.scrollTop, 900);
   } finally { thought.dispose(); }
 });
 

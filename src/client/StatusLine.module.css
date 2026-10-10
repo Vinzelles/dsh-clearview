@@ -1,10 +1,12 @@
-.line { display: flex; align-items: center; gap: 10px; min-height: 28px; font-size: var(--cc-size-ui); color: var(--cc-text-300); }
-.spark { color: var(--cc-brand); font-size: 17px; line-height: 1; display: inline-block; }
-.spark[data-spin] { animation: cc-spin 2.4s linear infinite; }
-@keyframes cc-spin { to { transform: rotate(360deg); } }
+.line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; box-sizing: border-box; min-height: var(--cv-row-height); margin-top: 6px; padding: 5px 8px; font-family: var(--cc-font-ui); font-size: var(--cv-process-size); line-height: 20px; color: var(--cc-text-300); }
+.indicator { box-sizing: border-box; width: 12px; height: 12px; flex: none; border: 1.5px solid var(--cv-detail-border); border-top-color: var(--cc-text-300); border-radius: 50%; corner-shape: round; }
+.indicator[data-spin] { animation: reader-status-spin 1.2s linear infinite; }
+@keyframes reader-status-spin { to { transform: rotate(360deg); } }
+.verb { min-width: 0; overflow-wrap: anywhere; }
 .verb[data-shimmer] { background: linear-gradient(90deg, var(--cc-text-300) 0%, var(--cc-text-100) 45%, var(--cc-text-300) 70%); background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: cc-shimmer 2s linear infinite; }
 @keyframes cc-shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
-.meta { color: var(--cc-text-500); font-size: var(--cc-size-small); }
-.line[data-phase="interrupted"] .spark, .line[data-phase="error"] .spark, .line[data-phase="interrupted"] .verb, .line[data-phase="error"] .verb { color: var(--cc-danger); }
-.line[data-phase="waiting"] .spark { color: var(--cc-link); }
-@media (prefers-reduced-motion: reduce) { .spark[data-spin] { animation: none; } .verb[data-shimmer] { animation: none; color: var(--cc-text-300); background: none; } }
+.meta { color: var(--cc-text-500); font-size: var(--cc-size-small); font-variant-numeric: tabular-nums; }
+.line[data-phase="interrupted"] .indicator, .line[data-phase="error"] .indicator { border-color: var(--cc-danger); }
+.line[data-phase="interrupted"] .verb, .line[data-phase="error"] .verb { color: var(--cc-danger); }
+.line[data-phase="waiting"] .indicator { border-color: var(--cc-link); }
+@media (prefers-reduced-motion: reduce) { .indicator[data-spin] { animation: none; } .verb[data-shimmer] { animation: none; color: var(--cc-text-300); background: none; } }

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Present a turn the way Claude Code Desktop does: one chronological transcript in which narration, grouped operations, thinking and the final answer all stay readable. The reading view is a presentation of the public session projection, never a second Agent pipeline.
+Present a modern, coherent transcript in which narration, grouped operations, thinking and the final answer stay readable. From 0.3.2, matching Claude Desktop exactly is no longer the goal. The reading view is a presentation of the public session projection, never a second Agent pipeline. The current visual contract is [unified reading](docs/superpowers/specs/2026-10-10-clearview-032-unified-reading.md).
 
 ## Content fidelity
 
@@ -20,13 +20,13 @@ The reader root is transparent. Prose uses the host `--dsh-content-font-size` (f
 
 ## Transcript entries and grouping
 
-Settled operation summaries use a subtle bg-200 fill, a 1px border, a 32px minimum height and a stronger chevron. A persistent 「展开详情 / 收起详情」 hint explains the local disclosure; long summaries wrap on narrow screens. In an expanded process, prose uses the primary color and host body size, and thoughts never share an operation row. Whole-turn process folding is controlled separately by the completed-turn summary.
+Thoughts, operation summaries, tools and records share one Line style: 32px minimum height, 5px/8px padding, 13px plus host delta, upright sans, weight 400, fixed icon/chevron slots and no resting border or fill. Hover, focus and open states share subtle surfaces. Every disclosure uses the same 「展开 / 收起」 hint, and long summaries wrap. Expanded details share an inset, rail, 10px radius, border and surface. Prose uses primary color, host body size and paragraph spacing; thoughts never share an operation row. The completed-turn summary remains a distinct, visible folding control.
 
-A turn is one column with no container, header, counts or "earlier steps" row. Narration between operations and the final answer share one serif `.prose` style. Entries:
+A turn is one column without an outer container or an "earlier steps" row. Completed turns have the summary described above. Narration and the final answer share one upright sans `.prose` style. Entries:
 
 - User message: a right-hand bubble, six lines then clamped behind 展开全文 / 收起 (outside the rewind seat). Mid-turn input and command input are smaller bubbles at their chronological position; the rewind seat is always present.
 - Operation row: icon, Chinese verb and target ("运行 `npm run build`", "编辑 path +2 −1"), no durations. Opening it shows the detail block (output, arguments, search results, red/green diff for edits). A failure is marked red in the row only and never opens by itself.
-- Settled thought: one row, 「思考了 N 秒」, opening to the full text in grey serif italic. No preview and no character count.
+- Settled thought: one row, 「思考了 N 秒」, opening to the full text in a 128px scroll viewport. Historical thoughts remain at the reader's position; an opened current-step thought can follow while that step is active. No preview and no character count.
 - Plan: the first successful, parseable, nonempty `todo_write` creates a checklist card updated in place. Later successful updates replace its items, including an explicit empty list that clears it. Pending, failed or interrupted updates preserve the last successful checklist and remain inspectable in the original-call history. Before a card is established, malformed or empty calls remain ordinary operation rows; promotion preserves their open details, focus and selection. `todo_write` and `dispatch` never join a group.
 - Sub-agent (`dispatch`): its own 「子代理」 row, never merged into a group.
 - Notices, retries, compaction and other records: quiet one-line rows; turn triggers open the turn with a grey line and 「展开原文」.
@@ -35,19 +35,21 @@ Grouping is pure derivation in `transcript-model.ts`. Consecutive operations (to
 
 ## Status line and live thinking
 
-An open (or just stopped) turn ends with one status line: an orange ✻ (slowly rotating while running), a shimmering verb and `elapsed · 已思考 …`. Waiting on an action shows 「等待你的操作」; an interrupted or failed turn shows the line in red with the reason. Thinking being generated streams below the status line as grey serif italic text in a `role="region"` viewport (about six lines, faded at the top), driven by the same follow controller described below; when it settles it becomes the 「思考了 N 秒」 row. Reduced motion jumps to the tail instead of gliding. The only floating control is the round 回到最新 button, shown when the reader is scrolled away from the bottom.
+An open (or just stopped) turn ends with one status line: a small activity ring, a shimmering verb and secondary `elapsed · 已思考 …` timing. Waiting shows 「等待你的操作」; interrupted or failed turns show the line in red with the reason. Thinking streams below it as secondary upright sans text in a `role="region"` viewport capped at 128px, faded at the top, using the follow controller below. It settles into 「思考了 N 秒」 unless the reader is reviewing it. Reduced motion jumps to the tail instead of gliding. The round 回到最新 button appears when the reader leaves the bottom.
 
 Follow is continuous, not stepped: one rAF loop writes the viewport's native scroll offset per frame, driven by a velocity-matched controller. An EMA of the measured tail growth feeds the speed forward and a proportional term closes residual lag. Under steady streaming the viewport moves at exactly the content speed with zero visible lag; a burst or a resume closes the gap smoothly at a capped speed. The position is clamped to the live tail every frame, so the viewport never passes the transcript end, rolls back or loops old text; a shrinking tail re-aims instead of freezing. All metrics are cached from the resize signal, so the loop reads no layout; when the stream stops or the loop settles, it parks itself until the next growth. When the stream ends while following, the controller glides the residual lag to the end and stops; user interaction during the glide cancels it at the painted position.
 
-Wheel, touch, viewport focus or selection pause following. The explicit follow control resumes only when no text is selected. The page's 回到最新 control also resumes internal thought following, without clearing a valid selection. A settled thought being read keeps its existing DOM seat until focus or selection is released, even when a new live thought appears. The full source text remains available.
+Wheel, touch, viewport focus or selection pause following. The explicit follow control resumes only when no text is selected. The page's 回到最新 control also resumes internal thought following, without clearing a valid selection. Wheel/touch reading also pins the original viewport across tool arrival, the next thinking step and turn completion, even without a selection or keyboard focus. 「结束回看」 releases a retained former-live viewport; ordinary historical thoughts do not show a follow button when they cannot follow. A focused or selected thought keeps its existing DOM seat until focus or selection is released. The full source text remains available. Unmount cancels every animation frame; switching to reduced motion cancels any residual glide before jumping to the tail.
+
+Visual acceptance compares actual DSH renders against the unified row, prose and detail contracts above. The user superseded the earlier Claude-reference requirement. Horizontal overflow checks must also validate the viewport position of the reading column and prose: equal scroll/client widths can still hide left-clipped text.
 
 ## Tokens
 
-Reader colours are Claude's own, as HSL triples in `--cc-*` variables in `Reader.module.css`, with a light and a dark set keyed on the host's `body[data-ds-dark-theme]`. The reader root is transparent and shows the host page background; local controls still use the palette's surface colors. The host sidebar, top bar and composer are untouched. The brand orange (`accent-brand`) is used only for the running ✻. Inside the reader, colours come from `--cc-*`; the host `--dsw-*` aliases are remapped on the reader root so embedded host primitives (native tool-result components) follow the same palette.
+The inherited --cc-* palette remains for embedded-component compatibility. Shared --cv-* tokens define row height, radius, process size, detail surfaces, hover/open fills and indentation for both themes. The root remains transparent; the host sidebar, top bar and composer are untouched. The palette's provenance is not a claim of visual equivalence to another app.
 
 ## Fonts
 
-Three roles with Claude's fallbacks: serif for narration, answers and thinking (`anthropic-serif, Georgia, "Times New Roman", "PingFang SC", "Microsoft YaHei", serif`), sans for interface text such as bubbles, rows, status and footer (`anthropic-sans, ui-sans-serif, -apple-system, "Segoe UI", …`), mono for code (`anthropic-mono, ui-monospace, "Cascadia Mono", Consolas, monospace`). Font files are never shipped. The server (`src/server/claude-fonts.ts`) registers a read-only prefix route through the host `webServer` (skipped when the host has none, as in Electron and tests) that answers only `/dsh-clearview/fonts/{sans,serif,mono}.woff2`. It takes the newest `%LOCALAPPDATA%\AnthropicClaude\app-*` directory, reads the `@font-face` rules of the stylesheets under `resources/ion-dist/assets/v1`, and serves the matching normal-weight file as `font/woff2` with a long cache; anything missing is a 404 and the client falls back to the stack above. The client declares the `@font-face` rules pointing at this route.
+Prose and process text use the same upright sans stack: anthropic-sans when available, followed by platform UI and CJK fonts. Code uses anthropic-mono and platform monospace fallbacks. The response-font alias resolves to the UI font; there is no mixed serif/italic thinking style. Font files are not shipped. The read-only /dsh-clearview/fonts/{sans,serif,mono}.woff2 routes retain compatibility with the local Claude installation; missing fonts fall back naturally.
 
 The three `@font-face` rules load with `Reader.module.css` before a reader mounts. Opening the view does not append a font stylesheet or replace font rules during its first layout.
 
@@ -55,7 +57,7 @@ The three `@font-face` rules load with `Reader.module.css` before a reader mount
 
 Assign reveal times from source positions before rendering Markdown. Only newly appended text receives opacity/blur motion; existing paragraphs, page surfaces and text color do not animate. The animated frontier is bounded: text whose reveal has finished renders as plain text, and only the live reveal window (roughly duration plus queue delay worth of words) exists as components, so a long single paragraph costs the same per frame as a short one. Unicode graphemes and punctuation keep their source order. Media and custom blocks do not enter the text queue.
 
-The status line verb shimmers and its ✻ rotates only while running; elapsed time and attention states do not shimmer. Group, detail and thought rows open and close with a height transition. Timing and easing live in Motion tokens.
+The status line verb shimmers and its activity ring rotates only while running; elapsed time and attention states do not shimmer. Group, detail and thought rows open and close with a height transition. Timing and easing live in Motion tokens.
 
 ## Turn footer and views
 
@@ -69,7 +71,7 @@ Kept: `data-dsh-clearview` (version), `section[data-reader-turn]`, `data-reader-
 
 ## Motion tokens
 
-Structural motion uses cubic-bezier(.2,.8,.2,1): 100ms hover, 200ms state swaps and floating surfaces, 260ms expand and collapse, 350ms word reveal with 1px blur. The busy signals are the status line shimmer and ✻ rotation. Heavy mode only enables off-screen turn optimization; visible motion is never degraded by content size. Reduced motion, motion off, forced colors and background tabs settle to the received content. Not implemented in 0.2.0 or 0.3.0: the spec's 200ms fade-in with a 4px lift for live rows (spec 6.2 item 6); new rows appear immediately and only text keeps the word reveal.
+Structural motion uses cubic-bezier(.2,.8,.2,1): 100ms hover, 200ms state swaps and floating surfaces, 260ms expand and collapse, 350ms word reveal with 1px blur. The busy signals are status-text shimmer and activity-ring rotation. Heavy mode only enables off-screen turn optimization; visible motion is never degraded by content size. Reduced motion, motion off, forced colors and background tabs settle to the received content. Not implemented in 0.2.0 or 0.3.0: the spec's 200ms fade-in with a 4px lift for live rows (spec 6.2 item 6); new rows appear immediately and only text keeps the word reveal.
 
 ## Reading and accessibility
 

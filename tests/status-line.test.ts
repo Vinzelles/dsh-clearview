@@ -11,10 +11,10 @@ test('verbs', () => {
   assert.equal(statusVerb('等待你的操作'), '等待你的操作');
 });
 
-test('running line: spark, shimmering verb, elapsed and thinking time', () => {
+test('running line: activity indicator, shimmering verb, elapsed and thinking time', () => {
   const html = renderToStaticMarkup(createElement(StatusLine, { phase: 'running', label: '正在思考', elapsed: '13 分 42 秒', thinking: '1 分 42 秒', motion: true }));
   assert.match(html, /data-reader-status-line[^>]*data-phase="running"/);
-  assert.match(html, /✻/);
+  assert.match(html, /aria-hidden="true" data-spin="true"/);
   assert.match(html, /思考中…/);
   assert.match(html, /13 分 42 秒 · 已思考 1 分 42 秒/);
   assert.match(html, /role="status"/);

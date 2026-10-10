@@ -23,12 +23,23 @@
   --cc-link: hsl(210 73.7% 40.2%);
   --cc-font-cjk: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC";
   --cc-font-ui: anthropic-sans, ui-sans-serif, -apple-system, "Segoe UI", var(--cc-font-cjk), sans-serif;
-  --cc-font-response: anthropic-serif, Georgia, "Times New Roman", var(--cc-font-cjk), serif;
+  --cc-font-response: var(--cc-font-ui);
   --cc-font-mono: anthropic-mono, ui-monospace, "Cascadia Mono", Consolas, monospace;
   --cc-size-body: var(--dsh-content-font-size, calc(14px + var(--dsh-content-font-delta, 0px)));
   --cc-size-ui: calc(14px + var(--dsh-content-font-delta, 0px));
   --cc-size-small: calc(12.5px + var(--dsh-content-font-delta, 0px));
   --cc-size-code: calc(13px + var(--dsh-content-font-delta, 0px));
+  /* Shared reading surfaces. --cc-* names remain compatibility aliases. */
+  --cv-row-height: 32px;
+  --cv-row-radius: 8px;
+  --cv-detail-radius: 10px;
+  --cv-process-size: calc(13px + var(--dsh-content-font-delta, 0px));
+  --cv-indent: 28px;
+  --cv-rail-offset: 22px;
+  --cv-surface: rgba(20, 20, 19, .035);
+  --cv-row-hover: rgba(20, 20, 19, .055);
+  --cv-row-open: rgba(20, 20, 19, .035);
+  --cv-detail-border: rgba(20, 20, 19, .1);
   --cv-ease: cubic-bezier(.2,.8,.2,1);
   --cv-fast: 100ms;
   --cv-swap: 200ms;
@@ -64,6 +75,9 @@
   --dsh-claude-font-code: var(--cc-font-mono);
   /* host-remap:end */
   background: transparent;
+  box-sizing: border-box;
+  padding-left: var(--reader-viewport-left, 0px);
+  padding-right: var(--reader-viewport-right, 0px);
   color: var(--cc-text-100);
   font-family: var(--cc-font-ui);
   font-weight: 400;
@@ -91,8 +105,12 @@
   --cc-success: hsl(97 59.1% 46.1%);
   --cc-success-bg: hsl(127 100% 13.9% / .45);
   --cc-link: hsl(210 65.5% 67.1%);
+  --cv-surface: rgba(250, 249, 245, .04);
+  --cv-row-hover: rgba(250, 249, 245, .065);
+  --cv-row-open: rgba(250, 249, 245, .035);
+  --cv-detail-border: rgba(250, 249, 245, .1);
 }
-.column { display: flex; flex-direction: column; gap: 28px; width: 100%; padding-bottom: 24px; max-width: var(--dsh-chat-content-width, 748px); min-width: 0; margin: 0 auto; }
+.column { display: flex; flex-direction: column; gap: 28px; box-sizing: border-box; width: 100%; padding: 0 8px; padding-bottom: 24px; max-width: var(--dsh-chat-content-width, 748px); min-width: 0; margin: 0 auto; }
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--cc-text-500); font-size: var(--cc-size-small); line-height: 18px; }
 .switchButton { display: inline-flex; align-items: center; gap: 8px; padding: 2px 8px; border: 0; border-radius: 8px; corner-shape: round; background: transparent; color: var(--cc-text-500); font: inherit; white-space: nowrap; cursor: pointer; transition: background-color var(--cv-fast) ease, color var(--cv-fast) ease; }
 .switchButton:hover { background: var(--cc-hover); color: var(--cc-text-300); }

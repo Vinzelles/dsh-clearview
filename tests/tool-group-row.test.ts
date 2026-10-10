@@ -26,6 +26,7 @@ test('a running group is open, shimmering and shows its members', () => {
   assert.match(html, /运行了 2 条命令/);
   assert.match(html, /data-shimmer="true"/);
   assert.match(html, /data-member="r1"[\s\S]*data-member="r2"/);
+  assert.match(html, /data-reader-line-hint="true"[^>]*>收起<\/span>/);
 });
 
 test('a settled group is one closed line; failures add a red count', () => {
@@ -33,6 +34,15 @@ test('a settled group is one closed line; failures add a red count', () => {
   assert.match(html, /data-group-state="settled"[^>]*data-expanded="false"/);
   assert.match(html, /· 1 次失败/);
   assert.match(html, /data-tone="failed"/);
+  assert.match(html, /data-reader-line-hint="true"[^>]*>展开<\/span>/);
+  assert.doesNotMatch(html, /data-reader-group-hint|展开详情|收起详情/);
+});
+
+test('group styling only supplies member indentation, with no state-specific row appearance', () => {
+  const css = readFileSync(new URL('../src/client/ToolGroupRow.module.css', import.meta.url), 'utf8');
+  assert.doesNotMatch(css, /data-group-state|data-reader-line|disclosureHint|background|font-weight|box-shadow/);
+  assert.match(css, /var\(--cv-indent, 28px\)/);
+  assert.match(css, /var\(--cv-rail-offset, 22px\)/);
 });
 
 // Drive the component's hooks and callbacks without adding a browser-test dependency.

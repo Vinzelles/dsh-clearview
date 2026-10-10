@@ -1,20 +1,18 @@
 .changes { min-width: 0; font-family: var(--cc-font-ui); font-size: var(--cc-size-ui); border-radius: 10px; corner-shape: round; transition: background-color var(--cv-swap) var(--cv-ease), box-shadow var(--cv-swap) var(--cv-ease), opacity var(--cv-swap) var(--cv-ease), transform var(--cv-swap) var(--cv-ease); }
-.changes[data-open=true] { background: var(--cc-bg-200); box-shadow: 0 0 0 1px var(--cc-border); }
+.changes[data-open=true] { background: var(--cv-surface); box-shadow: 0 0 0 1px var(--cv-detail-border); }
 .entering { opacity: 0; transform: translateY(4px); transition: none; }
-/* The hover background bleeds 6px past the text on both sides, drawn as two zero-spread side
-   shadows: shadows are ink overflow, so unlike a negative margin / width: calc(100% + 12px) they
-   never widen the scrollable area when the column fills a narrow reader. */
+/* The same contained hit area and hover surface as process disclosures. */
 .header {
   display: flex; align-items: center; gap: 8px;
-  width: 100%; min-height: 24px; margin: 0; padding: 0;
-  border: 0; border-radius: 6px; corner-shape: round; background: transparent;
-  box-shadow: 6px 0 0 transparent, -6px 0 0 transparent;
-  color: var(--cc-text-500); font: inherit; text-align: left; cursor: pointer;
+  box-sizing: border-box; width: 100%; min-height: var(--cv-row-height); margin: 0; padding: 5px 8px;
+  border: 0; border-radius: var(--cv-row-radius); corner-shape: round; background: transparent;
+  box-shadow: none;
+  color: var(--cc-text-500); font: inherit; font-size: var(--cv-process-size); text-align: left; cursor: pointer;
   transition: background-color var(--cv-fast) ease, box-shadow var(--cv-fast) ease, color var(--cv-fast) ease;
 }
-.header:hover { background: var(--cc-hover); box-shadow: 6px 0 0 var(--cc-hover), -6px 0 0 var(--cc-hover); color: var(--cc-text-300); }
-.changes[data-open=true] .header { padding: 9px 14px; border-radius: 0; box-shadow: none; }
-.title { flex: none; color: var(--cc-text-300); font-size: var(--cc-size-ui); font-weight: 500; }
+.header:hover { background: var(--cv-row-hover); color: var(--cc-text-300); }
+.changes[data-open=true] .header { border-radius: var(--cv-row-radius); }
+.title { flex: none; color: var(--cc-text-300); font-size: var(--cv-process-size); font-weight: 500; }
 .meta { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--cc-text-500); font-size: var(--cc-size-small); line-height: 18px; }
 .tags { display: inline-flex; flex: none; gap: 6px; }
 .tag { padding: 1px 8px; border-radius: 999px; corner-shape: round; font-size: var(--cc-size-small); line-height: 18px; font-weight: 500; }

@@ -7,6 +7,6 @@
 [data-motion=off] .entry { transition: none; }
 @media (prefers-reduced-motion: reduce) { .entry { transition: none; } }
 .input { margin: 6px 0; min-width: 0; }
-.prose { margin: 8px 0; min-width: 0; color: var(--cc-text-100); font-family: var(--cc-font-response); font-size: var(--cc-size-body); line-height: 1.6; overflow-wrap: anywhere; }
+.prose { margin: 14px 8px; min-width: 0; color: var(--cc-text-100); font-family: var(--cc-font-response); font-size: var(--cc-size-body); line-height: 1.6; overflow-wrap: anywhere; }
 .output { min-width: 0; overflow-wrap: anywhere; }
 .stopped { color: var(--cc-text-500); font-size: var(--cc-size-small); }
