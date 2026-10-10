@@ -81,8 +81,12 @@ function recordData(node: ChatConversationViewNode) {
 export function isOperational(item: PanelItem, get: Getter): boolean {
   if (item.kind === 'tool') return !STANDALONE_TOOLS.has(activitySummary(item.entry).name);
   if (item.kind !== 'record') return false;
-  const kind = get(item.nodeKey)?.kind;
-  return kind === 'command' || kind === 'manual-compaction';
+  const node = get(item.nodeKey);
+  if (!node) return false;
+  const data = recordData(node);
+  if (node.kind === 'command') return data?.outcome?.kind !== 'error';
+  if (node.kind === 'manual-compaction') return data?.command?.outcome?.kind !== 'error';
+  return false;
 }
 
 function factsOf(items: readonly PanelItem[], get: Getter, turnClosed: boolean): GroupFacts {

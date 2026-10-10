@@ -37,6 +37,11 @@
   --cv-indent: 28px;
   --cv-rail-offset: 22px;
   --cv-surface: rgba(20, 20, 19, .035);
+  --cv-user-surface: hsl(48 15% 93%);
+  --cv-warning: #94621b;
+  --cv-warning-border: rgba(148, 98, 27, .25);
+  --cv-warning-surface: rgba(184, 125, 38, .07);
+  --cv-error-surface: rgba(180, 45, 45, .055);
   --cv-row-hover: rgba(20, 20, 19, .055);
   --cv-row-open: rgba(20, 20, 19, .035);
   --cv-detail-border: rgba(20, 20, 19, .1);
@@ -106,6 +111,11 @@
   --cc-success-bg: hsl(127 100% 13.9% / .45);
   --cc-link: hsl(210 65.5% 67.1%);
   --cv-surface: rgba(250, 249, 245, .04);
+  --cv-user-surface: hsl(60 2% 16%);
+  --cv-warning: #dbac62;
+  --cv-warning-border: rgba(219, 172, 98, .27);
+  --cv-warning-surface: rgba(219, 172, 98, .065);
+  --cv-error-surface: rgba(255, 131, 129, .06);
   --cv-row-hover: rgba(250, 249, 245, .065);
   --cv-row-open: rgba(250, 249, 245, .035);
   --cv-detail-border: rgba(250, 249, 245, .1);

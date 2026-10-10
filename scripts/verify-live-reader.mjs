@@ -196,7 +196,7 @@ try {
     const receipt = { ready: false, writes: [] }; globalThis.__clearviewClipboardStub = receipt;
     const record = (kind, length) => receipt.writes.push({ kind, length });
     Object.defineProperty(navigator, 'clipboard', { configurable: false, value: Object.freeze({
-      writeText: async text => { record('writeText', String(text).length); },
+      writeText: async text => { receipt.lastText = String(text); record('writeText', String(text).length); },
       write: async items => { record('write', items.length); },
       readText: async () => '', read: async () => [],
     }) });
@@ -301,11 +301,12 @@ try {
         const thoughtAndToolMixed = thoughts.filter(node => node.querySelector('[data-reader-tool-call], [data-reader-group]') || node.closest('[data-reader-tool-call], [data-reader-group]')).length;
         const groupAffordance = groups.map(button => ({
           expanded: button.getAttribute('aria-expanded'), hint: button.querySelector('[data-reader-line-hint]')?.textContent,
+          chevron: !!button.querySelector('svg[data-open]'),
           background: cs(button).backgroundColor, border: cs(button).borderTopWidth, minHeight: cs(button).minHeight,
         }));
         const bodyPrimary = !!prose && cs(prose).color === primaryColor;
         const bodyDistinct = !!prose && !!label && primaryColor !== secondaryColor && cs(label).color === secondaryColor && cs(prose).color !== cs(label).color;
-        const groupsClear = groupAffordance.length > 0 && groupAffordance.every(row => Number.parseFloat(row.border) === 0 && Number.parseFloat(row.minHeight) >= 32 && row.hint === (row.expanded === 'true' ? '收起' : '展开'));
+        const groupsClear = groupAffordance.length > 0 && groupAffordance.every(row => Number.parseFloat(row.border) === 0 && Number.parseFloat(row.minHeight) >= 32 && !row.hint && row.chevron && ['true', 'false'].includes(row.expanded));
         const thoughtButtons = all('[data-reader-reasoning] > [data-reader-line] > button');
         const rowStyle = button => {
           const style = cs(button);
@@ -337,6 +338,7 @@ try {
   // Toggle the listed workspace rows open, then their 「展开其余」 buttons, until none is left.
   const expandWorkspaces = async () => {
     for (const workspace of expand) {
+      if (!await until(`[...document.querySelectorAll('[role="treeitem"][data-row-key^="workspace:"]')].some(node => node.textContent.trim() === ${JSON.stringify(workspace)})`, 5000)) continue;
       await evaluate(`(() => { const row = [...document.querySelectorAll('[role="treeitem"][data-row-key^="workspace:"]')].find(node => node.textContent.trim() === ${JSON.stringify(workspace)}); if (row && row.getAttribute('aria-expanded') === 'false') row.click(); })()`);
       await delay(1200);
       for (let round = 0; round < 25; round++) {
@@ -379,6 +381,7 @@ try {
     const folded = expanded === 'false';
     const hint = folded ? '展开过程' : '收起过程';
     const label = button?.textContent ?? '';
+    const accessibleLabel = button?.getAttribute('aria-label') ?? '';
     const controls = !!button && !!flow?.id && button.getAttribute('aria-controls') === flow.id && document.getElementById(flow.id) === flow;
     return {
       result: turn.getAttribute('data-reader-turn-result'), expanded, controls, label,
@@ -387,7 +390,7 @@ try {
       retainedVisible: retained.every(node => node.getAttribute('data-folded') === 'false' && visible(node)),
       persistentVisible: persistentContent.every(visible),
       answersVisible: answers.length > 0 && answers.every(visible),
-      pass: controls && ['true', 'false'].includes(expanded) && label.includes(hint) && !label.includes(folded ? '收起过程' : '展开过程')
+      pass: controls && ['true', 'false'].includes(expanded) && accessibleLabel.includes(hint) && !/展开过程|收起过程/.test(label)
         && entries.every(node => ['true', 'false'].includes(node.getAttribute('data-reader-process-entry')))
         && process.length > 0 && process.every(node => node.getAttribute('data-folded') === String(folded) && visible(node) === !folded)
         && retained.every(node => node.getAttribute('data-folded') === 'false' && visible(node)) && answers.every(visible) && persistentContent.every(visible),
@@ -571,15 +574,27 @@ try {
       const bubble = document.querySelector('[data-dsh-clearview] [data-reader-user-bubble][data-clamped="true"]');
       if (!bubble) return null;
       bubble.scrollIntoView({ block: 'center' });
-      // The toggle is a sibling of the bubble inside the same row, with no aria-expanded: its text carries the state.
-      const button = bubble.parentElement?.querySelector(':scope > button');
+      const surface = bubble.closest('[data-reader-user-surface]');
+      const button = surface?.querySelector('[data-reader-bubble-toggle]');
       if (!button) return { clamped: true, button: false };
-      const snap = () => ({ text: button.textContent.trim(), clamped: bubble.getAttribute('data-clamped'), height: Math.round(bubble.getBoundingClientRect().height * 10) / 10 });
+      const snap = () => { const box = surface.getBoundingClientRect(), control = button.getBoundingClientRect(); return { text: button.textContent.trim(), clamped: bubble.getAttribute('data-clamped'), height: Math.round(box.height * 10) / 10,
+        inside: control.left >= box.left && control.right <= box.right && control.bottom <= box.bottom,
+        mask: getComputedStyle(bubble.querySelector('[data-open]')).maskImage,
+        background: getComputedStyle(surface).backgroundColor, border: getComputedStyle(surface).borderTopWidth }; };
       const before = snap();
       button.click(); await new Promise(done => setTimeout(done, 500));
       const opened = snap();
       button.click(); await new Promise(done => setTimeout(done, 400));
-      return { clamped: true, button: true, before, opened, after: snap() };
+      const after = snap();
+      if (![before, opened, after].every(state => state.inside && parseFloat(state.border) >= 1) || before.mask === 'none' || opened.mask !== 'none' || after.mask === 'none') throw Error('User bubble containment or clamp indicator failed');
+      const copy = bubble.querySelector('[data-dshcp-rewind-root] button[aria-label="复制"]');
+      if (!copy) throw Error('User copy control missing');
+      const expectedText = (bubble.querySelector(':scope > p')?.textContent ?? '') + bubble.querySelector('[data-open]').textContent;
+      globalThis.__clearviewClipboardStub.lastText = null;
+      copy.click(); await new Promise(done => setTimeout(done, 100));
+      const copyClean = globalThis.__clearviewClipboardStub.lastText === expectedText;
+      if (!copyClean) throw Error('User copy mismatch: ' + JSON.stringify({ actualLength: globalThis.__clearviewClipboardStub.lastText?.length, expectedLength: expectedText.length, writes: globalThis.__clearviewClipboardStub.writes.slice(-2), controlCaption: globalThis.__clearviewClipboardStub.lastText?.endsWith(button.textContent) }));
+      return { clamped: true, button: true, before, opened, after, copyClean };
     })()`);
     guardCreates();
     // 阅读 → 对话 → 阅读 round trips (tab switches only): the reader remounts and restores its position;
@@ -631,6 +646,30 @@ try {
       item.theme[mode] = { attribute: await evaluate("document.body.hasAttribute('data-ds-dark-theme')"), rootBackground: measured?.rootBackground, backdropBackground: measured?.backdropBackground, hierarchy: measured?.hierarchy, expected,
         matches: measured?.rootBackground === expected };
       await shot(`${name}-theme-${mode}`);
+      item.theme[mode].bubble = await evaluate(`(() => {
+        const surface = document.querySelector('[data-dsh-clearview] [data-reader-user-surface]');
+        if (!surface) return null;
+        surface.scrollIntoView({ block: 'center' });
+        const style = getComputedStyle(surface), border = parseFloat(style.borderTopWidth);
+        const color = style.backgroundColor;
+        const match = color.match(/rgba?\\(([^)]+)\\)/);
+        const channels = match ? match[1].split(',').map(Number) : [];
+        const dark = document.body.hasAttribute('data-ds-dark-theme');
+        const pass = border >= 1 && channels.length >= 3 && (dark ? channels[0] >= 35 && channels[0] <= 65 : channels[0] >= 220);
+        return { border, background: color, pass };
+      })()`);
+      if (item.theme[mode].bubble && !item.theme[mode].bubble.pass) throw Error('User bubble theme boundary failed: ' + mode);
+      await delay(250);
+      await shot(`${name}-bubble-${mode}`);
+      item.theme[mode].notices = await evaluate(`(() => {
+        const nodes = [...document.querySelectorAll('[data-dsh-clearview] [data-reader-notice-tone]')];
+        nodes[0]?.scrollIntoView({ block: 'center' });
+        return nodes.map(node => { const style = getComputedStyle(node); return { tone: node.getAttribute('data-reader-notice-tone'),
+          background: style.backgroundColor, border: style.borderLeftWidth,
+          pass: !node.querySelector('[data-reader-line]') && !node.closest('[data-reader-group]') && parseFloat(style.borderLeftWidth) >= 3 && style.backgroundColor !== 'rgba(0, 0, 0, 0)' }; });
+      })()`);
+      if (item.theme[mode].notices.some(notice => !notice.pass)) throw Error('Exception notice presentation failed: ' + mode);
+      if (item.theme[mode].notices.length) { await delay(250); await shot(`${name}-notices-${mode}`); }
     }
     await evaluate(`(() => { const saved = ${JSON.stringify(savedTheme)}; if (saved.dark === null) document.body.removeAttribute('data-ds-dark-theme'); else document.body.setAttribute('data-ds-dark-theme', saved.dark); if (saved.colorScheme) document.documentElement.style.setProperty('color-scheme', saved.colorScheme, saved.priority); else document.documentElement.style.removeProperty('color-scheme'); })()`);
     await delay(400);
@@ -664,6 +703,18 @@ try {
       await delay(500);
       cov.records[kind].shot = await scrollShot(`[data-reader-record-kind="${kind}"]`, `record-${kind}`);
       cov.records[kind].body = await evaluate(`document.querySelector('[data-reader-record-kind="${kind}"]')?.textContent.slice(0, 200)`);
+      if (kind === 'model-retry') {
+        cov.records[kind].disclosure = await evaluate(`(() => {
+          const node = document.querySelector('[data-dsh-clearview] [data-reader-record-kind="model-retry"]');
+          const button = node.querySelector('button'), detail = document.getElementById(button.getAttribute('aria-controls'));
+          const opened = button.getAttribute('aria-expanded') === 'true' && !!detail && detail.getBoundingClientRect().height > 0;
+          button.click();
+          return { opened, independent: node.getAttribute('data-reader-notice-tone') === 'warning' && !node.querySelector('[data-reader-line]') && !node.closest('[data-reader-group]') };
+        })()`);
+        await delay(350);
+        cov.records[kind].disclosure.closed = await evaluate(`document.querySelector('[data-dsh-clearview] [data-reader-record-kind="model-retry"] button')?.getAttribute('aria-expanded') === 'false'`);
+        if (!Object.values(cov.records[kind].disclosure).every(Boolean)) throw Error('Retry notice disclosure failed');
+      }
       cov.records[kind].showInChat = await evaluate(`!!document.querySelector('[data-reader-record-kind="${kind}"] [data-reader-show-in-chat]')`);
       if (cov.records[kind].showInChat) {
         await evaluate(`document.querySelector('[data-reader-record-kind="${kind}"] [data-reader-show-in-chat]').click()`);

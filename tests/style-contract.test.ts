@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { COMPAT_CSS } from '../src/client/compat/styles.ts';
 
 const CLIENT = new URL('../src/client/', import.meta.url);
-const REDESIGNED = ['Reader', 'Line', 'ToolRow', 'ToolDetails', 'ToolGroupRow', 'ThoughtRow', 'LiveThought', 'StatusLine', 'UserBubble', 'PlanCard', 'RecordRows', 'Opening', 'TurnSection', 'TurnFooter', 'JumpButton', 'FileChanges'];
+const REDESIGNED = ['Reader', 'Line', 'ToolRow', 'ToolDetails', 'ToolGroupRow', 'ThoughtRow', 'LiveThought', 'StatusLine', 'UserBubble', 'PlanCard', 'RecordRows', 'Notice', 'Opening', 'TurnSection', 'TurnFooter', 'JumpButton', 'FileChanges'];
 const sheet = (name: string) => readFileSync(new URL(`${name}.module.css`, CLIENT), 'utf8');
 
 test('redesigned surfaces use token radii and no in-flow backdrop blur', () => {
@@ -71,12 +71,11 @@ test('every rounded rule sets corner-shape: round beside its token radius', () =
   assert.deepEqual(missing, [], 'rounded rules without corner-shape: round');
 });
 
-test('the turn-trigger opening is a 24px row, not a padded card', () => {
+test('turn triggers share the process line and detail tokens', () => {
   const opening = sheet('Opening');
-  const button = /\.triggerButton \{([^}]*)\}/.exec(opening)?.[1] ?? '';
-  assert.match(button, /height: 24px/);
-  assert.match(button, /color: var\(--cc-text-300\)/);
-  assert.doesNotMatch(button, /padding:\s*10px/);
+  assert.doesNotMatch(opening, /\.triggerButton|\.triggerAction|\.triggerIcon|\.triggerTitle/);
+  const detail = /\.triggerBody \{([^}]*)\}/.exec(opening)?.[1] ?? '';
+  for (const token of ['--cv-indent', '--cv-detail-border', '--cv-detail-radius', '--cv-surface']) assert.ok(detail.includes(`var(${token})`), token);
   assert.doesNotMatch(/\.trigger \{([^}]*)\}/.exec(opening)?.[1] ?? '', /background|box-shadow|border-radius/);
 });
 

@@ -5,7 +5,6 @@
 .dot { width: 6px; height: 6px; flex: none; border-radius: 50%; corner-shape: round; background: var(--cc-success); }
 .label { flex: none; color: var(--cc-text-100); font-weight: 500; font-size: var(--cv-process-size); white-space: nowrap; }
 .meta { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.hint { flex: none; color: var(--cc-text-300); white-space: nowrap; }
 .row[data-danger=true] .dot { background: var(--cc-danger); }
 .row[data-danger=true] .label { color: var(--cc-danger); }
 [data-motion=off] .row, [data-motion=off] .chevron { transition: none; }

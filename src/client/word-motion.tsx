@@ -2,17 +2,17 @@ import { createContext, memo, useCallback, useContext, useLayoutEffect, useMemo,
 import type { ReactNode, RefObject } from 'react';
 import { MarkdownText } from './markdown/MarkdownText.js';
 import type { MarkdownFileMentions } from './markdown/render.js';
-import { WORD_MOTION, WordTimeline } from './word-timeline.js';
+import { WORD_MOTION, REASONING_MOTION, WordTimeline, type WordMotion } from './word-timeline.js';
 import { settleOnFrame } from './settlement-batch.js';
 import css from './Reader.module.css';
 
-const WordScope = createContext({ enabled: false, generation: 0 });
+const WordScope = createContext<{ enabled: boolean; generation: number; motion: WordMotion }>({ enabled: false, generation: 0, motion: WORD_MOTION });
 const CODE_LABELS = { copyLabel: '复制代码', copiedLabel: '已复制' };
 
 /** Whether a word with this birth time still needs its reveal animation now. */
-function willReveal(born: number | null): boolean {
+function willReveal(born: number | null, duration: number): boolean {
   if (born === null || document.hidden) return false;
-  return Number(document.timeline.currentTime ?? performance.now()) - born < WORD_MOTION.duration;
+  return Number(document.timeline.currentTime ?? performance.now()) - born < duration;
 }
 
 function useSourceReveal(element: RefObject<HTMLElement>, born: number | null, generation: number, onSettled: (() => void) | null) {
@@ -25,13 +25,13 @@ function useSourceReveal(element: RefObject<HTMLElement>, born: number | null, g
     if (!scope.enabled || scope.generation !== generation) { cancelled.current = true; onSettled?.(); return; }
     if (cancelled.current || born === null || document.hidden) { onSettled?.(); return; }
     const age = Number(document.timeline.currentTime ?? performance.now()) - born;
-    if (age >= WORD_MOTION.duration || typeof target.animate !== 'function') { onSettled?.(); return; }
+    if (age >= scope.motion.duration || typeof target.animate !== 'function') { onSettled?.(); return; }
     // The reference opacity + blur frames, applied only to this new word.
     // No color interpolation, stylesheet mutation, or whole-paragraph wipe.
     const animation = target.animate([
-      { opacity: 0, filter: `blur(${WORD_MOTION.blur}px)` },
+      { opacity: scope.motion.initialOpacity, filter: `blur(${scope.motion.blur}px)` },
       { opacity: 1, filter: 'blur(0px)' },
-    ], { duration: WORD_MOTION.duration, easing: WORD_MOTION.easing, fill: 'backwards' });
+    ], { duration: scope.motion.duration, easing: scope.motion.easing, fill: 'backwards' });
     // One absolute clock prevents newly mounted/resegmented leaves from getting
     // a fresh delay or running ahead because their layout effects ran later.
     animation.startTime = born;
@@ -48,11 +48,12 @@ function useSourceReveal(element: RefObject<HTMLElement>, born: number | null, g
     const hidden = () => { if (document.hidden) { cancelled.current = true; finish(); } };
     document.addEventListener('visibilitychange', hidden);
     return () => { animation.cancel(); cancelSettlement?.(); document.removeEventListener('visibilitychange', hidden); target.dataset.wordState = 'settled'; };
-  }, [element, born, generation, scope.enabled, scope.generation, onSettled]);
+  }, [element, born, generation, scope.enabled, scope.generation, scope.motion, onSettled]);
 }
 
 const Word = memo(function Word({ children, born, generation, offset, inline }: { children: string; born: number | null; generation: number; offset: number; inline: boolean }) {
   const element = useRef<HTMLSpanElement>(null);
+  const scope = useContext(WordScope);
   // A reveal leaf only needs its wrapper while it animates. Once settled it is
   // dropped to a plain text node: a long turn streams tens of thousands of words
   // and keeping a <span> per word made every scroll pay layout/paint for each
@@ -60,7 +61,7 @@ const Word = memo(function Word({ children, born, generation, offset, inline }: 
   // component itself stops rendering the span, React unmounts it cleanly — no
   // detached-node crash risk that an external DOM unwrap would carry. Only the
   // ~350ms frontier holds spans; everything behind is text.
-  const [settled, setSettled] = useState(() => !willReveal(born));
+  const [settled, setSettled] = useState(() => !willReveal(born, scope.motion.duration));
   const settle = useCallback(() => setSettled(true), []);
   const onSettled = settled ? null : settle;
   useSourceReveal(element, born, generation, onSettled);
@@ -145,13 +146,13 @@ function paragraphChunks(cache: { current: { text: string; chunks: ParagraphChun
 /** Native Think is literal text, not Markdown. Spans never alter its bytes. */
 export function MotionPlainText({ text, enabled, revision }: { text: string; enabled: boolean; revision: number }) {
   const timeline = useRef<WordTimeline>();
-  timeline.current ??= new WordTimeline();
+  timeline.current ??= new WordTimeline(REASONING_MOTION);
   const chunkCache = useRef<{ text: string; chunks: ParagraphChunk[] }>({ text: '', chunks: [] });
   const now = Number(document.timeline.currentTime ?? performance.now());
   timeline.current.begin(text, enabled, revision, now);
   const current = timeline.current;
   const generation = current.generation;
-  const scope = useMemo(() => ({ enabled, generation }), [enabled, generation]);
+  const scope = useMemo(() => ({ enabled, generation, motion: REASONING_MOTION }), [enabled, generation]);
   if (!current.hasLiveText) return <WordScope.Provider value={scope}><div className={css.reasonPlain}>{text}</div></WordScope.Provider>;
   const chunks = paragraphChunks(chunkCache, text);
   // Paragraph-chunk the reasoning text so memoized earlier paragraphs
@@ -166,6 +167,9 @@ export function MotionPlainText({ text, enabled, revision }: { text: string; ena
     children.push(<ReasonSegment key={chunk.start} timeline={current} text={chunk.part} offset={chunk.start} generation={generation}
       liveFrom={Math.max(chunk.start, Math.min(liveFrom, chunk.end))} />);
   });
+  // The final separator has no following paragraph yet, but is still source text.
+  const lastEnd = chunks.at(-1)?.end ?? 0;
+  if (lastEnd < text.length) children.push(text.slice(lastEnd));
   return <WordScope.Provider value={scope}><div className={css.reasonPlain}>{children}</div></WordScope.Provider>;
 }
 
@@ -175,7 +179,7 @@ export function MotionMarkdown({ text, streaming, enabled, revision, fileMention
   timeline.current ??= new WordTimeline();
   timeline.current.begin(text, enabled, revision, Number(document.timeline.currentTime ?? performance.now()));
   const generation = timeline.current.generation;
-  const scope = useMemo(() => ({ enabled, generation }), [enabled, generation]);
+  const scope = useMemo(() => ({ enabled, generation, motion: WORD_MOTION }), [enabled, generation]);
 const renderText = useMemo(() => (value: string, offset: number, inline = false): ReactNode => {
     const current = timeline.current!;
     if (!current.hasLiveText) return value;

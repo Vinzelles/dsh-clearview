@@ -1,7 +1,23 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Nodes } from 'mdast';
-import { WORD_MOTION, WordTimeline } from '../src/client/word-timeline.js';
+import { WORD_MOTION, REASONING_MOTION, WordTimeline } from '../src/client/word-timeline.js';
+
+test('rapid reasoning bursts never queue invisible words and keep stable births', () => {
+  const timeline = new WordTimeline(REASONING_MOTION);
+  timeline.begin('', true, 0, 0);
+  let text = '';
+  for (let now = 16; now <= 960; now += 16) {
+    text += 'Quick reasoning arrives in a large burst. 快速思考仍然清晰。\n';
+    timeline.begin(text, true, 0, now);
+    const words = timeline.words(text, 0).filter(word => word.text.trim());
+    assert.ok(words.every(word => word.born !== null && word.born <= now));
+    assert.equal(words[0]!.born, 16, 'existing text must not replay');
+  }
+  assert.equal(timeline.liveFloor(960 + REASONING_MOTION.duration), text.length);
+  assert.ok(REASONING_MOTION.initialOpacity >= .8);
+  assert.ok(REASONING_MOTION.blur > 0, 'keep blur motion');
+});
 import { IncrementalMarkdownParser } from '../src/client/markdown/incremental.js';
 import { parseGfm, parseGfmWithMath } from '../src/client/markdown/parse.js';
 

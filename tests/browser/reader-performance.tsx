@@ -198,6 +198,32 @@ async function focusedLifecycles(chat: any, sess: any, prefs: any, props: any) {
         return { tab, detail: row?.querySelector<HTMLElement>('[data-reader-tool-details]') ?? null, panel: row?.querySelector<HTMLElement>('[role="tabpanel"]') ?? null };
     };
     try {
+        // High-rate reasoning must remain readable while blur and tail-follow are active.
+        let burstValue = seed([{ kind: 'reasoning', text: '' }]);
+        await mount(burstValue, true);
+        let burstText = '', sampledWords = 0, minimumOpacity = 1, animatedWords = 0, futureStarts = 0;
+        for (let frame = 0; frame < 60; frame++) {
+            burstText += `Fast thought ${frame}: new words remain readable. 快速输出不应形成透明文字队列。\n\n`;
+            burstValue = assistant(burstValue, 'life-a', [{ kind: 'reasoning', text: burstText }], 'running');
+            flushSync(() => chat.set(burstValue));
+            await wait(16);
+            const words = [...scope().querySelectorAll<HTMLElement>('[data-reader-reasoning-text] [data-reader-word]')];
+            for (const word of words) {
+                sampledWords++;
+                minimumOpacity = Math.min(minimumOpacity, Number(getComputedStyle(word).opacity));
+                for (const animation of word.getAnimations()) {
+                    animatedWords++;
+                    if (Number(animation.startTime) > Number(document.timeline.currentTime) + 1) futureStarts++;
+                }
+            }
+        }
+        await wait(900);
+        const burstPort = scope().querySelector<HTMLElement>('[data-reader-reasoning-scroll]');
+        check(sampledWords > 0 && animatedWords > 0, 'rapid reasoning probe did not sample live animations');
+        check(minimumOpacity >= .79 && futureStarts === 0, 'rapid reasoning became unreadable or queued future animation starts');
+        check(burstPort?.textContent === burstText, 'rapid reasoning lost source text');
+        check(!!burstPort && Math.abs(burstPort.scrollHeight - burstPort.clientHeight - burstPort.scrollTop) <= 2, 'rapid reasoning did not finish following the tail');
+        evidence.rapidReasoning = { sampledWords, animatedWords, minimumOpacity, futureStarts, fullText: burstPort?.textContent === burstText };
         // Exercise the real TurnSection seat, not a standalone scrolling div.
         // Wheel reading owns neither focus nor selection and used to disappear at tool arrival.
         evidence.reasoningFollow = [];
@@ -409,13 +435,18 @@ async function focusedLifecycles(chat: any, sess: any, prefs: any, props: any) {
         const expand = [...scope().querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '展开全文');
         const initiallyClipped = !!box && clampHeight > 0 && box.scrollHeight > clampHeight + 1 && clampHeight <= lineHeight * 6 + 1;
         check(initiallyClipped && !!expand && box?.textContent === userText, 'RO initial clamp missing or user source text lost');
+        const surface = bubble?.closest<HTMLElement>('[data-reader-user-surface]');
+        const inside = !!surface && !!expand && surface.contains(expand) && !bubble!.contains(expand) && expand.getBoundingClientRect().bottom <= surface.getBoundingClientRect().bottom;
+        const fade = !!box && getComputedStyle(box).maskImage !== 'none';
+        const border = !!surface && parseFloat(getComputedStyle(surface).borderTopWidth) >= 1;
+        check(inside && fade && border, 'bubble needs a visible boundary, clipping cue and internal toggle');
         expand?.click(); await wait(100);
         const expanded = !!box && box.clientHeight > clampHeight + 1 && box.scrollHeight <= box.clientHeight + 1 && box.textContent === userText;
         check(expanded, 'long user bubble did not show complete source on expansion');
         [...scope().querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '收起')?.click(); await wait(150);
         const clippedAgain = !!box && box.clientHeight <= lineHeight * 6 + 1 && box.scrollHeight > box.clientHeight + 1 && box.textContent === userText;
         check(clippedAgain, 'long user bubble did not restore clamp after collapsing');
-        evidence.userBubble = { initiallyClipped, expanded, clippedAgain, clampHeight, lineHeight };
+        evidence.userBubble = { initiallyClipped, expanded, clippedAgain, clampHeight, lineHeight, inside, fade, border };
         check(!host.querySelector('[data-reader-block-error]'), 'focused lifecycle fixture hit a Reader error boundary');
     } finally {
         document.removeEventListener('focusin', focusEvent); document.removeEventListener('focusout', focusEvent);

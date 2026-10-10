@@ -13,7 +13,7 @@ test('an expandable line is one button with aria-expanded and a chevron', () => 
   assert.match(html, /data-reader-tool-call="c1"/);
   assert.match(html, /运行[\s\S]*npm test/);
   assert.match(html, /aria-controls="tool-details"/);
-  assert.match(html, /data-reader-line-hint="true"[^>]*>展开<\/span>/);
+  assert.doesNotMatch(html, /data-reader-line-hint|>展开<|>收起</);
 });
 
 test('a static line has no button and keeps the chevron slot', () => {
@@ -23,14 +23,13 @@ test('a static line has no button and keeps the chevron slot', () => {
   assert.doesNotMatch(html, /data-reader-line-hint/);
 });
 
-test('all disclosures expose the same short hint and preserve toggle callbacks', () => {
+test('all disclosures omit side hints and preserve accessible state and toggle callbacks', () => {
   let clicks = 0;
   for (const label of ['思考', '运行了 2 条命令', '运行', '记录']) {
     const props = { icon: 'i', label, open: true, controls: 'detail', onToggle: () => { clicks++; } };
     const html = renderToStaticMarkup(createElement(Line, props));
     assert.match(html, /aria-expanded="true"[^>]*aria-controls="detail"/);
-    assert.match(html, /data-reader-line-hint="true"[^>]*>收起<\/span>/);
-    assert.equal((html.match(/data-reader-line-hint/g) ?? []).length, 1);
+    assert.doesNotMatch(html, /data-reader-line-hint|>展开<|>收起</);
     Line(props).props.children.props.onClick();
   }
   assert.equal(clicks, 4);

@@ -26,7 +26,7 @@ test('a running group is open, shimmering and shows its members', () => {
   assert.match(html, /运行了 2 条命令/);
   assert.match(html, /data-shimmer="true"/);
   assert.match(html, /data-member="r1"[\s\S]*data-member="r2"/);
-  assert.match(html, /data-reader-line-hint="true"[^>]*>收起<\/span>/);
+  assert.doesNotMatch(html, /data-reader-line-hint|>收起</);
 });
 
 test('a settled group is one closed line; failures add a red count', () => {
@@ -34,7 +34,7 @@ test('a settled group is one closed line; failures add a red count', () => {
   assert.match(html, /data-group-state="settled"[^>]*data-expanded="false"/);
   assert.match(html, /· 1 次失败/);
   assert.match(html, /data-tone="failed"/);
-  assert.match(html, /data-reader-line-hint="true"[^>]*>展开<\/span>/);
+  assert.doesNotMatch(html, /data-reader-line-hint|>展开</);
   assert.doesNotMatch(html, /data-reader-group-hint|展开详情|收起详情/);
 });
 

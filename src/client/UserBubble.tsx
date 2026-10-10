@@ -24,13 +24,13 @@ export function UserBubble({ children, small = false, label, data }: { children:
   return <UserBubbleView text={text} clamped={clamped} open={open} onToggle={() => setOpen(value => !value)} small={small} label={label} data={data}>{children}</UserBubbleView>;
 }
 
-/** Markup only. The toggle sits after the seat element so copying the message never picks up its caption. */
+/** The visual surface contains both the message seat and its toggle; only the seat is copied. */
 export function UserBubbleView({ children, text, clamped, open, onToggle, small, label, data }: { children: ReactNode; text?: RefObject<HTMLDivElement>; clamped: boolean; open: boolean; onToggle: () => void; small: boolean; label?: string; data?: Record<string, string | boolean | undefined> }) {
-  return <div className={css.row}>
+  return <div className={css.row} data-reader-user-surface data-small={small}>
     <div className={css.bubble} data-reader-user-bubble data-small={small} data-clamped={clamped && !open} {...data}>
       {label && <p className={css.meta}>{label}</p>}
       <div ref={text} className={css.text} data-open={open}>{children}</div>
     </div>
-    {(clamped || open) && <button type="button" className={css.more} onClick={onToggle}>{open ? '收起' : '展开全文'}</button>}
+    {(clamped || open) && <button type="button" className={css.more} data-reader-bubble-toggle aria-expanded={open} onClick={onToggle}>{open ? '收起' : '展开全文'}</button>}
   </div>;
 }

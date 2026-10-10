@@ -10,7 +10,7 @@ export interface LineProps {
   title?: string; data?: Record<string, string | boolean | undefined>;
 }
 
-/** Shared process row: chevron, icon, wrapping label, optional target and disclosure hint. */
+/** Shared process row: chevron, icon, wrapping label and optional target. */
 export function Line({ icon, label, target, trailing, tone = 'idle', shimmer = false, open, onToggle, controls, title, data }: LineProps) {
   const expandable = open !== undefined && onToggle !== undefined;
   const body = <>
@@ -21,7 +21,6 @@ export function Line({ icon, label, target, trailing, tone = 'idle', shimmer = f
     <span className={css.label} data-reader-line-label data-shimmer={shimmer || undefined}>{label}</span>
     {target !== undefined && target !== null && target !== '' && <span className={css.target} title={title}>{target}</span>}
     {trailing && <span className={css.trailing}>{trailing}</span>}
-    {expandable && <span className={css.hint} data-reader-line-hint aria-hidden="true">{open ? '收起' : '展开'}</span>}
   </>;
   return <div className={css.line} data-reader-line data-tone={tone} {...data}>
     {expandable

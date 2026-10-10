@@ -61,7 +61,8 @@ test('the saved completed-process choice keeps its contents expanded', () => {
   const html = renderTurn(nodes, turn, { expanded: { 'process:test-session:turn:1': true } });
   assert.match(html, /data-reader-turn-disclosure="true"[^>]*aria-expanded="true"/);
   assert.doesNotMatch(html, /data-folded="true"/);
-  assert.match(html, /收起过程/);
+  assert.match(html, /aria-label="[^"]*收起过程"/);
+  assert.doesNotMatch(html, />收起过程</);
 });
 
 test('an open turn ends with the status line and renders live thinking exactly once, below it', () => {

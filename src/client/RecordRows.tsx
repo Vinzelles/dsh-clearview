@@ -3,8 +3,8 @@ import type { ComponentType } from 'react';
 import type { ContextMessageNode } from '@deepseek-ai/dsh-client-ui-conversation/client';
 import {
   JsonTree,
-  IconApiOutlineRegular, IconCloseCircleFillRegular, IconCompactOutlineRegular, IconFlatListOutlineRegular, IconPlanOutlineRegular,
-  IconQuestionOutlineRegular, IconRefreshOutlineRegular, IconSparkleRegular, IconWarningOutlineRegular,
+  IconApiOutlineRegular, IconCompactOutlineRegular, IconFlatListOutlineRegular, IconPlanOutlineRegular,
+  IconQuestionOutlineRegular, IconSparkleRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives';
 import { Blocks } from './Blocks.js';
 import { useChatSelector } from './compat/session-snapshot.js';
@@ -14,6 +14,7 @@ import { JSON_TREE_LABELS } from './native/primitive-labels.js';
 import { SystemPromptRow } from './native/SystemPromptRow.js';
 import { nodeText, workflowRunSummary, workflowStatusLabel } from './node-payloads.js';
 import { Line } from './Line.js';
+import { Notice } from './Notice.js';
 import { useReaderActions } from './reader-context.js';
 import { UserBubble } from './UserBubble.js';
 import { contentBlocks } from './user-content.js';
@@ -112,7 +113,6 @@ export function replyAnswerValues(data: unknown, id: string): string[] {
 }
 
 const ICONS: Record<string, ComponentType<{ size?: number }>> = {
-  'model-retry': IconRefreshOutlineRegular,
   command: IconApiOutlineRegular,
   'manual-compaction': IconCompactOutlineRegular,
   compaction: IconCompactOutlineRegular,
@@ -178,10 +178,15 @@ export const RecordRow = memo(function RecordRow({ useSession, nodeKey, t, onRea
     return text ? <SystemPromptRow text={text} /> : null;
   }
   const view = recordView(node, turnClosed);
+  if (node.kind === 'model-retry' || view.tone === 'failed') return <Notice title={view.title} summary={view.summary}
+    tone={view.tone === 'failed' ? 'danger' : 'warning'} open={open} onToggle={toggle} motion={motion}
+    data={{ 'data-reader-record-kind': node.kind, 'data-record-tone': view.tone }}>
+    <RecordBody kind={node.kind} data={node.data} view={view} nodeKey={nodeKey} {...render} />
+  </Notice>;
   const Icon = ICONS[node.kind] ?? IconSparkleRegular;
   return <div className={css.record} data-record-tone={view.tone}>
     <Line icon={<Icon size={14} />} label={view.title} target={view.summary} title={view.summary}
-      tone={view.tone === 'failed' ? 'failed' : view.tone === 'active' ? 'running' : 'idle'} shimmer={view.tone === 'active' && motion}
+      tone={view.tone === 'active' ? 'running' : 'idle'} shimmer={view.tone === 'active' && motion}
       open={open} onToggle={toggle} data={{ 'data-reader-record-kind': node.kind }} />
     <CollapseBody open={open} motion={motion}><div className={css.detail}><RecordBody kind={node.kind} data={node.data} view={view} nodeKey={nodeKey} {...render} /></div></CollapseBody>
   </div>;
@@ -204,11 +209,11 @@ export const InputBubble = memo(function InputBubble({ useSession, nodeKey, ...r
 export const TurnNotice = memo(function TurnNotice({ useSession, nodeKey }: Pick<ReaderProps, 'useSession'> & { nodeKey: string }) {
   const node = useChatSelector(useSession, chat => chat.nodes.get(nodeKey));
   if (!node || node.visibility === 'hidden') return null;
-  if (node.kind === 'turn-max-tokens') return <Line icon={<IconWarningOutlineRegular size={14} />} label="已到达输出长度限制" target="回答可能尚未完整，已生成的内容仍保留。"
+  if (node.kind === 'turn-max-tokens') return <Notice title="已到达输出长度限制" summary="回答可能尚未完整，已生成的内容仍保留。"
     data={{ role: 'status', 'data-reader-notice': 'max-tokens' }} />;
   const data = record(node.data);
   const message = typeof data?.message === 'string' ? data.message : '';
   const code = typeof data?.code === 'string' ? data.code : '';
-  return <Line icon={<IconCloseCircleFillRegular size={14} />} label="本轮出现错误" target={message} title={message} tone="failed"
-    trailing={code && <code>{code}</code>} data={{ role: 'alert', 'data-reader-notice': 'error' }} />;
+  return <Notice title="本轮出现错误" summary={[code, message].filter(Boolean).join(' · ')} tone="danger"
+    data={{ role: 'alert', 'data-reader-notice': 'error' }} />;
 });

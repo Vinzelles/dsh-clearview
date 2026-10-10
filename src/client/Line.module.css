@@ -11,8 +11,6 @@ button.button { cursor: pointer; }
 .label { flex: 0 1 auto; min-width: 0; color: var(--cc-text-300); white-space: normal; overflow-wrap: anywhere; }
 .target { flex: 1 1 0; min-width: 0; overflow: hidden; color: var(--cc-text-100); font-size: inherit; text-overflow: ellipsis; white-space: nowrap; }
 .trailing { flex: 0 1 auto; min-width: 0; color: var(--cc-text-500); font-size: inherit; overflow-wrap: anywhere; }
-.hint { flex: none; margin-left: auto; color: var(--cc-text-500); white-space: nowrap; }
-.button:hover .hint, .button:focus-visible .hint { color: var(--cc-text-300); }
 .trailing [data-add] { color: var(--cc-success); }
 .trailing [data-del] { color: var(--cc-danger); }
 .line[data-tone="failed"] .icon, .line[data-tone="failed"] .trailing { color: var(--cc-danger); }

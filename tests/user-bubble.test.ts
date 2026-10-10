@@ -13,13 +13,15 @@ test('bubble carries the anchor attributes, the label first, and starts unclampe
   assert.doesNotMatch(html, /展开全文/);
 });
 
-test('the expand toggle sits outside the seat element so copying never includes it', () => {
+test('the visual bubble contains the toggle while its copy seat contains only the message', () => {
   for (const open of [false, true]) {
     const html = renderToStaticMarkup(createElement(UserBubbleView, { clamped: true, open, onToggle: () => {}, small: false, data: { 'data-reader-anchor': true, 'data-reader-key': 'k1' } }, '很长的消息'));
     const seat = /<div class="bubble"[^>]*data-reader-anchor[\s\S]*?<\/div><\/div>/.exec(html)?.[0] ?? '';
     assert.match(seat, /很长的消息/);
-    assert.doesNotMatch(seat, /展开全文|收起|<button/);
-    assert.match(html, open ? /<\/div><button[^>]*>收起<\/button>/ : /<\/div><button[^>]*>展开全文<\/button>/);
+    assert.doesNotMatch(seat, /<button|展开全文|收起/);
+    assert.match(html, /data-reader-user-surface="true"/);
+    assert.match(html, new RegExp(`data-reader-bubble-toggle="true" aria-expanded="${open}"`));
+    assert.match(html, open ? />收起<\/button><\/div>$/ : />展开全文<\/button><\/div>$/);
   }
 });
 

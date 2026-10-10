@@ -215,7 +215,7 @@ test('single operational items expose group facts without changing their kind or
   const record = chatNode('command', { outcome: { kind: 'error' } }, turn, 1);
   const [entry] = buildTranscript([{ kind: 'record', key: record.key, nodeKey: record.key, step: 1 }], () => record, true);
   assert.ok(entry?.kind === 'item');
-  assert.equal(entry.facts?.failed, 1);
+  assert.equal(entry.facts, undefined, 'failed command records remain independent notices');
   const ordinary = [tool('agent', 'dispatch'), draft('malformed', 'todo_write', {})];
   for (const entry of buildTranscript(ordinary, none, false)) {
     assert.ok(entry.kind === 'item');
@@ -277,12 +277,21 @@ test('running and failed facts', () => {
 });
 
 test('command and manual-compaction records join groups', () => {
-  const command = chatNode('command', { outcome: { kind: 'error' } }, turn, 1);
+  const command = chatNode('command', { outcome: { kind: 'success' } }, turn, 1);
   const compact = chatNode('manual-compaction', { command: { outcome: { kind: 'success' } }, compaction: {} }, turn, 1);
   const map = new Map([[command.key, command], [compact.key, compact]]);
   const [group] = buildTranscript([{ kind: 'record', key: command.key, nodeKey: command.key, step: 1 }, { kind: 'record', key: compact.key, nodeKey: compact.key, step: 1 }, tool('1', 'bash')], key => map.get(key), true);
   assert.equal(group!.kind === 'group' && groupSummary(group.facts), '运行了 2 条命令，执行了 1 个操作');
-  assert.equal(group!.kind === 'group' && group.facts.failed, 1);
+  assert.equal(group!.kind === 'group' && group.facts.failed, 0);
+});
+
+test('failed command and compaction notices interrupt operation groups in source order', () => {
+  for (const [kind, data] of [['command', { outcome: { kind: 'error' } }], ['manual-compaction', { command: { outcome: { kind: 'error' } } }]] as const) {
+    const failure = chatNode(kind, data, turn, 1);
+    const entries = buildTranscript([tool('before', 'bash'), { kind: 'record', key: failure.key, nodeKey: failure.key, step: 1 }, tool('after', 'bash')], () => failure, true);
+    assert.deepEqual(kinds(entries), ['item', 'item', 'item']);
+    assert.equal(entries[1]!.key, failure.key);
+  }
 });
 
 test('other records and subagent calls stand alone', () => {
