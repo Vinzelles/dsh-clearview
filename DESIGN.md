@@ -96,3 +96,11 @@ Compare text commits and visible scroll progress as well as rAF intervals. Inclu
 ## Verification
 
 Use unit coverage for projection, lifecycle, source-ordered streaming, graphemes, Markdown and two-line stepping. Verify live Host manifest, served bundle, native process details, literal reasoning, motion, group fold and reopen, narrow layouts and reduced motion separately. Keep private session evidence outside this repository.
+
+## 2026-10-10 readability follow-up (unreleased)
+
+Process labels and targets use `--cv-process-text` (#73736f light / #999990 dark). Prose remains primary; expanded reasoning, warning/error semantics and diff colours are not dimmed. The Anthropic Sans file available on this machine has no CJK glyphs. Explicit CJK families precede generic/system fallback; body size and weight remain unchanged. Verify glyph selection with CDP platform-font evidence, not just the CSS stack.
+
+The session file summary is a bordered local card with a file icon, title and optional counts. Show three paths initially, then an explicit remaining-file control. The review action reveals captured tool edit fragments, in operation order. Counts sum replaced/inserted fragment line ranges after common prefix/suffix removal; they are not a minimal line diff or working-tree net total. Missing diffs stay unknown. No rollback action is exposed without a supported session-wide transaction. Counts are memoized while toggling the card.
+
+The reader's overflow-anchor compatibility rule only matches a conversation scroller containing its mounted root. Native composer visibility and hidden-until-found behaviour belong to companion plugins; do not mask their errors with reader-owned force-display rules. See the native compatibility diagnostic for the isolated fixes and deployment boundary.

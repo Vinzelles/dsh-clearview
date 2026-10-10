@@ -22,7 +22,7 @@
   --cc-brand: hsl(15 63.1% 59.6%);
   --cc-link: hsl(210 73.7% 40.2%);
   --cc-font-cjk: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC";
-  --cc-font-ui: anthropic-sans, ui-sans-serif, -apple-system, "Segoe UI", var(--cc-font-cjk), sans-serif;
+  --cc-font-ui: anthropic-sans, var(--cc-font-cjk), ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
   --cc-font-response: var(--cc-font-ui);
   --cc-font-mono: anthropic-mono, ui-monospace, "Cascadia Mono", Consolas, monospace;
   --cc-size-body: var(--dsh-content-font-size, calc(14px + var(--dsh-content-font-delta, 0px)));
@@ -34,6 +34,7 @@
   --cv-row-radius: 8px;
   --cv-detail-radius: 10px;
   --cv-process-size: calc(13px + var(--dsh-content-font-delta, 0px));
+  --cv-process-text: #73736f;
   --cv-indent: 28px;
   --cv-rail-offset: 22px;
   --cv-surface: rgba(20, 20, 19, .035);
@@ -116,6 +117,7 @@
   --cv-warning-border: rgba(219, 172, 98, .27);
   --cv-warning-surface: rgba(219, 172, 98, .065);
   --cv-error-surface: rgba(255, 131, 129, .06);
+  --cv-process-text: #999990;
   --cv-row-hover: rgba(250, 249, 245, .065);
   --cv-row-open: rgba(250, 249, 245, .035);
   --cv-detail-border: rgba(250, 249, 245, .1);

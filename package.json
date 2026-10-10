@@ -1,6 +1,6 @@
 {
   "name": "dsh-clearview",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "A calmer reading view for DeepSeek Harness: native process details, live reasoning, and clean final answers.",
   "type": "module",
   "license": "MIT",
@@ -94,7 +94,8 @@
     "DESIGN.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "docs/superpowers/diagnostics"
   ],
   "engines": {
     "node": "^22.19.0 || >=24.0.0"

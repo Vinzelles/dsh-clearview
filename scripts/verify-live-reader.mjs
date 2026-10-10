@@ -212,7 +212,7 @@ try {
   await send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }, ...(intercept ? [{ urlPattern: '*dsh-clearview/client.js*', requestStage: 'Response' }] : [])] });
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: base });
-  if (!await until("!!document.querySelector('[data-composer-seat]')", 30000)) { report.uncovered.push({ kind: 'host-startup', reason: 'Host did not finish loading with writes blocked' }); throw new Error('DSH did not finish loading safely'); }
+  if (!await until("!!document.querySelector('[data-composer-seat], [data-row-key^=\"workspace:\"]')", 30000)) { report.uncovered.push({ kind: 'host-startup', reason: 'Host did not finish loading with writes blocked' }); throw new Error('DSH did not finish loading safely'); }
   if (!await evaluate('globalThis.__clearviewClipboardStub?.ready === true')) throw new Error('Browser-local clipboard stub unavailable');
 
   // Selectors of the 0.2.x layout that must not exist any more (counted only to assert 0).
@@ -268,7 +268,7 @@ try {
     deltaProbe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none';
     deltaProbe.style.setProperty('font-size', 'calc(100px + var(--dsh-content-font-delta, 0px))', 'important');
     root.appendChild(deltaProbe);
-    let delta, hostBodySize, primaryColor, secondaryColor;
+    let delta, hostBodySize, primaryColor, secondaryColor, processColor;
     try {
       delta = Number.parseFloat(cs(deltaProbe).fontSize) - 100;
       deltaProbe.style.setProperty('font-size', 'var(--dsh-content-font-size, calc(14px + var(--dsh-content-font-delta, 0px)))', 'important');
@@ -277,6 +277,8 @@ try {
       primaryColor = cs(deltaProbe).color;
       deltaProbe.style.color = 'var(--cc-text-300)';
       secondaryColor = cs(deltaProbe).color;
+      deltaProbe.style.color = 'var(--cv-process-text)';
+      processColor = cs(deltaProbe).color;
     }
     finally { deltaProbe.remove(); }
     let backdrop = root; while (backdrop && /^rgba\\(0, 0, 0, 0\\)$|^transparent$/.test(cs(backdrop).backgroundColor)) backdrop = backdrop.parentElement;
@@ -305,7 +307,7 @@ try {
           background: cs(button).backgroundColor, border: cs(button).borderTopWidth, minHeight: cs(button).minHeight,
         }));
         const bodyPrimary = !!prose && cs(prose).color === primaryColor;
-        const bodyDistinct = !!prose && !!label && primaryColor !== secondaryColor && cs(label).color === secondaryColor && cs(prose).color !== cs(label).color;
+        const bodyDistinct = !!prose && !!label && primaryColor !== processColor && cs(label).color === processColor && cs(prose).color !== cs(label).color;
         const groupsClear = groupAffordance.length > 0 && groupAffordance.every(row => Number.parseFloat(row.border) === 0 && Number.parseFloat(row.minHeight) >= 32 && !row.hint && row.chevron && ['true', 'false'].includes(row.expanded));
         const thoughtButtons = all('[data-reader-reasoning] > [data-reader-line] > button');
         const rowStyle = button => {
@@ -439,6 +441,21 @@ try {
     await delay(800);
     if (!item.readerMounted) { report.uncovered.push({ kind: 'reader-mount', title, reason: 'Reader did not mount under the read-only guard' }); continue; }
     item.initial = await evaluate(collect);
+    await send('DOM.enable');
+    await send('CSS.enable');
+    const fontTarget = await evaluate(`(() => {
+      const root = document.querySelector('[data-dsh-clearview]');
+      const node = [...root.querySelectorAll('[data-reader-answer] p, [data-reader-flow] article[data-reader-key] p')].find(node => /[\\u4e00-\\u9fff]/.test(node.textContent) && getComputedStyle(node).fontFamily.includes('anthropic-sans'));
+      if (!node) return null;
+      node.setAttribute('data-reader-font-probe', '');
+      return { fontFamily: getComputedStyle(node).fontFamily, fontSize: getComputedStyle(node).fontSize, fontWeight: getComputedStyle(node).fontWeight };
+    })()`);
+    if (fontTarget) {
+      const { root } = await send('DOM.getDocument');
+      const { nodeId } = await send('DOM.querySelector', { nodeId: root.nodeId, selector: '[data-reader-font-probe]' });
+      item.platformFonts = { ...fontTarget, ...(await send('CSS.getPlatformFontsForNode', { nodeId })) };
+      await evaluate("document.querySelector('[data-reader-font-probe]')?.removeAttribute('data-reader-font-probe')");
+    }
     item.turnDefaults = await evaluate(`([...document.querySelectorAll('[data-dsh-clearview] section[data-reader-turn]')].map(${inspectTurn})).filter(turn => turn.processCount > 0)`);
     const hasTurnProbe = await evaluate(`(() => {
       const turn = [...document.querySelectorAll('[data-dsh-clearview] section[data-reader-turn][data-reader-turn-result="completed"]')]
@@ -545,7 +562,7 @@ try {
     await delay(800);
     // Hover look of the row kinds (hover only, no click).
     item.hover = {};
-    for (const [key, selector] of [['line', '[data-dsh-clearview] [data-reader-line] button'], ['toolLine', '[data-dsh-clearview] [data-reader-tool-call] [data-reader-line] button'], ['fileChanges', '[data-dsh-clearview] [data-reader-file-changes] > button']]) {
+    for (const [key, selector] of [['line', '[data-dsh-clearview] [data-reader-line] button'], ['toolLine', '[data-dsh-clearview] [data-reader-tool-call] [data-reader-line] button'], ['fileChanges', '[data-dsh-clearview] [data-reader-file-changes] [data-reader-file-review-toggle]']]) {
       await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
       await delay(200);
       if (!await hover(selector, 0.15)) { item.hover[key] = null; continue; }
@@ -747,10 +764,37 @@ try {
     })()`);
     await shot(`${name}-bottom-gap`);
     // Hover look of the collapsed file-changes header (hover only): background plus side bleed.
-    if (await hover('[data-dsh-clearview] [data-reader-file-changes] > button', 0.1)) {
-      item.changesHover = await evaluate("(() => { const node = document.querySelector('[data-dsh-clearview] [data-reader-file-changes] > button'); const style = getComputedStyle(node); const root = document.querySelector('[data-dsh-clearview]').getBoundingClientRect(); const box = node.getBoundingClientRect(); return { hovered: node.matches(':hover'), background: style.backgroundColor, boxShadow: style.boxShadow, left: Math.round(box.left), right: Math.round(box.right), rootRight: Math.round(root.right) }; })()");
+    if (await hover('[data-dsh-clearview] [data-reader-file-changes] [data-reader-file-review-toggle]', 0.1)) {
+      item.changesHover = await evaluate("(() => { const node = document.querySelector('[data-dsh-clearview] [data-reader-file-changes] [data-reader-file-review-toggle]'); const style = getComputedStyle(node); const root = document.querySelector('[data-dsh-clearview]').getBoundingClientRect(); const box = node.getBoundingClientRect(); return { hovered: node.matches(':hover'), background: style.backgroundColor, boxShadow: style.boxShadow, left: Math.round(box.left), right: Math.round(box.right), rootRight: Math.round(root.right) }; })()");
       await shot(`${name}-changes-hover`);
       await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+    }
+    if (await evaluate("!!document.querySelector('[data-reader-file-changes]')")) {
+      item.fileCard = await evaluate(`(async () => {
+        const card = document.querySelector('[data-reader-file-changes]');
+        const rows = () => card.querySelectorAll('[data-reader-changed-file]').length;
+        const buttons = () => [...card.querySelectorAll('button')];
+        const wait = () => new Promise(resolve => setTimeout(resolve, 350));
+        const initialRows = rows();
+        const more = buttons().find(node => /^再显示/.test(node.textContent));
+        more?.click(); await wait();
+        const expandedRows = rows();
+        buttons().find(node => node.textContent === '收起文件列表')?.click(); await wait();
+        const collapsedRows = rows();
+        const review = card.querySelector('[data-reader-file-review-toggle]');
+        review.click(); await wait();
+        const reviewOpen = card.dataset.open === 'true' && card.querySelector('[data-reader-file-review]').textContent.includes('本会话已加载');
+        const reviewHasContent = card.querySelector('[data-reader-file-review]').textContent.length > 60;
+        const overflow = card.scrollWidth > card.clientWidth + 1;
+        review.click(); await wait();
+        return { initialRows, expandedRows, collapsedRows, reviewOpen, reviewHasContent, overflow,
+          pass: initialRows <= 3 && (!more || expandedRows > initialRows) && collapsedRows === initialRows && reviewOpen && reviewHasContent && !overflow && card.dataset.open === 'false' };
+      })()`);
+      if (!item.fileCard.pass) throw Error('Session file card interaction failed');
+      const cardTheme = await evaluate("document.body.getAttribute('data-ds-dark-theme')");
+      await evaluate("document.body.setAttribute('data-ds-dark-theme', ''); document.querySelector('[data-reader-file-changes]').scrollIntoView({block:'center'})");
+      await delay(300); await shot(`${name}-file-card-dark`);
+      await evaluate(`(() => { const saved = ${JSON.stringify(cardTheme)}; if (saved === null) document.body.removeAttribute('data-ds-dark-theme'); else document.body.setAttribute('data-ds-dark-theme', saved); })()`);
     }
     // Footer actions on the last closed turn. Fork is only checked for being
     // available: clicking it would create a session.

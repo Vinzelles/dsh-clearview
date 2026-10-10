@@ -145,14 +145,16 @@ test('no stylesheet under src/client widens its box with a negative horizontal m
   assert.deepEqual(offenders, []);
 });
 
-test('process and file-change disclosures keep hover feedback inside the shared hit area', () => {
-  for (const file of ['Line', 'FileChanges']) {
+test('process rows keep their compact hit area and file cards use their own bounded surface', () => {
+  for (const file of ['Line']) {
     const css = sheet(file);
     assert.match(css, /background: var\(--cv-row-hover/);
     assert.match(css, /min-height: var\(--cv-row-height/);
     assert.match(css, /padding: 5px 8px/);
   }
   assert.doesNotMatch(sheet('Line'), /box-shadow:\s*6px/);
+  assert.match(sheet('FileChanges'), /border: 1px solid var\(--cv-detail-border\)/);
+  assert.match(sheet('FileChanges'), /\.fileRow[^}]*min-width: 0/);
 });
 
 test('a settled-open collapse body does not clip; it clips only while closed or animating', async () => {

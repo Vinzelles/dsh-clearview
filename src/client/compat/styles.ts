@@ -16,7 +16,7 @@
 export const COMPAT_CSS = `/* ==== reader-scroll-anchor.css ==== */
 /* 对话滚动容器交给原生 scroll anchoring 负责脱离底部后的位置保持；
  * 插件不再叠加手动锚点补偿，避免滚动历史时被二次锚定拽跳。 */
-[data-conversation-scroll] {
+[data-conversation-scroll]:has([data-dsh-clearview]) {
   overflow-anchor: auto;
 }
 
