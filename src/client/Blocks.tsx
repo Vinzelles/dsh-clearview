@@ -134,7 +134,9 @@ function fallback(block: AssistantBlock, streaming: boolean, source: ReaderBlock
 export const Blocks = memo(function Blocks({ blocks, streaming = false, source = 'assistant', holdFormatting = false, startedAt, interrupted, liveText, revealKey, renderSlotChain, loadImage, fileMentions }: BlockRenderProps & TextPresentation & {
   blocks: readonly AssistantBlock[]; streaming?: boolean; source?: ReaderBlockOwner['source']; holdFormatting?: boolean; fileMentions?: MarkdownFileMentions;
 }) {
-  return <div className={css.blocks} data-streaming={streaming || undefined}>
+  // Generic data-streaming is owned by host reveal engines (CSS Highlight ranges).
+  // Reader text has its own reveal clock; never opt into a second fading layer.
+  return <div className={css.blocks} data-reader-streaming={streaming || undefined}>
     {blocks.map((block, index) => <BlockBoundary key={blockKey(block, index)}>
       <Fragment>{renderSlotChain('dsh-clearview.block', { block, streaming, source }, { fallback: fallback(block, streaming, source, loadImage, holdFormatting, { startedAt, interrupted, liveText, revealKey: revealKey === undefined ? undefined : `${revealKey}:${index}` }, fileMentions) })}</Fragment>
     </BlockBoundary>)}

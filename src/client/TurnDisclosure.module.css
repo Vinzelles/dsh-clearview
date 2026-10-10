@@ -1,5 +1,5 @@
-.row { display: flex; align-items: center; gap: 8px; box-sizing: border-box; width: 100%; min-height: 40px; margin: 6px 0; padding: 8px 12px; border: 1px solid var(--cv-detail-border); border-radius: var(--cv-detail-radius); corner-shape: round; background: var(--cv-surface); color: var(--cc-text-300); font: inherit; font-size: var(--cc-size-small); line-height: 20px; text-align: left; cursor: pointer; transition: background-color var(--cv-fast) var(--cv-ease), border-color var(--cv-fast) var(--cv-ease); }
-.row:hover { background: var(--cv-row-hover); border-color: var(--cc-border-strong); }
+.row { display: flex; align-items: center; gap: 8px; box-sizing: border-box; width: 100%; min-height: 40px; margin: 6px 0; padding: 8px; border: 0; border-bottom: 1px solid var(--cv-detail-border); border-radius: 0; background: transparent; color: var(--cc-text-300); font: inherit; font-size: var(--cc-size-small); line-height: 20px; text-align: left; cursor: pointer; transition: background-color var(--cv-fast) var(--cv-ease), border-color var(--cv-fast) var(--cv-ease); }
+.row:hover { border-bottom-color: var(--cc-border-strong); }
 .chevron { flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform var(--cv-size) var(--cv-ease); }
 .chevron[data-open=true] { transform: rotate(90deg); }
 .dot { width: 6px; height: 6px; flex: none; border-radius: 50%; corner-shape: round; background: var(--cc-success); }

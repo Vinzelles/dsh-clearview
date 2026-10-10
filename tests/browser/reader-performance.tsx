@@ -226,6 +226,36 @@ async function focusedLifecycles(chat: any, sess: any, prefs: any, props: any) {
         check(burstPort?.textContent === burstText, 'rapid reasoning lost source text');
         check(!!burstPort && Math.abs(burstPort.scrollHeight - burstPort.clientHeight - burstPort.scrollTop) <= 2, 'rapid reasoning did not finish following the tail');
         evidence.rapidReasoning = { sampledWords, animatedWords, minimumOpacity, futureStarts, fullText: burstPort?.textContent === burstText };
+        // Reproduce a companion reveal engine painting ranges through the generic host marker.
+        // Element opacity alone cannot detect CSS Highlight text-alpha overrides.
+        const paintNode = burstPort?.querySelector<HTMLElement>('[data-reader-text] > div');
+        const paintRealm = globalThis as any;
+        const registry = paintRealm.CSS?.highlights;
+        check(!!paintNode && !!registry && !!paintRealm.Highlight, 'highlight paint probe unavailable');
+        if (paintNode && registry && paintRealm.Highlight) {
+            const name = 'clearview-readability-regression';
+            const sheet = document.createElement('style');
+            sheet.textContent = `[data-streaming] ::highlight(${name}) { color: rgb(1 2 3 / .2); }`;
+            const control = document.createElement('div'); control.dataset.streaming = 'true';
+            const span = document.createElement('span'); span.textContent = 'control'; control.append(span);
+            const range = document.createRange(); range.selectNodeContents(paintNode);
+            const controlRange = document.createRange(); controlRange.selectNodeContents(span);
+            try {
+                document.head.append(sheet); document.body.append(control);
+                registry.set(name, new paintRealm.Highlight(range, controlRange));
+                await wait(50);
+                const normal = getComputedStyle(paintNode).color;
+                const painted = getComputedStyle(paintNode, `::highlight(${name})`).color;
+                const controlPaint = getComputedStyle(span, `::highlight(${name})`).color;
+                evidence.highlightIsolation = { normal, painted, controlPaint,
+                    readerOwnsMarker: !!scope().querySelector('[data-reader-streaming="true"]'),
+                    hostMarkerCount: scope().querySelectorAll('[data-streaming]').length };
+                check(controlPaint === 'rgba(1, 2, 3, 0.2)', 'highlight regression did not activate its control');
+                check(painted === normal && evidence.highlightIsolation.hostMarkerCount === 0 && evidence.highlightIsolation.readerOwnsMarker,
+                    'host highlight dimmed reader text despite normal element opacity');
+            } finally { registry.delete(name); sheet.remove(); control.remove(); }
+        }
+
         // Exercise the real TurnSection seat, not a standalone scrolling div.
         // Wheel reading owns neither focus nor selection and used to disappear at tool arrival.
         evidence.reasoningFollow = [];

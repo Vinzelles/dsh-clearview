@@ -20,7 +20,7 @@ The reader root is transparent. Prose uses the host `--dsh-content-font-size` (f
 
 ## Transcript entries and grouping
 
-Thoughts, operation summaries, tools and records share one Line style: 32px minimum height, 5px/8px padding, 13px plus host delta, upright sans, weight 400, fixed icon/chevron slots and no resting border or fill. Hover, focus and open states share subtle surfaces. Disclosures use the shared chevron without trailing action text; accessible expanded state remains exposed, and long summaries wrap. Expanded details share an inset, rail, 10px radius, border and surface. Prose uses primary color, host body size and paragraph spacing; thoughts never share an operation row. The completed-turn summary remains a distinct, visible folding control.
+Thoughts, operation summaries, tools and records share one Line style: 32px minimum height, 5px/8px padding, 13px plus host delta, upright sans, weight 400, fixed icon/chevron slots and no resting border or fill. Hover, focus and open states share subtle surfaces. Disclosures use the shared chevron without trailing action text; accessible expanded state remains exposed, and long summaries wrap. Expanded details share an inset, rail, 10px radius, border and surface. Prose uses primary color, host body size and paragraph spacing; thoughts never share an operation row. The completed-turn summary remains a distinct, visible folding control with a bottom border only, transparent background and no corner radius.
 
 A turn is one column without an outer container or an "earlier steps" row. Completed turns have the summary described above. Narration and the final answer share one upright sans `.prose` style. Entries:
 
@@ -104,3 +104,7 @@ Process labels and targets use `--cv-process-text` (#73736f light / #999990 dark
 The session file summary is a bordered local card with a file icon, title and optional counts. Show three paths initially, then an explicit remaining-file control. The review action reveals captured tool edit fragments, in operation order. Counts sum replaced/inserted fragment line ranges after common prefix/suffix removal; they are not a minimal line diff or working-tree net total. Missing diffs stay unknown. No rollback action is exposed without a supported session-wide transaction. Counts are memoized while toggling the card.
 
 The reader's overflow-anchor compatibility rule only matches a conversation scroller containing its mounted root. Native composer visibility and hidden-until-found behaviour belong to companion plugins; do not mask their errors with reader-owned force-display rules. See the native compatibility diagnostic for the isolated fixes and deployment boundary.
+
+## Streaming marker ownership
+
+Blocks publish `data-reader-streaming`, never the host's generic `data-streaming`. The companion dsh-claude-style reveal engine claims the generic marker and paints CSS Highlight ranges starting at20% alpha. Those paint overrides are invisible to an element-opacity check and can overlap the reader's own reveal clock. Keep the existing word-motion profiles and128px follow viewport; do not solve a marker collision by shortening or removing their effects. Browser regression includes a real Highlight range, a dimmed positive control, and an unaffected reader node.

@@ -381,18 +381,21 @@ try {
     const persistentContent = [...turn.querySelectorAll('[data-reader-user-bubble], [data-reader-command-input], [data-reader-notice], [data-reader-command-output]')];
     const expanded = button?.getAttribute('aria-expanded');
     const folded = expanded === 'false';
+    const summaryCss = button && getComputedStyle(button);
+    const summaryStyle = summaryCss && { borders: ['Top','Right','Bottom','Left'].map(side => summaryCss['border'+side+'Width']), background: summaryCss.backgroundColor, radius: summaryCss.borderTopLeftRadius };
+    const bottomLineOnly = !!summaryStyle && summaryStyle.borders.join(',') === '0px,0px,1px,0px' && summaryStyle.background === 'rgba(0, 0, 0, 0)' && summaryStyle.radius === '0px';
     const hint = folded ? '展开过程' : '收起过程';
     const label = button?.textContent ?? '';
     const accessibleLabel = button?.getAttribute('aria-label') ?? '';
     const controls = !!button && !!flow?.id && button.getAttribute('aria-controls') === flow.id && document.getElementById(flow.id) === flow;
     return {
-      result: turn.getAttribute('data-reader-turn-result'), expanded, controls, label,
+      result: turn.getAttribute('data-reader-turn-result'), expanded, controls, label, summaryStyle, bottomLineOnly,
       processCount: process.length, answerCount: answers.length,
       processState: process.length > 0 && process.every(node => node.getAttribute('data-folded') === String(folded) && visible(node) === !folded),
       retainedVisible: retained.every(node => node.getAttribute('data-folded') === 'false' && visible(node)),
       persistentVisible: persistentContent.every(visible),
       answersVisible: answers.length > 0 && answers.every(visible),
-      pass: controls && ['true', 'false'].includes(expanded) && accessibleLabel.includes(hint) && !/展开过程|收起过程/.test(label)
+      pass: bottomLineOnly && controls && ['true', 'false'].includes(expanded) && accessibleLabel.includes(hint) && !/展开过程|收起过程/.test(label)
         && entries.every(node => ['true', 'false'].includes(node.getAttribute('data-reader-process-entry')))
         && process.length > 0 && process.every(node => node.getAttribute('data-folded') === String(folded) && visible(node) === !folded)
         && retained.every(node => node.getAttribute('data-folded') === 'false' && visible(node)) && answers.every(visible) && persistentContent.every(visible),
@@ -777,6 +780,7 @@ try {
         const wait = () => new Promise(resolve => setTimeout(resolve, 350));
         const initialRows = rows();
         const more = buttons().find(node => /^再显示/.test(node.textContent));
+        const morePadding = more ? [getComputedStyle(more).paddingLeft, getComputedStyle(more).paddingRight] : null;
         more?.click(); await wait();
         const expandedRows = rows();
         buttons().find(node => node.textContent === '收起文件列表')?.click(); await wait();
@@ -787,8 +791,8 @@ try {
         const reviewHasContent = card.querySelector('[data-reader-file-review]').textContent.length > 60;
         const overflow = card.scrollWidth > card.clientWidth + 1;
         review.click(); await wait();
-        return { initialRows, expandedRows, collapsedRows, reviewOpen, reviewHasContent, overflow,
-          pass: initialRows <= 3 && (!more || expandedRows > initialRows) && collapsedRows === initialRows && reviewOpen && reviewHasContent && !overflow && card.dataset.open === 'false' };
+        return { initialRows, expandedRows, collapsedRows, reviewOpen, reviewHasContent, overflow, morePadding,
+          pass: initialRows <= 3 && (!morePadding || morePadding.every(value => parseFloat(value) >= 8)) && (!more || expandedRows > initialRows) && collapsedRows === initialRows && reviewOpen && reviewHasContent && !overflow && card.dataset.open === 'false' };
       })()`);
       if (!item.fileCard.pass) throw Error('Session file card interaction failed');
       const cardTheme = await evaluate("document.body.getAttribute('data-ds-dark-theme')");
