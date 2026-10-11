@@ -6,6 +6,10 @@ Present a modern, coherent transcript in which narration, grouped operations, th
 
 ## Content fidelity
 
+The `ask_user_question` receipt is a historical reading component, not an answer form. It pairs each input question with output `answers` by exact question ID, preserves selected labels and custom text, and uses primary text color for the user's decision. It stays outside operation groups and remains visible when the whole process folds. Context/options and the original tool input/result are separate local disclosures; inspection retains the actual call ID. Empty answers, missing IDs, invalid payloads and unsuccessful calls must not be presented as an inferred decision.
+
+The receipt uses a compact header with its status and history/inspection links, without a separate footer. Question headers appear inline, selected answers wrap side by side, and custom text follows without an extra heading row. Context/options live inside the original-record disclosure. Keep the host body size and complete text; density comes from spacing and auxiliary chrome, not smaller type or truncation.
+
 - Preserve literal reasoning text, whitespace, source order and block identity.
 - Do not infer reasoning from wording, parse private provider logs, rewrite prompts or alter model settings.
 - Preserve native context sources, tool types, summaries, filenames, details and results.
@@ -94,6 +98,12 @@ The browser performance fixture runs against an explicitly selected host with a 
 Compare text commits and visible scroll progress as well as rAF intervals. Include the final frame after a sample window so a trailing long task is not censored. Profile the native desktop separately before claiming the desktop's frame-rate issue is resolved.
 
 ## Verification
+
+### 0.3.6 reading interactions
+
+The status and statistics in a turn summary share one font size and line height, including narrow layouts. The user-message anchor wraps the visual bubble and a separate message action row. Keep the copy action after the visual bubble so the rewind plugin cannot choose the full-text icon as its portal target. Full-text disclosure uses an accessible icon inside the bubble without adding a line of its own.
+
+Streaming and settled thinking share one transcript seat and viewport. A thought displayed live stays open for 2400ms after completion, then uses the existing 260ms size/opacity fold. Hover, focus, manual scrolling and selection pause that timer. Explicit closing remains available; manual reopening stays open. Reduced motion preserves the reading delay and skips the fold animation. Historical mounts remain collapsed; completed-turn folding waits for the thought exit to finish.
 
 Use unit coverage for projection, lifecycle, source-ordered streaming, graphemes, Markdown and two-line stepping. Verify live Host manifest, served bundle, native process details, literal reasoning, motion, group fold and reopen, narrow layouts and reduced motion separately. Keep private session evidence outside this repository.
 

@@ -597,8 +597,9 @@ try {
       const surface = bubble.closest('[data-reader-user-surface]');
       const button = surface?.querySelector('[data-reader-bubble-toggle]');
       if (!button) return { clamped: true, button: false };
-      const snap = () => { const box = surface.getBoundingClientRect(), control = button.getBoundingClientRect(); return { text: button.textContent.trim(), clamped: bubble.getAttribute('data-clamped'), height: Math.round(box.height * 10) / 10,
+      const snap = () => { const box = surface.getBoundingClientRect(), control = button.getBoundingClientRect(), text = bubble.querySelector('[data-reader-user-text]'); return { label: button.getAttribute('aria-label'), iconOnly: !!button.querySelector('svg') && !button.textContent.trim(), controls: button.getAttribute('aria-controls') === text.id, clamped: bubble.getAttribute('data-clamped'), height: Math.round(box.height * 10) / 10,
         inside: control.left >= box.left && control.right <= box.right && control.bottom <= box.bottom,
+        inline: control.top < text.getBoundingClientRect().bottom,
         mask: getComputedStyle(bubble.querySelector('[data-open]')).maskImage,
         background: getComputedStyle(surface).backgroundColor, border: getComputedStyle(surface).borderTopWidth }; };
       const before = snap();
@@ -606,15 +607,20 @@ try {
       const opened = snap();
       button.click(); await new Promise(done => setTimeout(done, 400));
       const after = snap();
-      if (![before, opened, after].every(state => state.inside && parseFloat(state.border) >= 1) || before.mask === 'none' || opened.mask !== 'none' || after.mask === 'none') throw Error('User bubble containment or clamp indicator failed');
-      const copy = bubble.querySelector('[data-dshcp-rewind-root] button[aria-label="复制"]');
+      if (![before, opened, after].every(state => state.inside && state.inline && state.iconOnly && state.controls && parseFloat(state.border) >= 1) || before.mask === 'none' || opened.mask !== 'none' || after.mask === 'none') throw Error('User bubble containment or clamp indicator failed: ' + JSON.stringify({ before, opened, after }));
+      const seat = bubble.closest('[data-reader-anchor]');
+      const copy = seat?.querySelector('[data-dshcp-rewind-root] button[aria-label="复制"]');
       if (!copy) throw Error('User copy control missing');
+      const actionButtons = [...seat.querySelectorAll('[data-dshcp-rewind-root] button')];
+      const box = bubble.getBoundingClientRect();
+      const actionsOutside = actionButtons.length >= 2 && actionButtons.every(control => { const r = control.getBoundingClientRect(); return r.top >= box.bottom && r.left >= box.left - 1 && r.right <= box.right + 1; });
+      if (!actionsOutside) throw Error('User message actions must sit below the bubble');
       const expectedText = (bubble.querySelector(':scope > p')?.textContent ?? '') + bubble.querySelector('[data-open]').textContent;
       globalThis.__clearviewClipboardStub.lastText = null;
       copy.click(); await new Promise(done => setTimeout(done, 100));
       const copyClean = globalThis.__clearviewClipboardStub.lastText === expectedText;
       if (!copyClean) throw Error('User copy mismatch: ' + JSON.stringify({ actualLength: globalThis.__clearviewClipboardStub.lastText?.length, expectedLength: expectedText.length, writes: globalThis.__clearviewClipboardStub.writes.slice(-2), controlCaption: globalThis.__clearviewClipboardStub.lastText?.endsWith(button.textContent) }));
-      return { clamped: true, button: true, before, opened, after, copyClean };
+      return { clamped: true, button: true, before, opened, after, copyClean, actionsOutside };
     })()`);
     guardCreates();
     // 阅读 → 对话 → 阅读 round trips (tab switches only): the reader remounts and restores its position;
@@ -859,7 +865,7 @@ try {
       groupToggle: covered('groupToggle', toggle ? toggle.before.expanded !== toggle.during.expanded && toggle.before.expanded === toggle.after.expanded && [toggle.before, toggle.during, toggle.after].every(state => ['true', 'false'].includes(state.expanded) && state.expanded === state.dataExpanded && state.memberVisible === (state.expanded === 'true')) : null),
       groupOpened: covered('groupOpened', item.groupOpened ? item.groupAfter === 'true' : null),
       toolDetails: covered('toolDetails', item.toolOpened ? item.toolDetails === true : null),
-      bubbleToggle: covered('bubbleToggle', bubble ? bubble.button === true && bubble.before?.clamped === 'true' && bubble.opened?.clamped === 'false' && bubble.after?.clamped === 'true' && bubble.opened.height > bubble.before.height + 1 && Math.abs(bubble.after.height - bubble.before.height) <= 1 && bubble.before.text === '展开全文' && bubble.opened.text === '收起' && bubble.after.text === '展开全文' : null),
+      bubbleToggle: covered('bubbleToggle', bubble ? bubble.button === true && bubble.before?.clamped === 'true' && bubble.opened?.clamped === 'false' && bubble.after?.clamped === 'true' && bubble.opened.height > bubble.before.height + 1 && Math.abs(bubble.after.height - bubble.before.height) <= 1 && bubble.before.label === '展开全文' && bubble.opened.label === '收起全文' && bubble.after.label === '展开全文' && bubble.actionsOutside && bubble.copyClean : null),
       roundTrips: item.roundTrips.length === 2 && item.roundTrips.every(trip => trip.chatClicked && trip.chatSelected === '对话' && !trip.readerWhileOnChat && trip.readerClicked && trip.readerSelected === '阅读' && trip.readerBack && trip.readerVersion === expectedVersion),
       copy: covered('copy', item.copyReceipt ? item.copyReceipt.isolated && item.copyReceipt.receipt.includes('已复制') && item.copyReceipt.writes.length > 0 : null),
       themeBackground: [item.measured, item.narrow, item.narrowBottom].every(state => state?.rootBackground === 'rgba(0, 0, 0, 0)')

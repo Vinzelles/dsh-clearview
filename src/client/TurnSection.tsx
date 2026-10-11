@@ -3,7 +3,6 @@ import type { MouseEvent, ReactNode } from 'react';
 import type { AssistantChatData } from '@deepseek-ai/dsh-client-ui-chat/client';
 import { BlockBoundary, Blocks } from './Blocks.js';
 import { useChatSelector, usePendingSelector } from './compat/session-snapshot.js';
-import { LiveThought } from './LiveThought.js';
 import type { MarkdownFileMentions } from './markdown/render.js';
 import { SystemPromptRow } from './native/SystemPromptRow.js';
 import { nodeText } from './node-payloads.js';
@@ -47,8 +46,15 @@ function useSegment(useSession: ReaderProps['useSession'], nodeKey: string, star
 /** The answer zone and the panel's narration show the same body segment under one reveal identity. */
 const revealKeyOf = (nodeKey: string, start: number) => `${nodeKey}:${start}`;
 
-const ThoughtSegment = memo(function ThoughtSegment({ useSession, nodeKey, start, pinned, onRead, followStep, ...render }: SegmentProps & { onRead: () => void; followStep: number | null }) {
+const ThoughtSegment = memo(function ThoughtSegment({ useSession, nodeKey, start, pinned, onRead, followStep, active = false, retain = false, held = false, liveStatus, onReleased, onManualReadChange, onFocusChange, onHoverChange, ...render }: SegmentProps & {
+  onRead: () => void; followStep: number | null; active?: boolean; retain?: boolean; held?: boolean; liveStatus?: ReactNode;
+  onReleased?: (key: string) => void; onManualReadChange?: (key: string, reading: boolean) => void;
+  onFocusChange?: (key: string, focused: boolean) => void; onHoverChange?: (key: string, hovered: boolean) => void;
+}) {
   const { motion } = useReaderActions();
+  const thoughtKey = `${nodeKey}:${start}`;
+  const released = useCallback(() => onReleased?.(thoughtKey), [onReleased, thoughtKey]);
+  const manualRead = useCallback((reading: boolean) => onManualReadChange?.(thoughtKey, reading), [onManualReadChange, thoughtKey]);
   const { data, part } = useSegment(useSession, nodeKey, start);
   const durationMs = useMemo(() => {
     const timing = data?.finalNode?.timing;
@@ -57,19 +63,16 @@ const ThoughtSegment = memo(function ThoughtSegment({ useSession, nodeKey, start
     return end == null ? null : Math.max(0, end - timing.stepStartTime);
   }, [data]);
   if (!data || !part) return null;
-  return <ThoughtRow durationMs={durationMs} motion={motion} onRead={onRead} follow={data.step === followStep && !pinned}>
-    <Blocks {...render} blocks={part.blocks} holdFormatting={pinned} startedAt={data.time} interrupted={data.status === 'interrupted'} liveText />
-  </ThoughtRow>;
-});
-
-const LiveSegment = memo(function LiveSegment({ useSession, nodeKey, start, pinned, follow, onManualReadChange, ...render }: SegmentProps & { follow: boolean; onManualReadChange: (key: string, reading: boolean) => void }) {
-  const { motion } = useReaderActions();
-  const manualRead = useCallback((reading: boolean) => onManualReadChange(`${nodeKey}:${start}`, reading), [nodeKey, start, onManualReadChange]);
-  const { data, part } = useSegment(useSession, nodeKey, start);
-  if (!data || !part) return null;
-  return <LiveThought follow={follow} motion={motion} onManualReadChange={manualRead}>
-    <Blocks {...render} blocks={part.blocks} streaming={data.status === 'running' && data.blocks.at(-1)?.kind === 'reasoning'} holdFormatting={pinned} startedAt={data.time} liveText />
-  </LiveThought>;
+  const seat = active || held || retain;
+  return <div data-reader-live-seat={seat || undefined} data-reader-key={thoughtKey}
+    onFocusCapture={seat ? () => onFocusChange?.(thoughtKey, true) : undefined}
+    onBlurCapture={seat ? event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onFocusChange?.(thoughtKey, false); } : undefined}
+    onMouseEnter={seat ? () => onHoverChange?.(thoughtKey, true) : undefined} onMouseLeave={() => onHoverChange?.(thoughtKey, false)}>
+    <ThoughtRow durationMs={durationMs} motion={motion} onRead={onRead} follow={data.step === followStep && !pinned}
+      active={active} retain={retain} held={held} liveStatus={liveStatus} onReleased={released} onManualReadChange={manualRead}>
+      <Blocks {...render} blocks={part.blocks} streaming={active && data.status === 'running' && data.blocks.at(-1)?.kind === 'reasoning'} holdFormatting={pinned} startedAt={data.time} interrupted={data.status === 'interrupted'} liveText />
+    </ThoughtRow>
+  </div>;
 });
 
 const BodySegment = memo(function BodySegment({ useSession, nodeKey, start, pinned, answer = false, fileMentions, ...render }: SegmentProps & { answer?: boolean; fileMentions?: MarkdownFileMentions }) {
@@ -148,7 +151,10 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
   const entries = useMemo(() => buildTranscript(layout.transcript, get, closed), [layout.transcript, get, closed]);
   const liveKey = useMemo(() => liveThoughtKey(entries, get, open), [entries, get, open]);
   const live = liveKey ? entries.at(-1) as Extract<TranscriptEntry, { kind: 'thought' }> : null;
+  const [recentLive, setRecentLive] = useState<{ key: string | null; held: ReadonlySet<string> }>(() => ({ key: liveKey, held: new Set(liveKey ? [liveKey] : []) }));
+  if (recentLive.key !== liveKey) setRecentLive(previous => ({ key: liveKey, held: liveKey ? new Set([...previous.held, liveKey]) : previous.held }));
   const [focusedLive, setFocusedLive] = useState<string | null>(null);
+  const [hoveredLive, setHoveredLive] = useState<string | null>(null);
   const [manualLive, setManualLive] = useState<ReadonlySet<string>>(() => new Set());
   const manualRead = useCallback((key: string, reading: boolean) => {
     // The exit button itself receives focus before click. Removing it need not emit blur.
@@ -160,11 +166,22 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
       return next;
     });
   }, []);
+  const focusRead = useCallback((key: string, focused: boolean) => setFocusedLive(previous => focused ? key : previous === key ? null : previous), []);
+  const hoverRead = useCallback((key: string, hovered: boolean) => setHoveredLive(previous => hovered ? key : previous === key ? null : previous), []);
+  const releaseRead = useCallback((key: string) => {
+    setRecentLive(previous => {
+      if (!previous.held.has(key)) return previous;
+      const held = new Set(previous.held); held.delete(key);
+      return { ...previous, held };
+    });
+    manualRead(key, false);
+    setHoveredLive(previous => previous === key ? null : previous);
+  }, [manualRead]);
   const selectedLive = entries.filter((entry): entry is Extract<TranscriptEntry, { kind: 'thought' }> => entry.kind === 'thought' && pinnedKeys.includes(entry.key));
   const flowPinned = pinnedKeys.includes(group.key) || selectedLive.length > 0;
   // Keep the selected/focused thought's existing DOM until reading ends, even when a new step starts.
   const liveSeats = entries.filter((entry): entry is Extract<TranscriptEntry, { kind: 'thought' }> => entry.kind === 'thought'
-    && (entry.key === liveKey || entry.key === focusedLive || manualLive.has(entry.key) || pinnedKeys.includes(entry.key)));
+    && (entry.key === liveKey || recentLive.held.has(entry.key) || entry.key === focusedLive || entry.key === hoveredLive || manualLive.has(entry.key) || pinnedKeys.includes(entry.key)));
   const processId = useId();
   const choiceKey = `process:${props.sessionId}:${group.key}`;
   const processChoice = props.useStore(state => state.expanded[choiceKey]);
@@ -220,6 +237,12 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
         {entry.calls.map(call => <Fragment key={call.key}>{renderItem(call)}</Fragment>)}
       </PlanCard>{entry.calls.map(call => <Fragment key={call.key}>{renderMedia(call)}</Fragment>)}</BlockBoundary>;
       case 'input': return <div key={entry.key} className={css.input}>{renderItem(entry.item)}</div>;
+      case 'thought': return <BlockBoundary><ThoughtSegment {...shared} useSession={props.useSession} nodeKey={entry.item.nodeKey} start={entry.item.start}
+        pinned={flowPinned} onRead={noop} followStep={open ? boundary.latestStep : null} active={entry.key === liveKey} held={recentLive.held.has(entry.key)}
+        retain={entry.key === focusedLive || entry.key === hoveredLive || manualLive.has(entry.key) || pinnedKeys.includes(entry.key)}
+        onReleased={releaseRead} onManualReadChange={manualRead} onFocusChange={focusRead} onHoverChange={hoverRead}
+        liveStatus={entry.key === liveKey ? <StatusLine phase={status === 'waiting' ? 'waiting' : 'running'} label={status === 'waiting' ? '等待你的操作' : runningLabel(turn, group.keys, get)}
+          elapsed={elapsedLabel(turn, now, status)} thinking={thinking} motion={motion} /> : undefined} /></BlockBoundary>;
       case 'item': {
         if (entry.facts) {
           const key = `group:${entry.key}`;
@@ -251,7 +274,7 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
       onFocusCapture={event => setProcessFocused(!!(event.target as Element).closest('[data-reader-process-entry="true"]'))}
       onBlurCapture={event => setProcessFocused(event.relatedTarget instanceof Element && event.currentTarget.contains(event.relatedTarget)
         && !!event.relatedTarget.closest('[data-reader-process-entry="true"]'))}>
-      {entries.filter(entry => !liveSeats.some(seat => seat.key === entry.key)).map(entry => {
+      {entries.map(entry => {
         const process = isProcessEntry(entry);
         const folded = process && !processOpen;
         return <div key={transcriptSeatKey(entry)} className={css.entry} data-reader-process-entry={process} data-reader-process-key={process ? group.key : undefined}
@@ -260,12 +283,8 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
         </div>;
       })}
     </div>}
-    {open && <StatusLine phase={status === 'waiting' ? 'waiting' : 'running'} label={status === 'waiting' ? '等待你的操作' : runningLabel(turn, group.keys, get)}
+    {open && !liveKey && <StatusLine phase={status === 'waiting' ? 'waiting' : 'running'} label={status === 'waiting' ? '等待你的操作' : runningLabel(turn, group.keys, get)}
       elapsed={elapsedLabel(turn, now, status)} thinking={thinking} motion={motion} />}
-    {liveSeats.map(seat => <div key={seat.key} data-reader-live-seat data-reader-key={seat.key} data-reader-process-key={group.key}
-      onFocusCapture={() => setFocusedLive(seat.key)} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusedLive(null); }}>
-      <BlockBoundary><LiveSegment {...shared} useSession={props.useSession} nodeKey={seat.item.nodeKey} start={seat.item.start} pinned={flowPinned} follow={seat.key === liveKey && boundary.latestStep === liveData?.step} onManualReadChange={manualRead} /></BlockBoundary>
-    </div>)}
     {stopped && <StatusLine phase={status === 'interrupted' ? 'interrupted' : 'error'} label={terminal ?? statusLabel(status, boundary.reason, '')} elapsed={elapsedLabel(turn, now, status)} thinking={null} motion={motion} />}
     {closed && <BlockBoundary><TurnFooter turn={turn} answerText={answerText} /></BlockBoundary>}
     {flowTail}

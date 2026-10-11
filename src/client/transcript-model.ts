@@ -29,7 +29,7 @@ export type TranscriptEntry =
   | { kind: 'item'; key: string; item: PanelItem; facts?: GroupFacts }
   | { kind: 'group'; key: string; items: PanelItem[]; facts: GroupFacts };
 
-const STANDALONE_TOOLS = new Set(['todo_write', 'dispatch']);
+const STANDALONE_TOOLS = new Set(['todo_write', 'dispatch', 'ask_user_question']);
 const STATUSES = new Set(['pending', 'in_progress', 'completed']);
 const WORDS: Record<GroupKind, (count: number) => string> = {
   command: n => `运行了 ${n} 条命令`, read: n => `读取了 ${n} 个文件`, write: n => `写入了 ${n} 个文件`, edit: n => `编辑了 ${n} 个文件`,

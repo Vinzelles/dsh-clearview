@@ -81,9 +81,9 @@ export function InspectButton({ callId, inspectCall }: { callId: string; inspect
 }
 
 /** Ledger + result / input / raw tabs for one tool call, inside a recessed block. */
-export function ToolDetails({ entry, model, phase, ...render }: BlockRenderProps & { entry: ToolActivityEntry; model: Model; phase: ToolPhase }) {
+export function ToolDetails({ entry, model, phase, initialTab = 'result', ...render }: BlockRenderProps & { entry: ToolActivityEntry; model: Model; phase: ToolPhase; initialTab?: 'result' | 'input' | 'raw' }) {
   const { inspectCall } = useReaderActions();
-  const [tab, setTab] = useState<'result' | 'input' | 'raw'>('result');
+  const [tab, setTab] = useState<'result' | 'input' | 'raw'>(initialTab);
   const panel = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState(false);
   const detailId = useId();

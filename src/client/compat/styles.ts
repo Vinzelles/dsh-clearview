@@ -48,7 +48,8 @@ export const COMPAT_CSS = `/* ==== reader-scroll-anchor.css ==== */
 /* ==== rewind-reader-bridge.css ==== */
 /* rewind 兼容桥：座位内追加 [data-time-hover-root] > actions 行（复制按钮 +
  * rewind 撤回按钮 portal）。actions 行绝对定位 top:100% 移出气泡视觉框，座位
- * margin-bottom 预留空间；28px 圆形描边图标与原生 .action 一致。 */
+ * margin-bottom 预留空间；定位座位包含完整气泡，短消息的操作区也不进入气泡。
+ * 28px 圆形描边图标与原生 .action 一致。 */
 
 [data-dsh-clearview] div[data-dshcp-rewind-seat="1"] {
   position: relative;
@@ -68,7 +69,7 @@ export const COMPAT_CSS = `/* ==== reader-scroll-anchor.css ==== */
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 4px;
   height: 28px;
 }
 

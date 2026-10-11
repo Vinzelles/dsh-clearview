@@ -4,8 +4,7 @@
  * 问题：阅读视图接管会话流渲染后，用户消息座位（div[data-reader-anchor]
  * [data-reader-key]）缺少 dsh-rewind 客户端（RewindPortals）依赖的 DOM 契约：
  *   [data-chat-flow-kind="user|steering"][data-chat-anchor-key]  ← 座位
- *   [data-time-hover-root]                                       ← messageRoot
- *   messageRoot.lastElementChild = 含至少一个 <button> 的容器    ← actions
+ *   座位内独立的操作区包含复制按钮，供 RewindPortals 识别其容器。
  * 于是 collectTargets 永远返回空：撤回按钮不渲染；且原生复制按钮在阅读视图里
  * 本就不存在，用户消息 hover 时看不到任何按钮。
  *
@@ -13,8 +12,8 @@
  *   1. 监视阅读视图新出现的用户/steering 座位；
  *   2. 补上 data-chat-anchor-key / data-chat-flow-kind（key 取 data-reader-key；
  *      kind 由「补充消息」meta 行判定）；
- *   3. 座位内追加 [data-time-hover-root] > actions 行（含复制按钮）——既满足
- *      rewind 挂载条件，也恢复阅读视图缺失的复制按钮；
+ *   3. 在气泡后面追加 [data-time-hover-root] > actions 行（含复制按钮），
+ *      作为座位最后一个子元素，避免全文图标成为 rewind 的挂载目标；
  *   4. 座位 childList 变化触发 RewindPortals 自带观察者，把撤回按钮 portal 进
  *      actions 行；撤回后其隐藏逻辑同样作用于该座位。
  *
@@ -38,18 +37,19 @@ const COPY_SVG = [
   '</svg>',
 ].join('');
 
-/** kind：steering 座位有「补充消息」meta 段落（class 含 _meta），否则 user。 */
+/** 明确标记优先；同时兼容气泡内第一段是「补充消息」的旧座位。 */
 function kindOf(seat: HTMLElement): string {
-  const first = seat.firstElementChild;
-  if (first && first.tagName === 'P' && first.className && String(first.className).indexOf('meta') !== -1) return 'steering';
+  if (seat.dataset.readerInput === 'steering') return 'steering';
+  const body = seat.querySelector(':scope > [data-reader-user-bubble]') ?? seat;
+  const first = body.firstElementChild;
+  if (first?.tagName === 'P' && first.textContent === '补充消息' && String(first.className).includes('meta')) return 'steering';
   return 'user';
 }
 
-/** 纯文本：克隆座位并移除我们追加的 hover-root，取其文本。 */
+/** 纯文本：克隆座位，排除操作区与全文折叠控件。 */
 function seatText(seat: HTMLElement): string {
   const clone = seat.cloneNode(true) as HTMLElement;
-  const ours = clone.querySelector('[data-dshcp-rewind-root]');
-  if (ours) ours.remove();
+  clone.querySelectorAll('[data-dshcp-rewind-root], [data-reader-bubble-toggle]').forEach(node => node.remove());
   return clone.textContent || '';
 }
 

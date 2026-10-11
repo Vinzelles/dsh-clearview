@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { COMPAT_CSS } from '../src/client/compat/styles.ts';
 
 const CLIENT = new URL('../src/client/', import.meta.url);
-const REDESIGNED = ['Reader', 'Line', 'ToolRow', 'ToolDetails', 'ToolGroupRow', 'ThoughtRow', 'LiveThought', 'StatusLine', 'UserBubble', 'PlanCard', 'RecordRows', 'Notice', 'Opening', 'TurnSection', 'TurnFooter', 'JumpButton', 'FileChanges'];
+const REDESIGNED = ['Reader', 'Line', 'ToolRow', 'ToolDetails', 'ToolGroupRow', 'ThoughtRow', 'LiveThought', 'StatusLine', 'UserBubble', 'PlanCard', 'QuestionRecord', 'RecordRows', 'Notice', 'Opening', 'TurnSection', 'TurnFooter', 'JumpButton', 'FileChanges'];
 const sheet = (name: string) => readFileSync(new URL(`${name}.module.css`, CLIENT), 'utf8');
 
 test('redesigned surfaces use token radii and no in-flow backdrop blur', () => {

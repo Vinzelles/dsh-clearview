@@ -1,10 +1,17 @@
-.row { display: flex; flex-direction: column; align-items: stretch; box-sizing: border-box; max-width: 82%; min-width: 0; padding: 10px 16px; border: 1px solid var(--cc-border); border-radius: 12px; background: var(--cv-user-surface); color: var(--cc-text-100); font-family: var(--cc-font-ui); font-size: calc(15px + var(--dsh-content-font-delta, 0px)); line-height: 1.6; }
-.bubble { --cv-blocks-gap: 10px; min-width: 0; }
-.row[data-small="true"] { padding: 8px 14px; font-size: var(--cc-size-ui); }
+.row { display: flex; flex-direction: column; align-items: stretch; box-sizing: border-box; max-width: 82%; min-width: 0; color: var(--cc-text-100); font-family: var(--cc-font-ui); font-size: calc(15px + var(--dsh-content-font-delta, 0px)); line-height: 1.6; }
+.bubble { --cv-blocks-gap: 10px; position: relative; box-sizing: border-box; min-width: 0; padding: 10px 16px; border: 1px solid var(--cc-border); border-radius: 12px; corner-shape: round; background: var(--cv-user-surface); }
+.row[data-small="true"] { font-size: var(--cc-size-ui); }
+.bubble[data-small="true"] { padding: 8px 14px; }
 .meta { margin: 0 0 2px; color: var(--cc-text-500); font-size: var(--cc-size-small); }
 .text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; max-height: 6lh; overflow: hidden; overflow-wrap: anywhere; }
 .text[data-open="true"] { display: block; -webkit-line-clamp: unset; max-height: none; }
 .bubble[data-clamped="true"] .text { mask-image: linear-gradient(to bottom, #000 calc(100% - 1.2lh), transparent); }
-.more { display: block; margin: 8px 0 0 auto; padding: 4px 0; border: 0; background: none; color: var(--cc-text-300); font: inherit; font-size: var(--cc-size-small); cursor: pointer; }
-.more:hover { color: var(--cc-text-100); }
+.bubble[data-expandable="true"] .text { padding-inline-end: 28px; }
+.more { position: absolute; right: 10px; bottom: 10px; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin: 0; padding: 0; border: 0; border-radius: 6px; corner-shape: round; background: transparent; color: var(--cc-text-300); cursor: pointer; }
+.more:hover { background: var(--cv-row-hover); color: var(--cc-text-100); }
+.more:focus-visible { outline: 2px solid var(--cc-link); outline-offset: 2px; }
+.toggleIcon { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; transition: transform var(--cv-fast) var(--cv-ease); }
+.toggleIcon[data-open="true"] { transform: rotate(180deg); }
+[data-motion="off"] .toggleIcon { transition: none; }
+@media (prefers-reduced-motion: reduce) { .toggleIcon { transition: none; } }
 @container (max-width: 480px) { .row { max-width: 90%; } }

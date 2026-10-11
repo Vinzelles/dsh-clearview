@@ -1,6 +1,7 @@
 import type { TurnLocation } from '@deepseek-ai/dsh-client-ui-conversation/client';
 import type { PanelItem } from './process-steps.js';
 import type { TranscriptEntry } from './transcript-model.js';
+import { toolIdentity } from './tool-activity.js';
 
 /** Keep a singleton's seat when it grows into an operation group. */
 export function transcriptSeatKey(entry: TranscriptEntry): string {
@@ -12,6 +13,7 @@ export function isProcessEntry(entry: TranscriptEntry): boolean {
   if (entry.kind === 'input') return false;
   if (entry.kind === 'narration') return !entry.item.answer;
   if (entry.kind === 'item' && ['notice', 'output', 'media'].includes(entry.item.kind)) return false;
+  if (entry.kind === 'item' && entry.item.kind === 'tool' && toolIdentity(entry.item.entry).name === 'ask_user_question') return false;
   return true;
 }
 

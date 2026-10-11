@@ -158,7 +158,7 @@ test('a steering input admitted mid-turn keeps its rewind seat inside the flow',
   const steering = chatNode('steering', { content: [{ type: 'text', text: '换个思路' }] }, turn, 2);
   const second = assistantNode(turn, 2, [reasoning('好的，换思路')], 'running');
   const html = renderTurn([user, first, steering, second], turn);
-  assert.match(html, new RegExp(`<div[^>]*data-reader-input="steering"[^>]*data-reader-anchor="true"[^>]*data-reader-key="${steering.key}"[^>]*><p[^>]*>补充消息</p>`));
+  assert.match(html, new RegExp(`<div[^>]*data-reader-input="steering"[^>]*data-reader-anchor="true"[^>]*data-reader-key="${steering.key}"[^>]*><div[^>]*data-reader-user-bubble[^>]*><p[^>]*>补充消息</p>`));
   assert.match(html, /data-reader-flow[\s\S]*data-reader-input="steering"/);
 });
 

@@ -93,8 +93,8 @@ export function StatusText({ text, motion, shimmer = false, className }: { text:
 }
 
 /** Inner expand/collapse with the reader's shared height and opacity transition. */
-export function CollapseBody({ open, motion, children, className }: {
-  open: boolean; motion: boolean; children: ReactNode; className?: string;
+export function CollapseBody({ open, motion, children, className, onCloseComplete }: {
+  open: boolean; motion: boolean; children: ReactNode; className?: string; onCloseComplete?: () => void;
 }) {
   const body = useRef<HTMLDivElement>(null);
   const running = useRef<Animation | null>(null);
@@ -114,6 +114,7 @@ export function CollapseBody({ open, motion, children, className }: {
     if (!motion || !changed || Math.abs(from - target) < 1) {
       delete element.dataset.clip;
       setPresent(open);
+      if (changed && !open) onCloseComplete?.();
       return;
     }
     // Clip only while the height animates: a settled-open body must not cut off the rows' side-shadow hover bleed.
@@ -129,8 +130,9 @@ export function CollapseBody({ open, motion, children, className }: {
       animation.cancel();
       delete element.dataset.clip;
       setPresent(open);
+      if (!open) onCloseComplete?.();
     };
-  }, [open, motion]);
+  }, [open, motion, onCloseComplete]);
   useEffect(() => () => { running.current?.cancel(); }, []);
   if (!open && !present) return null;
   return <div ref={body} className={clsx(className, css.collapseBody)} data-open={open} data-ud-motion="reader-collapse-size"

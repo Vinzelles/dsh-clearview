@@ -15,6 +15,8 @@ import { activityPhase, activitySummary, executionFacts, exitCodeFromOutput } fr
 import type { ToolActivityEntry, ToolCategory, ToolPhase } from './tool-activity.js';
 import { diffStat } from './transcript-model.js';
 import { ToolDetails } from './ToolDetails.js';
+import { QuestionRecord } from './QuestionRecord.js';
+import { questionHistory } from './question-record.js';
 import type { BlockRenderProps } from './types.js';
 import css from './ToolRow.module.css';
 
@@ -78,9 +80,17 @@ export const ToolRow = memo(function ToolRow({ entry, turnClosed, onRead, onOpen
   const detailId = useId();
   const toggle = useCallback(() => { onRead(); setOpen(!open); onOpenChange?.(entry.key, !open); }, [onRead, open, onOpenChange, entry.key]);
   const model = useMemo(() => activitySummary(entry), [entry.block, entry.draft]);
-  if (depth > 6) return <p className={css.deep}>更深的嵌套调用可在原对话查看。</p>;
   const phase = activityPhase(entry, turnClosed);
+  const history = useMemo(() => model.name === 'ask_user_question' ? questionHistory(entry, phase) : null, [entry.block, entry.draft, model.name, phase]);
+  if (depth > 6) return <p className={css.deep}>更深的嵌套调用可在原对话查看。</p>;
   const block = entry.block;
+  const detail = <div id={history ? undefined : detailId} className={css.detail}>
+    <ToolDetails entry={entry} model={model} phase={phase} initialTab={history ? 'raw' : 'result'} {...render} />
+    {!!block?.subCalls.length && <div className={css.children} aria-label="子调用">{block.subCalls.map((child, index) => <ToolRow key={child.callId} {...render}
+      entry={{ kind: 'tool', key: `reader-tool:${child.callId}`, callId: child.callId, step: entry.step, order: index, block: child }}
+      turnClosed={turnClosed} onRead={onRead} depth={depth + 1} />)}</div>}
+  </div>;
+  if (history) return <QuestionRecord history={history} callId={entry.callId} phase={phase} open={open} onToggle={toggle} controls={detailId}>{detail}</QuestionRecord>;
   const native = block ? toolRowModel(model.name, block) : null;
   const skill = model.name === 'skill';
   const Icon = skill ? IconSkillOutlineRegular : model.name === 'code' ? IconCodeOutlineRegular : ICONS[model.category];
@@ -102,12 +112,7 @@ export const ToolRow = memo(function ToolRow({ entry, turnClosed, onRead, onOpen
       trailing={end && (stat && end.tone === 'idle' ? <><span data-add>+{stat.added}</span> <span data-del>−{stat.removed}</span></> : end.text)}
       open={open} onToggle={toggle} controls={detailId} />
     <CollapseBody open={open} motion={motion}>
-      <div id={detailId} className={css.detail}>
-        <ToolDetails entry={entry} model={model} phase={phase} {...render} />
-        {!!block?.subCalls.length && <div className={css.children} aria-label="子调用">{block.subCalls.map((child, index) => <ToolRow key={child.callId} {...render}
-          entry={{ kind: 'tool', key: `reader-tool:${child.callId}`, callId: child.callId, step: entry.step, order: index, block: child }}
-          turnClosed={turnClosed} onRead={onRead} depth={depth + 1} />)}</div>}
-      </div>
+      {detail}
     </CollapseBody>
   </div>;
 }, (previous, next) => previous.entry.callId === next.entry.callId && previous.entry.block === next.entry.block

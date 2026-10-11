@@ -128,8 +128,9 @@ test('a steering input keeps the seat the rewind bridge reads', () => {
   const turn = turnLocation({ status: 'open', steps: [1] });
   const steering = chatNode('steering', { content: [{ type: 'text', text: '换个方案' }] }, turn, 1);
   const html = render(InputBubble, { useSession: sessionHook(chatOf([steering], [turn])), nodeKey: steering.key, ...blocks });
-  // The bridge matches div[data-reader-anchor][data-reader-key] (not article) and reads a first-child <p> whose class contains "meta".
-  assert.match(html, new RegExp(`data-reader-user-bubble[^>]*data-reader-input="steering"[^>]*data-reader-anchor="true"[^>]*data-reader-key="${steering.key}"[^>]*><p class="meta">补充消息</p>`));
+  // The outer message seat owns the anchor; the bubble and external actions live inside it.
+  assert.match(html, new RegExp(`data-reader-user-message[^>]*data-reader-input="steering"[^>]*data-reader-anchor="true"[^>]*data-reader-key="${steering.key}"`));
+  assert.match(html, /data-reader-user-bubble[^>]*><p class="meta">补充消息<\/p>/);
 });
 
 test('once the turn is closed an in-flight lifecycle record settles to idle with neutral wording', () => {

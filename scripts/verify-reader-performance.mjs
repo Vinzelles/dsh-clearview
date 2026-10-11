@@ -16,14 +16,15 @@ if (!buildOnly && !testUrl)
     throw new Error('Set DSH_TEST_URL to the running test host (read-only, fresh browser profile).');
 const baseline = process.argv.includes('--baseline');
 const tracing = process.argv.includes('--trace');
+const fixtureName = process.argv.includes('--thought-settlement') ? 'thought-settlement' : process.argv.includes('--question-record') ? 'question-record' : 'reader-performance';
 const sourceVersion = JSON.parse(readFileSync(join(source, 'package.json'), 'utf8')).version;
 const transcript = existsSync(join(source, 'src/client/StatusLine.tsx')) && existsSync(join(source, 'src/client/ToolGroupRow.tsx'));
-const harnessHash = createHash('sha256').update(readFileSync(join(repo, 'tests/browser/reader-performance.tsx'))).update(readFileSync(fileURLToPath(import.meta.url))).digest('hex');
+const harnessHash = createHash('sha256').update(readFileSync(join(repo, `tests/browser/${fixtureName}.tsx`))).update(readFileSync(fileURLToPath(import.meta.url))).digest('hex');
 // --baseline labels the report only. Do not deliberately give main coarse subscriptions.
 // --build-only bundles in memory: no Chrome, host traffic, or generated files.
 
 
-const bundle = await build({ entryPoints: [join(repo, 'tests/browser/reader-performance.tsx')], bundle: true, write: !buildOnly, outfile: join(out, 'fixture.js'), platform: 'browser', format: 'iife', jsx: 'automatic', target: 'es2022', external: ['react', 'react/*', 'react-dom', 'react-dom/*', '@deepseek-ai/*', '/dsh-clearview/fonts/*.woff2'], define: { 'process.env.NODE_ENV': '"production"', '__TRANSCRIPT__': String(transcript) }, plugins: [{ name: 'fixture-source', setup(b) { b.onResolve({ filter: /^fixture-source\// }, a => ({ path: join(source, 'src/client', a.path.slice('fixture-source/'.length)) })); } }], banner: { js: 'var require = (name) => { if (!(name in window.__clearviewTestModules)) throw new Error("Missing test host module: "+name); return window.__clearviewTestModules[name]; };' } });
+const bundle = await build({ entryPoints: [join(repo, `tests/browser/${fixtureName}.tsx`)], bundle: true, write: !buildOnly, outfile: join(out, 'fixture.js'), platform: 'browser', format: 'iife', jsx: 'automatic', target: 'es2022', external: ['react', 'react/*', 'react-dom', 'react-dom/*', '@deepseek-ai/*', '/dsh-clearview/fonts/*.woff2'], define: { 'process.env.NODE_ENV': '"production"', '__TRANSCRIPT__': String(transcript) }, plugins: [{ name: 'fixture-source', setup(b) { b.onResolve({ filter: /^fixture-source\// }, a => ({ path: join(source, 'src/client', a.path.slice('fixture-source/'.length)) })); } }], banner: { js: 'var require = (name) => { if (!(name in window.__clearviewTestModules)) throw new Error("Missing test host module: "+name); return window.__clearviewTestModules[name]; };' } });
 if (buildOnly) {
     for (const file of bundle.outputFiles) if (file.path.endsWith('.js')) new Script(file.text, { filename: file.path });
     console.log(JSON.stringify({ syntaxChecked: true, buildOnly: true, source, sourceVersion, grammar: transcript ? 'transcript-0.3' : 'panel-0.2', outputs: bundle.outputFiles.map(file => ({ path: file.path, bytes: file.contents.length })) }, null, 2));
@@ -187,10 +188,32 @@ try {
         const screenshotFailures = await evaluate('window.clearviewPerformanceFailures()');
         result.failures = screenshotFailures;
     }
+    if (fixtureName === 'thought-settlement') {
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
+        const point = await evaluate('window.prepareThoughtHover()');
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+        await delay(2800);
+        const held = await evaluate('window.inspectThoughtHover()');
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
+        await delay(3000);
+        const folded = await evaluate('window.inspectThoughtHover()');
+        const control = await evaluate('window.thoughtControlPoint()');
+        const click = async () => {
+            await send('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, x: control.x, y: control.y });
+            await send('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, x: control.x, y: control.y });
+            await delay(350);
+            return evaluate('window.inspectThoughtHover()');
+        };
+        const opened = await click(), closed = await click();
+        const pass = held.expanded === 'true' && held.originalConnected && held.viewport === 128 && held.fullText
+            && folded.expanded === 'false' && control.hit && opened.expanded === 'true' && opened.fullText && closed.expanded === 'false';
+        result.pointerInteraction = { held, folded, opened, closed, hit: control.hit, pass };
+        if (!pass) result.failures.push('Native pointer hover/leave/disclosure interaction failed');
+    }
     const finalSessions = await sessionInventory();
     if (initialSessions.idsHash !== finalSessions.idsHash) result.failures.push('Host session inventory changed during read-only probe');
     const sourceBundleHash = createHash('sha256').update(readFileSync(join(out, 'fixture.js'))).update(readFileSync(join(out, 'fixture.css'))).digest('hex');
-    const report = { readonlyPolicyHash, hostReadyFrameMs, screenshots, sourceBundleHash, initialSessions, finalSessions, schemaVersion: 2, capturedAt: new Date().toISOString(), source, sourceVersion, harnessHash, testUrl, viewport: { width: 1280, height: 950 }, baseline, browser: version.product, blockedMutations, initialHostErrors: errors.slice(0, initialErrors), errors: [...errors.slice(0, initialErrors).filter(text => !knownNativeReact130(text, 'native-chat')), ...errors.slice(initialErrors)], ...result, ...traceSummary ? { traceSummary } : {} };
+    const report = { fixtureName, readonlyPolicyHash, hostReadyFrameMs, screenshots, sourceBundleHash, initialSessions, finalSessions, schemaVersion: 2, capturedAt: new Date().toISOString(), source, sourceVersion, harnessHash, testUrl, viewport: { width: 1280, height: 950 }, baseline, browser: version.product, blockedMutations, initialHostErrors: errors.slice(0, initialErrors), errors: [...errors.slice(0, initialErrors).filter(text => !knownNativeReact130(text, 'native-chat')), ...errors.slice(initialErrors)], ...result, ...traceSummary ? { traceSummary } : {} };
     writeFileSync(join(out, baseline ? 'baseline.json' : 'optimized.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify({ report: join(out, baseline ? 'baseline.json' : 'optimized.json'), initialSessions, finalSessions, errors: report.errors, performance: report.performance, failures: report.failures }, null, 2));
     if (report.errors.length || report.failures.length)

@@ -13,15 +13,18 @@ test('bubble carries the anchor attributes, the label first, and starts unclampe
   assert.doesNotMatch(html, /展开全文/);
 });
 
-test('the visual bubble contains the toggle while its copy seat contains only the message', () => {
+test('the bubble disclosure is an accessible icon controlling its full message', () => {
   for (const open of [false, true]) {
     const html = renderToStaticMarkup(createElement(UserBubbleView, { clamped: true, open, onToggle: () => {}, small: false, data: { 'data-reader-anchor': true, 'data-reader-key': 'k1' } }, '很长的消息'));
-    const seat = /<div class="bubble"[^>]*data-reader-anchor[\s\S]*?<\/div><\/div>/.exec(html)?.[0] ?? '';
-    assert.match(seat, /很长的消息/);
-    assert.doesNotMatch(seat, /<button|展开全文|收起/);
+    assert.match(html, /很长的消息/);
     assert.match(html, /data-reader-user-surface="true"/);
-    assert.match(html, new RegExp(`data-reader-bubble-toggle="true" aria-expanded="${open}"`));
-    assert.match(html, open ? />收起<\/button><\/div>$/ : />展开全文<\/button><\/div>$/);
+    assert.match(html, new RegExp(`data-reader-bubble-toggle="true" aria-label="${open ? '收起全文' : '展开全文'}"[^>]*aria-expanded="${open}"`));
+    const controls = /aria-controls="([^"]+)"/.exec(html)?.[1];
+    assert.ok(controls);
+    assert.ok(html.includes(`id="${controls}" class="text" data-reader-user-text="true"`));
+    const control = /<button[^>]*data-reader-bubble-toggle[^>]*>([\s\S]*?)<\/button>/.exec(html)?.[1] ?? '';
+    assert.match(control, /^<svg[^>]*aria-hidden="true"/);
+    assert.doesNotMatch(control, /展开全文|收起/);
   }
 });
 
