@@ -8,6 +8,6 @@ test('the root version attribute follows package.json', () => {
   assert.equal(READER_VERSION, manifest.version);
 });
 
-test('this release is 0.3.10', () => {
-  assert.equal(READER_VERSION, '0.3.10');
+test('this release is 0.3.11', () => {
+  assert.equal(READER_VERSION, '0.3.11');
 });

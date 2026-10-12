@@ -185,6 +185,14 @@
   overscroll-behavior-x: contain;
 }
 
+/* The wrapper owns the only frame. Host themes also target tableScroll, so keep ownership scoped to the reader. */
+:global([data-dsh-clearview][data-motion]) .markdown .tableScroll {
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cv-detail-radius);
+  corner-shape: round;
+  background-clip: padding-box;
+}
+
 /* Wide tables reveal their horizontal bar on hover (or keyboard focus)
    instead of keeping it painted. Chromium never repaints state-conditioned
    scrollbar STYLES (neither hover-conditioned `::-webkit-scrollbar*` rules
@@ -215,7 +223,11 @@
 /* Many-column tables (the renderer's `md-table-wide` hook) keep their
    natural width and scroll inside the wrapper; a hosting layout may widen
    the wrapper through the hook (deepsuite chat TableWrapper parity). */
-.tableScroll table {
+:global([data-dsh-clearview][data-motion]) .markdown .tableScroll table {
+  display: table;
+  margin: 0;
+  border: 0;
+  box-shadow: none;
   border-collapse: collapse;
   font-family: var(--cc-font-ui);
   font-size: var(--cc-size-ui);
@@ -227,7 +239,7 @@
    column instead: cells wrap down to their minimum readable width, and the
    wrapper's scroll only remains for the below-floor case (deepsuite chat
    parity: `.wrapper:not(:has(th:nth-child(4), td:nth-child(4)))`). */
-.tableFill table {
+:global([data-dsh-clearview][data-motion]) .markdown .tableFill table {
   width: 100%;
   max-width: none;
 }
@@ -252,13 +264,9 @@
   min-width: 100px;
 }
 
-.tableScroll th:first-child,
-.tableScroll td:first-child {
-  padding-left: 0;
-}
-
-.tableScroll td:last-child {
-  padding-right: 0;
+/* Includes header-only tables: the final row's lower edge is already supplied by the wrapper. */
+:global([data-dsh-clearview][data-motion]) .markdown .tableScroll table > :last-child > tr:last-child > :is(th, td) {
+  border-bottom: 0;
 }
 
 .tableScroll table code {

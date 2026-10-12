@@ -13,15 +13,40 @@ document.body.append(host);
 const root = createRoot(host);
 const table = '| 位置 | 改动 |\n| --- | --- |\n| openai_tools.py:98 | 补齐缺失字段，保留已有数据。 |\n| openai_tools.py:166 | 验证请求参数与实际结果。 |';
 const wide = '| 文件 | 读取 | 编辑 | 验证 | 说明 |\n| --- | --- | --- | --- | --- |\n| src/components/HistoryPanel.vue | 已完成 | 已完成 | 已通过 | 保留完整正文与动画 |';
+const three = '| 路径 | 状态 | 最后改动 |\n| --- | --- | --- |\n| .agents/skills/project-architecture/SKILL.md | 现行版，保持更新 | `04ff1e05` 2026-10-12 |\n| .claude/skills/project-architecture/SKILL.md | 陈旧快照 | `dba05c80` 2026-10-05（落后 12 个提交） |';
 const documents = [
+  ['three-column', three],
   ['paragraph', `${table}\n\n语义安全性：保留正文间距，便于继续阅读。`],
   ['wide', `${wide}\n\n宽表格后的正文仍然有独立间距。`],
   ['list', `${table}\n\n- 验证完成\n- 结果一致`],
   ['terminal', table],
+  ['header-only', '| 位置 | 状态 |\n| --- | --- |'],
   ['quoted', `> ${table.replaceAll('\n', '\n> ')}\n>\n> 引用内的正文同样保持间距。`],
   ['quoted-terminal', `> ${table.replaceAll('\n', '\n> ')}`],
   ['nested-quoted-terminal', `> > ${table.replaceAll('\n', '\n> > ')}`],
 ] as const;
+function frameFacts(wrapper: HTMLElement) {
+  const table = wrapper.querySelector('table')!, lastRow = table.rows[table.rows.length - 1]!;
+  const cells = [...lastRow.cells];
+  const own = getComputedStyle(wrapper), inner = getComputedStyle(table);
+  return { wrapperBorder: own.borderBottomWidth, wrapperPadding: own.paddingBottom, tableBorder: inner.borderBottomWidth,
+    tableMargin: inner.marginBottom, tableDisplay: inner.display, lastRowBottom: lastRow.getBoundingClientRect().bottom,
+    tableBottom: table.getBoundingClientRect().bottom, wrapperBottom: wrapper.getBoundingClientRect().bottom,
+    lastCellBorders: cells.map(cell => getComputedStyle(cell).borderBottomWidth) };
+}
+function matchingFrameRules() {
+  const wrapper = host.querySelector<HTMLElement>('[data-case="three-column"] table')!.parentElement!;
+  const elements = [wrapper, wrapper.querySelector('table')!, wrapper.querySelector('tbody tr:last-child td')!];
+  const result: string[][] = elements.map(() => []);
+  const visit = (rules: CSSRuleList) => { for (const rule of rules) {
+    if (rule instanceof CSSStyleRule) elements.forEach((element, index) => {
+      try { if (element.matches(rule.selectorText) && /border|margin|padding|display/.test(rule.style.cssText)) result[index]!.push(rule.cssText); } catch { }
+    });
+    else if ('cssRules' in rule) visit((rule as CSSGroupingRule).cssRules);
+  } };
+  for (const sheet of document.styleSheets) { try { visit(sheet.cssRules); } catch { } }
+  return result;
+}
 const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
 function render(width: number, size: number, streaming: boolean, dark: boolean) {
   document.body.toggleAttribute('data-ds-dark-theme', dark);
@@ -47,7 +72,12 @@ function inspect(label: string) {
       `${label}/${name}: expected ${next ? expectedGap : 0}px, got ${next ? gap : margin}px`);
     check(wrapper.getBoundingClientRect().width <= section.getBoundingClientRect().width + 1,
       `${label}/${name}: table wrapper exceeds column`);
-    return { name, gap, expectedGap: next ? expectedGap : 0, margin, overflow: wrapper.scrollWidth - wrapper.clientWidth };
+    const frame = frameFacts(wrapper);
+    check(parseFloat(frame.wrapperBorder) === 1 && parseFloat(frame.tableBorder) === 0 && frame.lastCellBorders.every(border => parseFloat(border) === 0),
+      `${label}/${name}: expected one wrapper frame and no duplicate terminal edge`);
+    check(frame.tableDisplay === 'table' && parseFloat(frame.tableMargin) === 0,
+      `${label}/${name}: table adds a separate baseline or margin inside its frame`);
+    return { name, gap, expectedGap: next ? expectedGap : 0, margin, overflow: wrapper.scrollWidth - wrapper.clientWidth, frame };
   });
   check(host.scrollWidth <= host.clientWidth + 1, `${label}: page horizontal overflow`);
   return { label, viewport: innerWidth, rows };
@@ -60,7 +90,7 @@ function inspect(label: string) {
     await frame();
     cases.push(inspect(`${width}/${size}/${streaming ? 'streaming' : 'settled'}/${dark ? 'dark' : 'light'}`));
   }
-  return { failures, tableSpacing: { cases } };
+  return { failures, tableSpacing: { cases }, frameRules: matchingFrameRules() };
 };
 (window as any).prepareClearviewScreenshot = async (theme: string) => {
   render(900, 14, false, theme === 'dark');
