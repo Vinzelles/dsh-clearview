@@ -392,6 +392,10 @@ try {
       result: turn.getAttribute('data-reader-turn-result'), expanded, controls, label, summaryStyle, bottomLineOnly,
       processCount: process.length, answerCount: answers.length,
       processState: process.length > 0 && process.every(node => node.getAttribute('data-folded') === String(folded) && visible(node) === !folded),
+      processStateMismatch: process.filter(node => node.getAttribute('data-folded') !== String(folded) || visible(node) !== !folded).slice(0, 6).map(node => ({
+        key: node.getAttribute('data-reader-key'), folded: node.getAttribute('data-folded'), visible: visible(node),
+        height: node.getBoundingClientRect().height, display: getComputedStyle(node).display, visibility: getComputedStyle(node).visibility,
+      })),
       retainedVisible: retained.every(node => node.getAttribute('data-folded') === 'false' && visible(node)),
       persistentVisible: persistentContent.every(visible),
       answersVisible: answers.length > 0 && answers.every(visible),
@@ -406,19 +410,30 @@ try {
     await delay(400);
   };
   const clickTurnCenter = async () => {
-    await evaluate("globalThis.__clearviewTurnProbe.button.scrollIntoView({ block: 'center', inline: 'center' })");
+    // This helper navigates to historical content. Establish real upward intent
+    // before programmatic positioning; layout scroll intentionally retains follow.
+    const portPoint = await evaluate(`(() => {
+      const root = document.querySelector('[data-dsh-clearview]');
+      const box = root.closest('[data-conversation-scroll]').getBoundingClientRect();
+      return { x: (Math.max(0, box.left) + Math.min(innerWidth, box.right)) / 2,
+        y: (Math.max(0, box.top) + Math.min(innerHeight, box.bottom)) / 2 };
+    })()`);
+    await send('Input.dispatchMouseEvent', { type: 'mouseWheel', ...portPoint, deltaX: 0, deltaY: -64, buttons: 0 });
+    await delay(100);
+    await evaluate("globalThis.__clearviewTurnProbe.button.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' })");
     await delay(350);
     const point = await evaluate(`(() => {
       const button = globalThis.__clearviewTurnProbe.button;
       const box = button.getBoundingClientRect();
       const x = box.left + box.width / 2, y = box.top + box.height / 2;
       const hit = document.elementFromPoint(x, y);
-      return { x, y, width: box.width, height: box.height, hit: !!hit && button.contains(hit) && box.width > 0 && box.height > 0 };
+      return { x, y, width: box.width, height: box.height, hit: !!hit && button.contains(hit) && box.width > 0 && box.height > 0,
+        following: document.querySelector('[data-dsh-clearview]')?.getAttribute('data-reader-following') };
     })()`);
     if (point.hit) {
       await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: point.x, y: point.y });
-      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: point.x, y: point.y, button: 'left', clickCount: 1 });
-      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: point.x, y: point.y, button: 'left', clickCount: 1 });
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: point.x, y: point.y, button: 'left', buttons: 1, clickCount: 1 });
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: point.x, y: point.y, button: 'left', buttons: 0, clickCount: 1 });
       await delay(450);
     }
     return point;
@@ -475,6 +490,8 @@ try {
       item.turnToggle.openClick = await clickTurnCenter();
       item.turnToggle.opened = await evaluate(snapshot);
       item.turnToggle.closeClick = await clickTurnCenter();
+      item.turnToggle.closedImmediate = await evaluate(snapshot);
+      item.turnToggle.settled = await until(`(() => { const state = (${inspectTurn})(globalThis.__clearviewTurnProbe.turn); return state.expanded === 'false' && state.processState; })()`, 5000);
       item.turnToggle.closed = await evaluate(snapshot);
       await evaluate('delete globalThis.__clearviewTurnProbe');
     }

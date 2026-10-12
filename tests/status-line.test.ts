@@ -25,3 +25,11 @@ test('interrupted and error lines are red and do not spin', () => {
   assert.match(html, /data-phase="interrupted"/);
   assert.doesNotMatch(html, /data-spin/);
 });
+
+test('only the designated active tail exposes the docking contract', () => {
+  const shared = { phase: 'running' as const, label: '正在输出', elapsed: '1 秒', thinking: null, motion: true };
+  const tail = renderToStaticMarkup(createElement(StatusLine, { ...shared, tail: true }));
+  const thought = renderToStaticMarkup(createElement(StatusLine, shared));
+  assert.match(tail, /data-reader-status-tail="true"/);
+  assert.doesNotMatch(thought, /data-reader-status-tail/);
+});

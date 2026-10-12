@@ -70,7 +70,7 @@ export function Reader(rawProps: ReaderProps) {
     // A request that arrives before its turn renders stays pending; the groups / loading deps re-run this.
     const action = viewRequestAction(target !== null, loading);
     if (action === 'wait') return;
-    if (action === 'scroll') target?.scrollIntoView({ block: 'center' });
+    if (action === 'scroll') { scroll.pause(); target?.scrollIntoView({ block: 'center' }); }
     completeViewRequest();
   }, [viewRequest, completeViewRequest, loading, groups]);
   // 兼容层根发现：阅读根是运行中在深层会话容器里挂载/卸载的，body 级观察器看不到
@@ -119,7 +119,7 @@ export function Reader(rawProps: ReaderProps) {
     />
   ), [props.useProjection, props.jobsSource, props.watchJobs, props.useSession, props.useSessions, props.sessionId, visibleOrder, motion, hasMore, conversationIdle, props.openFile, props.listDirNames]);
   return <StreamMotionContext.Provider value={streamMotion}><ReaderActionsContext.Provider value={actions}>
-    <div ref={root} className={css.root} data-dsh-clearview={READER_VERSION} data-motion={motion ? 'on' : 'off'}>
+    <div ref={root} className={css.root} data-dsh-clearview={READER_VERSION} data-motion={motion ? 'on' : 'off'} data-reader-following={!scroll.detached} data-reader-needs-action={pending.length > 0 || undefined}>
       <div className={css.column}>
         <div className={css.toolbar} data-ud-check="reader-toolbar">
           <Switch label={`动效${motionPreference ? '开' : '关'}`} checked={motionPreference} onChange={() => props.actions.setMotion(!motionPreference)}

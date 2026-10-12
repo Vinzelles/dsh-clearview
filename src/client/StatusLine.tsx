@@ -8,10 +8,10 @@ export function statusVerb(label: string): string {
 }
 
 /** A compact activity indicator, the current verb and secondary timing. */
-export function StatusLine({ phase, label, elapsed, thinking, motion }: { phase: StatusPhase; label: string; elapsed: string | null; thinking: string | null; motion: boolean }) {
+export function StatusLine({ phase, label, elapsed, thinking, motion, tail = false }: { phase: StatusPhase; label: string; elapsed: string | null; thinking: string | null; motion: boolean; tail?: boolean }) {
   const running = phase === 'running';
   const meta = [elapsed, thinking ? `已思考 ${thinking}` : null].filter(Boolean).join(' · ');
-  return <div className={css.line} data-reader-status-line data-phase={phase} role="status">
+  return <div className={css.line} data-reader-status-line data-reader-status-tail={tail || undefined} data-phase={phase} role="status">
     <span className={css.indicator} aria-hidden="true" data-spin={running && motion ? true : undefined} />
     <span className={css.verb} data-shimmer={running && motion ? true : undefined}>{statusVerb(label)}</span>
     {meta && <span className={css.meta}>{meta}</span>}

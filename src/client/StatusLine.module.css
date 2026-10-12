@@ -1,4 +1,13 @@
 .line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; box-sizing: border-box; min-height: var(--cv-row-height); margin-top: 6px; padding: 5px 8px; font-family: var(--cc-font-ui); font-size: var(--cv-process-size); line-height: 20px; color: var(--cc-text-300); }
+/* Keep only the current tail signal at its resting edge while text scrolls smoothly.
+   Manual reading restores normal flow; thought headers and terminal notices stay in place. */
+:global([data-reader-following=true]:not([data-reader-needs-action])) .line[data-reader-status-docked][data-phase=running] {
+  position: sticky; bottom: var(--reader-status-bottom, 0px); z-index: 1;
+  background: var(--reader-status-background, transparent);
+  /* Cover the reserved space underneath without adding scrollable geometry.
+     Otherwise fast-growing text can paint below the pinned signal. */
+  box-shadow: 0 calc(var(--reader-status-bottom, 0px) / 2) 0 calc(var(--reader-status-bottom, 0px) / 2) var(--reader-status-background, transparent);
+}
 .indicator { box-sizing: border-box; width: 12px; height: 12px; flex: none; border: 1.5px solid var(--cv-detail-border); border-top-color: var(--cc-text-300); border-radius: 50%; corner-shape: round; }
 .indicator[data-spin] { animation: reader-status-spin 1.2s linear infinite; }
 @keyframes reader-status-spin { to { transform: rotate(360deg); } }

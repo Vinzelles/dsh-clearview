@@ -283,7 +283,7 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
         </div>;
       })}
     </div>}
-    {open && !liveKey && <StatusLine phase={status === 'waiting' ? 'waiting' : 'running'} label={status === 'waiting' ? '等待你的操作' : runningLabel(turn, group.keys, get)}
+    {open && !liveKey && <StatusLine tail phase={status === 'waiting' ? 'waiting' : 'running'} label={status === 'waiting' ? '等待你的操作' : runningLabel(turn, group.keys, get)}
       elapsed={elapsedLabel(turn, now, status)} thinking={thinking} motion={motion} />}
     {stopped && <StatusLine phase={status === 'interrupted' ? 'interrupted' : 'error'} label={terminal ?? statusLabel(status, boundary.reason, '')} elapsed={elapsedLabel(turn, now, status)} thinking={null} motion={motion} />}
     {closed && <BlockBoundary><TurnFooter turn={turn} answerText={answerText} /></BlockBoundary>}

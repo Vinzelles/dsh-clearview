@@ -156,6 +156,7 @@
   width: 100%;
   min-width: 0;
   contain: inline-size;
+  margin-bottom: .75em;
   overflow-x: auto;
   overscroll-behavior-x: contain;
 }
@@ -246,6 +247,7 @@
 }
 
 :global([data-dsh-clearview][data-motion]) .markdown > *:last-child,
+:global([data-dsh-clearview][data-motion]) .markdown blockquote > .tableScroll:last-child,
 :global([data-dsh-clearview][data-motion]) .markdown p:last-child {
   margin-bottom: 0 !important;
 }

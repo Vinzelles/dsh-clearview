@@ -6,20 +6,23 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { Line } from '../src/client/Line.tsx';
 import { toolTrailing } from '../src/client/ToolRow.tsx';
 
-test('an expandable line is one button with aria-expanded and a chevron', () => {
+test('an expandable line is one button with aria-expanded and one shared icon/chevron slot', () => {
   const html = renderToStaticMarkup(createElement(Line, { icon: 'i', label: '运行', target: 'npm test', open: false, controls: 'tool-details', onToggle: () => {}, data: { 'data-reader-tool-call': 'c1' } }));
   assert.match(html, /<button[^>]*type="button"[^>]*aria-expanded="false"/);
   assert.match(html, /data-reader-line/);
   assert.match(html, /data-reader-tool-call="c1"/);
   assert.match(html, /运行[\s\S]*npm test/);
   assert.match(html, /aria-controls="tool-details"/);
+  assert.equal(html.match(/data-reader-line-leading/g)?.length, 1);
+  assert.match(html, /data-reader-line-leading[^>]*>[\s\S]*data-reader-line-icon[\s\S]*data-reader-line-chevron/);
   assert.doesNotMatch(html, /data-reader-line-hint|>展开<|>收起</);
 });
 
-test('a static line has no button and keeps the chevron slot', () => {
+test('a static line has only an operation icon and no spare disclosure slot', () => {
   const html = renderToStaticMarkup(createElement(Line, { icon: 'i', label: '读取任务输出' }));
   assert.doesNotMatch(html, /<button/);
-  assert.match(html, /data-chevron-slot/);
+  assert.match(html, /data-reader-line-leading[^>]*>[\s\S]*data-reader-line-icon/);
+  assert.doesNotMatch(html, /data-chevron-slot|data-reader-line-chevron/);
   assert.doesNotMatch(html, /data-reader-line-hint/);
 });
 

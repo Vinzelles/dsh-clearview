@@ -16,7 +16,7 @@ if (!buildOnly && !testUrl)
     throw new Error('Set DSH_TEST_URL to the running test host (read-only, fresh browser profile).');
 const baseline = process.argv.includes('--baseline');
 const tracing = process.argv.includes('--trace');
-const fixtureName = process.argv.includes('--thought-settlement') ? 'thought-settlement' : process.argv.includes('--question-record') ? 'question-record' : 'reader-performance';
+const fixtureName = process.argv.includes('--table-spacing') ? 'table-spacing' : process.argv.includes('--process-icons') ? 'process-icons' : process.argv.includes('--status-follow') ? 'status-follow' : process.argv.includes('--thought-settlement') ? 'thought-settlement' : process.argv.includes('--question-record') ? 'question-record' : 'reader-performance';
 const sourceVersion = JSON.parse(readFileSync(join(source, 'package.json'), 'utf8')).version;
 const transcript = existsSync(join(source, 'src/client/StatusLine.tsx')) && existsSync(join(source, 'src/client/ToolGroupRow.tsx'));
 const harnessHash = createHash('sha256').update(readFileSync(join(repo, `tests/browser/${fixtureName}.tsx`))).update(readFileSync(fileURLToPath(import.meta.url))).digest('hex');
@@ -150,6 +150,64 @@ try {
     }
     await evaluate(readFileSync(join(out, 'fixture.js'), 'utf8'));
     const result = await evaluate('window.runClearviewPerformance()');
+    if (fixtureName === 'status-follow') {
+        const wheel = await evaluate('window.statusFollow.wheelPoint()');
+        await send('Input.dispatchMouseEvent', { type: 'mouseWheel', ...wheel, deltaX: 0, deltaY: -320 });
+        await delay(200);
+        const paused = await evaluate('window.statusFollow.afterWheel()');
+        if (!paused.jumpPoint) throw Error('Status follow resume button missing');
+        await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...paused.jumpPoint, button: 'left', buttons: 1, clickCount: 1 });
+        await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...paused.jumpPoint, button: 'left', buttons: 0, clickCount: 1 });
+        await delay(150);
+        const resumed = await evaluate('window.statusFollow.afterJump()');
+        const selection = await evaluate('window.statusFollow.selection()');
+        const attention = await evaluate('window.statusFollow.attention()');
+        // A standalone scrollbar is a positive control for compositor input readiness.
+        const controlPoint = await evaluate('window.statusFollow.trackControl()');
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: controlPoint.x, y: controlPoint.y, buttons: 0 });
+        await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: controlPoint.x, y: controlPoint.y, button: 'left', buttons: 1, clickCount: 1 });
+        await delay(120);
+        await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: controlPoint.x, y: controlPoint.y, button: 'left', buttons: 0, clickCount: 1 });
+        await delay(150);
+        const control = await evaluate(`window.statusFollow.afterControl(${controlPoint.before})`);
+        const trackPoint = await evaluate('window.statusFollow.trackPoint()');
+        const trackShot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+        writeFileSync(join(out, 'scrollbar-track.png'), Buffer.from(trackShot.data, 'base64'));
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: trackPoint.x, y: trackPoint.y, buttons: 0 });
+        await delay(200);
+        await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: trackPoint.x, y: trackPoint.y, button: 'left', buttons: 1, clickCount: 1 });
+        await delay(120);
+        await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: trackPoint.x, y: trackPoint.y, button: 'left', buttons: 0, clickCount: 1 });
+        const scrollbar = await evaluate(`window.statusFollow.afterTrack(${trackPoint.top})`);
+        const drag = await evaluate('window.statusFollow.dragPoints()');
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: drag.x, y: drag.from });
+        await delay(200);
+        await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: drag.x, y: drag.from, button: 'left', buttons: 1, clickCount: 1 });
+        for (let step = 1; step <= 10; step++) {
+            await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: drag.x, y: drag.from + (drag.to - drag.from) * step / 10, button: 'left', buttons: 1 });
+            await delay(20);
+        }
+        await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: drag.x, y: drag.to, button: 'left', buttons: 0, clickCount: 1 });
+        const dragResume = await evaluate('window.statusFollow.afterDrag()');
+        const viewRequest = await evaluate('window.statusFollow.viewRequest()');
+        const latestTurn = await evaluate('window.statusFollow.latestTurn()');
+        result.nativeInteraction = { paused, resumed, selection, attention, controlPoint, control, trackPoint, scrollbar, drag, dragResume, viewRequest, latestTurn };
+        result.failures = await evaluate('window.clearviewPerformanceFailures()');
+    }
+    if (fixtureName === 'process-icons') {
+        const steps = await evaluate('window.processIconInputSteps()');
+        for (const step of steps) {
+            const input = await evaluate(`window.prepareProcessIconInput(${JSON.stringify(step)})`);
+            if (input.reducedMotion) await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+            if (input.x !== undefined) await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: input.x, y: input.y });
+            if (input.click) for (const type of ['mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, x: input.x, y: input.y, button: 'left', clickCount: 1 });
+            if (input.key) for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: input.key, code: input.code, windowsVirtualKeyCode: input.keyCode,
+                ...(type === 'keyDown' && input.key === 'Enter' ? { text: '\r', unmodifiedText: '\r' } : {}) });
+            await evaluate(`window.assertProcessIconInput(${JSON.stringify(step)})`);
+        }
+        Object.assign(result, await evaluate('window.processIconInputReport()'));
+        await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
+    }
     let traceSummary;
     if (tracing) {
         const { profile: cpu } = await send('Profiler.stop');

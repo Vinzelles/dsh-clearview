@@ -7,6 +7,7 @@ import { cssEscape } from './css-escape.js';
 import { MOTION } from './motion-tokens.js';
 import { READING_SURFACE_GAP, readingFollowAction, readingScrollAction } from './reading-follow.js';
 import { pickAnchor, recallPosition, rememberPosition } from './reading-position.js';
+import { statusBottomInset } from './reading-status.js';
 
 const EASING = MOTION.ease;
 
@@ -221,8 +222,9 @@ export function useContentWidth(): [(node: HTMLElement | null) => void, number |
   return [track, width];
 }
 
-export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, sessionId?: string): { detached: boolean; jump: () => void } {
+export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, sessionId?: string): { detached: boolean; jump: () => void; pause: () => void } {
   const port = useRef<HTMLElement | null>(null);
+  const pauseIntent = useRef<() => void>(() => {});
   const following = useRef(true);
   const [detached, setDetached] = useState(false);
   useLayoutEffect(() => {
@@ -242,6 +244,34 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, 
     let currentTop = 0;
     let initialized = false;
     let initialGesture = false;
+    let statusTail: HTMLElement | null = null;
+    const syncStatusTail = () => {
+      const latestTurn = Array.from(content.querySelectorAll<HTMLElement>('section[data-reader-turn]')).at(-1);
+      const next = content.querySelector('[data-reader-attention]') ? null
+        : latestTurn?.querySelector<HTMLElement>('[data-reader-status-tail][data-phase=running]') ?? null;
+      if (next !== statusTail) {
+        statusTail?.removeAttribute('data-reader-status-docked');
+        statusTail = next;
+      }
+      const turn = statusTail?.closest<HTMLElement>('[data-reader-turn]');
+      if (!statusTail || !turn) return;
+      // The turn border-box stays in normal flow when its last row is sticky.
+      // Subtract the remaining scroll, not the row's sticky visual rectangle.
+      const bottom = statusBottomInset(scroll.getBoundingClientRect().top + scroll.clientTop + scroll.clientHeight,
+        turn.getBoundingClientRect().bottom, maxTop - currentTop);
+      const value = `${bottom}px`;
+      if (content.style.getPropertyValue('--reader-status-bottom') !== value) content.style.setProperty('--reader-status-bottom', value);
+      statusTail.setAttribute('data-reader-status-docked', '');
+    };
+    const syncStatusBackground = () => {
+      for (let element: HTMLElement | null = scroll; element; element = element.parentElement) {
+        const color = getComputedStyle(element).backgroundColor;
+        if (color !== 'transparent' && color !== 'rgba(0, 0, 0, 0)') {
+          content.style.setProperty('--reader-status-background', color); return;
+        }
+      }
+      content.style.removeProperty('--reader-status-background');
+    };
     const measure = () => { maxTop = Math.max(0, scroll.scrollHeight - scroll.clientHeight); currentTop = scroll.scrollTop; };
     // A downward reader gesture (wheel / key / touch / scrollbar drag) that
     // is still pending. It survives scroll events that land outside the
@@ -275,12 +305,27 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, 
       cancelAnimationFrame(followFrame); followFrame = 0;
       if (following.current) { following.current = false; setDetached(true); }
     };
+    pauseIntent.current = () => { initialGesture = true; wantDown = false; releaseFollow(); };
+    const onTurnDisclosure = (event: Event) => {
+      const target = event.target;
+      // Opening/closing a completed turn is an explicit reading choice, also
+      // when the browser activates its button by keyboard. Preserve that seat.
+      if (target instanceof Element && content.contains(target) && target.closest('button[data-reader-turn-disclosure]')) pauseIntent.current();
+    };
     const onScroll = () => {
       if (!initialized) return;
+      const previousTop = currentTop;
       currentTop = scroll.scrollTop;
+      // Native thumb capture can emit scroll without any DOM pointermove.
+      // During an explicit scrollbar press, its actual scroll direction owns intent.
+      if (pointerY !== null) {
+        if (currentTop < previousTop - 1) { wantDown = false; releaseFollow(); }
+        else if (currentTop > previousTop + 1) wantDown = true;
+      }
       // Our easing frames must not be mistaken for a reader leaving the bottom.
       if (lastWrittenTop !== null && Math.abs(currentTop - lastWrittenTop) < 1) return;
       const atSurface = maxTop - currentTop < READING_SURFACE_GAP;
+      const hadDownGesture = wantDown;
       const next = readingScrollAction(following.current, wantDown, atSurface);
       wantDown = next.wantDown;
       if (next.following !== following.current) {
@@ -290,7 +335,7 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, 
       // Any reader-caused scroll resyncs the pill: a detached reader who has
       // scrolled by hand is seen as reading, and a guard-hold pill clears the
       // moment the reader moves (the guard exit is the jump button itself).
-      setDetached(!following.current);
+      if (hadDownGesture || !following.current) setDetached(!following.current);
     };
     const onWheel = (event: WheelEvent) => {
       if (event.deltaY !== 0) initialGesture = true;
@@ -330,15 +375,20 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, 
     // presses target children, so selection or control clicks never count
     // as scroll gestures).
     const onPointerDown = (event: PointerEvent) => {
-      if (event.target !== scroll) return;
+      if (event.target !== scroll || event.button !== 0) return;
+      initialGesture = true;
+      wantDown = false;
+      lastWrittenTop = null;
+      releaseFollow();
       pointerY = event.clientY;
     };
     const onPointerMove = (event: PointerEvent) => {
       if (pointerY === null) return;
       const dy = event.clientY - pointerY;
       if (Math.abs(dy) > 1) initialGesture = true;
-      if (dy > 1) { wantDown = false; releaseFollow(); }
-      else if (dy < -1) wantDown = true;
+      // The scrollbar thumb moves with scroll direction, unlike touch content.
+      if (dy < -1) { wantDown = false; releaseFollow(); }
+      else if (dy > 1) wantDown = true;
       pointerY = event.clientY;
     };
     const onPointerEnd = () => { pointerY = null; };
@@ -349,10 +399,18 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, 
     const follow = (now: number) => {
       followFrame = 0;
       if (!following.current || selected() || focused()) return;
-      const gap = maxTop - currentTop;
+      let gap = maxTop - currentTop;
       const delta = Math.min(48, Math.max(1, now - lastFrameAt));
       lastFrameAt = now;
-      if (!motion || Math.abs(gap) < 1.5) { writeTop(maxTop); setDetached(false); return; }
+      if (!motion || Math.abs(gap) < 1.5) {
+        // Scrollable overflow can settle without changing an observed border-box
+        // (word-wrapper retirement, sticky surfaces, composer siblings). Check
+        // once at rest, not on every animation frame, before declaring arrival.
+        const latest = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+        if (latest !== maxTop) { maxTop = latest; currentTop = scroll.scrollTop; syncStatusTail(); }
+        gap = maxTop - currentTop;
+        if (!motion || Math.abs(gap) < 1.5) { writeTop(maxTop); setDetached(false); return; }
+      }
       writeTop(currentTop + gap * (1 - Math.exp(-delta / 52)));
       followFrame = requestAnimationFrame(follow);
     };
@@ -376,7 +434,8 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, 
     };
     const observer = new ResizeObserver(() => {
       measure();
-      if (!initialized) { initializePosition(); return; }
+      syncStatusTail();
+      if (!initialized) { syncStatusBackground(); initializePosition(); return; }
       const action = readingFollowAction(
         { selected: !!selected(), focused: focused() },
         following.current,
@@ -399,7 +458,10 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, 
     });
     observer.observe(content);
     if (scroll !== content) observer.observe(scroll);
+    const themeObserver = new MutationObserver(syncStatusBackground);
+    themeObserver.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme', 'data-theme', 'class'] });
     scroll.addEventListener('scroll', onScroll, { passive: true });
+    scroll.addEventListener('click', onTurnDisclosure, true);
     scroll.addEventListener('wheel', onWheel, { passive: true });
     scroll.addEventListener('keydown', onKey);
     scroll.addEventListener('touchstart', onTouchStart, { passive: true });
@@ -423,7 +485,13 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, 
         }
       }
       cancelAnimationFrame(followFrame); observer.disconnect();
+      themeObserver.disconnect();
+      pauseIntent.current = () => {};
+      statusTail?.removeAttribute('data-reader-status-docked');
+      content.style.removeProperty('--reader-status-bottom');
+      content.style.removeProperty('--reader-status-background');
       scroll.removeEventListener('scroll', onScroll); scroll.removeEventListener('wheel', onWheel);
+      scroll.removeEventListener('click', onTurnDisclosure, true);
       scroll.removeEventListener('keydown', onKey);
       scroll.removeEventListener('touchstart', onTouchStart); scroll.removeEventListener('touchmove', onTouchMove);
       scroll.removeEventListener('touchend', onTouchEnd); scroll.removeEventListener('touchcancel', onTouchEnd);
@@ -431,7 +499,7 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, 
       scroll.removeEventListener('pointerup', onPointerEnd); scroll.removeEventListener('pointercancel', onPointerEnd);
     };
   }, [root, motion, sessionId]);
-  return { detached, jump: () => {
+  return { detached, pause: () => pauseIntent.current(), jump: () => {
     // "Back to latest" is an explicit resume: clear the reading guards that
     // live inside the reader, or the next content growth silently re-stalls
     // follow against them — a text selection survives a button click by
