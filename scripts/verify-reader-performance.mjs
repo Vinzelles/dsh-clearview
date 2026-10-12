@@ -16,10 +16,22 @@ if (!buildOnly && !testUrl)
     throw new Error('Set DSH_TEST_URL to the running test host (read-only, fresh browser profile).');
 const baseline = process.argv.includes('--baseline');
 const tracing = process.argv.includes('--trace');
-const fixtureName = process.argv.includes('--style-refinement') ? 'style-refinement' : process.argv.includes('--table-spacing') ? 'table-spacing' : process.argv.includes('--process-icons') ? 'process-icons' : process.argv.includes('--status-follow') ? 'status-follow' : process.argv.includes('--thought-settlement') ? 'thought-settlement' : process.argv.includes('--question-record') ? 'question-record' : 'reader-performance';
+const fixtureName = process.argv.includes('--rewind-visibility') ? 'rewind-visibility' : process.argv.includes('--style-refinement') ? 'style-refinement' : process.argv.includes('--table-spacing') ? 'table-spacing' : process.argv.includes('--process-icons') ? 'process-icons' : process.argv.includes('--status-follow') ? 'status-follow' : process.argv.includes('--thought-settlement') ? 'thought-settlement' : process.argv.includes('--question-record') ? 'question-record' : 'reader-performance';
 const sourceVersion = JSON.parse(readFileSync(join(source, 'package.json'), 'utf8')).version;
 const transcript = existsSync(join(source, 'src/client/StatusLine.tsx')) && existsSync(join(source, 'src/client/ToolGroupRow.tsx'));
 const harnessHash = createHash('sha256').update(readFileSync(join(repo, `tests/browser/${fixtureName}.tsx`))).update(readFileSync(fileURLToPath(import.meta.url))).digest('hex');
+// Compare against the installed plugin's pure visibility module, without
+// running its engine, portals, commands or other host actions.
+let rewindOracle;
+if (fixtureName === 'rewind-visibility' && !buildOnly) {
+    if (!process.env.DSH_REWIND_CLIENT) throw Error('Set DSH_REWIND_CLIENT to the installed rewind lib/client.js.');
+    const path = resolve(process.env.DSH_REWIND_CLIENT), code = readFileSync(path, 'utf8');
+    const start = code.indexOf('// src/client/hidden.ts'), end = code.indexOf('// src/client/candidates.ts', start);
+    if (start < 0 || end <= start) throw Error('Installed rewind pure module boundary unavailable');
+    const script = `(()=>{${code.slice(start, end)};window.__clearviewRewindOracle=hiddenSeqsOf;})()`;
+    new Script(script);
+    rewindOracle = { path, hash: createHash('sha256').update(code).digest('hex'), script };
+}
 // --baseline labels the report only. Do not deliberately give main coarse subscriptions.
 // --build-only bundles in memory: no Chrome, host traffic, or generated files.
 
@@ -149,6 +161,7 @@ try {
         await send('Tracing.start', { categories: 'devtools.timeline,blink.user_timing,v8.execute,cc,viz,gpu,disabled-by-default-devtools.timeline.frame', transferMode: 'ReportEvents' });
     }
     await evaluate(readFileSync(join(out, 'fixture.js'), 'utf8'));
+    if (rewindOracle) await evaluate(rewindOracle.script);
     const result = await evaluate('window.runClearviewPerformance()');
     if (fixtureName === 'status-follow') {
         const wheel = await evaluate('window.statusFollow.wheelPoint()');
@@ -273,6 +286,10 @@ try {
     const sourceBundleHash = createHash('sha256').update(readFileSync(join(out, 'fixture.js'))).update(readFileSync(join(out, 'fixture.css'))).digest('hex');
     const report = { fixtureName, readonlyPolicyHash, hostReadyFrameMs, screenshots, sourceBundleHash, initialSessions, finalSessions, schemaVersion: 2, capturedAt: new Date().toISOString(), source, sourceVersion, harnessHash, testUrl, viewport: { width: 1280, height: 950 }, baseline, browser: version.product, blockedMutations, initialHostErrors: errors.slice(0, initialErrors), errors: [...errors.slice(0, initialErrors).filter(text => !knownNativeReact130(text, 'native-chat')), ...errors.slice(initialErrors)], ...result, ...traceSummary ? { traceSummary } : {} };
     writeFileSync(join(out, baseline ? 'baseline.json' : 'optimized.json'), JSON.stringify(report, null, 2));
+    if (rewindOracle) {
+        report.rewindOracle = { path: rewindOracle.path, hash: rewindOracle.hash };
+        writeFileSync(join(out, baseline ? 'baseline.json' : 'optimized.json'), JSON.stringify(report, null, 2));
+    }
     console.log(JSON.stringify({ report: join(out, baseline ? 'baseline.json' : 'optimized.json'), initialSessions, finalSessions, errors: report.errors, performance: report.performance, failures: report.failures }, null, 2));
     if (report.errors.length || report.failures.length)
         process.exitCode = 1;
