@@ -32,4 +32,6 @@ $env:CLEARVIEW_PERF_OUTPUT='.perf-results/process-icons-20261011'
 node scripts/verify-reader-performance.mjs --process-icons --screenshots
 ```
 
-浏览器证据、构建日志和完整测试日志位于 `.perf-results/process-icons-20261011/`。当前是本地实现与合成浏览器验收；没有发布或应用该变更，也没有把本次交互验收表述为新的性能对照。
+浏览器证据、构建日志和完整测试日志位于 `.perf-results/process-icons-20261011/`。2026-10-11 的结果属于本地实现与合成浏览器验收；当时没有发布或应用该变更，也没有把该次交互验收表述为新的性能对照。
+
+2026-10-12：共用图标已随 ClearView 0.3.8 发布并应用。正式环境验收通过，详见 [0.3.8 发布记录](./2026-10-12-release-038.md)。
