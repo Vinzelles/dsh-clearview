@@ -22,9 +22,9 @@
   --cc-brand: hsl(15 63.1% 59.6%);
   --cc-link: hsl(210 73.7% 40.2%);
   --cc-font-cjk: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC";
-  --cc-font-ui: anthropic-sans, var(--cc-font-cjk), ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
-  --cc-font-response: var(--cc-font-ui);
-  --cc-font-mono: anthropic-mono, ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --cc-font-ui: var(--dsw-font-family, ui-sans-serif, system-ui, var(--cc-font-cjk), sans-serif);
+  --cc-font-response: var(--dsh-claude-font-prose, var(--cc-font-ui));
+  --cc-font-mono: var(--dsh-claude-font-code, var(--ds-font-family-code, ui-monospace, Consolas, monospace));
   --cc-size-body: var(--dsh-content-font-size, calc(14px + var(--dsh-content-font-delta, 0px)));
   --cc-size-ui: calc(14px + var(--dsh-content-font-delta, 0px));
   --cc-size-small: calc(12.5px + var(--dsh-content-font-delta, 0px));
@@ -74,11 +74,6 @@
   --dsw-alias-markdown-code-block: var(--cc-bg-200);
   --dsw-alias-markdown-code-block-banner: var(--cc-bg-300);
   --dsw-alias-markdown-inline-code: var(--cc-bg-300);
-  --ds-font-family-code: var(--cc-font-mono);
-  --dsw-font-family: var(--cc-font-ui);
-  --dsh-claude-font-prose: var(--cc-font-response);
-  --dsh-claude-font-serif: var(--cc-font-response);
-  --dsh-claude-font-code: var(--cc-font-mono);
   /* host-remap:end */
   background: transparent;
   box-sizing: border-box;

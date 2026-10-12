@@ -41,7 +41,7 @@ export function ThoughtRow({ durationMs, motion, onRead, children, initialOpen =
   const id = useId();
   const toggle = useCallback(() => {
     onRead();
-    if (open) onManualReadChange?.(false);
+    onManualReadChange?.(!open);
     setState(previous => ({ ...previous, phase: open ? 'closing' : 'manual', explicit: true }));
   }, [onRead, open, onManualReadChange]);
   const released = useCallback(() => {
@@ -56,7 +56,7 @@ export function ThoughtRow({ durationMs, motion, onRead, children, initialOpen =
   return <div className={css.thought} data-reader-reasoning={!active || undefined} data-expanded={open} data-thought-phase={active ? 'live' : state.phase}>
     {active ? liveStatus : <Line icon={<IconThinkOutlineRegular size={14} />} label={thoughtLabel(durationMs)} open={open} onToggle={toggle} controls={id} />}
     <CollapseBody open={open} motion={motion} onCloseComplete={released}><div id={id}>
-      <LiveThought follow={open && follow && (active || !held)} motion={motion} live={active} onManualReadChange={held || active ? manualRead : undefined}>{children}</LiveThought>
+      <LiveThought follow={open && follow && (active || !held)} motion={motion} live={active} onManualReadChange={held || active || state.phase === 'manual' ? manualRead : undefined}>{children}</LiveThought>
     </div></CollapseBody>
   </div>;
 }

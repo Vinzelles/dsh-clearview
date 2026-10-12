@@ -16,7 +16,7 @@ if (!buildOnly && !testUrl)
     throw new Error('Set DSH_TEST_URL to the running test host (read-only, fresh browser profile).');
 const baseline = process.argv.includes('--baseline');
 const tracing = process.argv.includes('--trace');
-const fixtureName = process.argv.includes('--table-spacing') ? 'table-spacing' : process.argv.includes('--process-icons') ? 'process-icons' : process.argv.includes('--status-follow') ? 'status-follow' : process.argv.includes('--thought-settlement') ? 'thought-settlement' : process.argv.includes('--question-record') ? 'question-record' : 'reader-performance';
+const fixtureName = process.argv.includes('--style-refinement') ? 'style-refinement' : process.argv.includes('--table-spacing') ? 'table-spacing' : process.argv.includes('--process-icons') ? 'process-icons' : process.argv.includes('--status-follow') ? 'status-follow' : process.argv.includes('--thought-settlement') ? 'thought-settlement' : process.argv.includes('--question-record') ? 'question-record' : 'reader-performance';
 const sourceVersion = JSON.parse(readFileSync(join(source, 'package.json'), 'utf8')).version;
 const transcript = existsSync(join(source, 'src/client/StatusLine.tsx')) && existsSync(join(source, 'src/client/ToolGroupRow.tsx'));
 const harnessHash = createHash('sha256').update(readFileSync(join(repo, `tests/browser/${fixtureName}.tsx`))).update(readFileSync(fileURLToPath(import.meta.url))).digest('hex');

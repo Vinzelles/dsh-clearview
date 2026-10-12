@@ -212,7 +212,7 @@ test('only the remap block in Reader.module.css names host colour tokens', () =>
   for (const name of names) {
     let text = readFileSync(new URL(name, CLIENT), 'utf8');
     if (name === 'Reader.module.css') text = text.replace(/\/\* host-remap:start[\s\S]*?\/\* host-remap:end \*\//, '');
-    assert.doesNotMatch(text, /var\(--dsw-/, `${name} reads a host token`);
+    assert.doesNotMatch(text, /var\(--dsw-(?!font-family\b)/, `${name} reads a host colour token`);
   }
 });
 
@@ -222,15 +222,33 @@ test('retired process-panel and inset surfaces are not reintroduced', () => {
   }
 });
 
-test('answer prose resolves to the shared sans stack and code uses mono', () => {
+test('answer prose, UI and code inherit host font choices without creating alias cycles', () => {
   const markdown = readFileSync(new URL('markdown/MarkdownText.module.css', CLIENT), 'utf8');
   assert.match(markdown, /var\(--cc-font-mono\)/);
   assert.match(markdown, /var\(--cc-link\)/);
   assert.match(sheet('TurnSection'), /font-family:\s*var\(--cc-font-response\)/);
-  assert.match(sheet('Reader'), /--cc-font-response:\s*var\(--cc-font-ui\)/);
+  assert.match(sheet('Reader'), /--cc-font-response:\s*var\(--dsh-claude-font-prose,\s*var\(--cc-font-ui\)\)/);
+  assert.match(sheet('Reader'), /--cc-font-ui:\s*var\(--dsw-font-family,/);
+  assert.match(sheet('Reader'), /--cc-font-mono:\s*var\(--dsh-claude-font-code,/);
+  assert.doesNotMatch(sheet('Reader'), /--(?:dsw-font-family|ds-font-family-code|dsh-claude-font-(?:prose|code|serif))\s*:/);
   for (const file of ['native/ContextInjectionRow.module.css', 'native/SystemPromptRow.module.css']) {
     const css = readFileSync(new URL(file, CLIENT), 'utf8');
     assert.match(css, /var\(--cc-font-mono\)/, `${file} uses the same code font as the reader`);
     assert.doesNotMatch(css, /--ds-font-family-code/, `${file} must not revert to the host font`);
   }
+});
+
+test('every user bubble owns its right alignment instead of depending on the opening wrapper', () => {
+  assert.match(sheet('UserBubble'), /\.row\s*\{[^}]*margin-inline-start:\s*auto/);
+  assert.match(sheet('UserBubble'), /font-size:\s*var\(--cc-size-body\)/);
+});
+
+test('native code cards have a single outer frame and square top content corners', () => {
+  const css = readFileSync(new URL('markdown/MarkdownText.module.css', CLIENT), 'utf8');
+  const content = /\.markdown :global\(\.md-code-block\) pre\s*\{([^}]*)\}/.exec(css)?.[1];
+  assert.ok(content, 'real CodeBlock pre override exists');
+  assert.match(content, /border:\s*0;/);
+  assert.match(content, /border-radius:\s*0 0 calc\(/);
+  assert.match(content, /box-shadow:\s*none/);
+  assert.match(css, /\.markdown :global\(\.md-code-block\)\s*\{[^}]*border:\s*1px solid var\(--cv-detail-border\)/);
 });

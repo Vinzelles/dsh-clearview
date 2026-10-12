@@ -117,6 +117,30 @@
   overflow: auto;
 }
 
+/* The native CodeBlock owns its card. The plain Markdown pre rule must not draw a second frame inside it. */
+:global([data-dsh-clearview][data-motion]) .markdown :global(.md-code-block) {
+  --dsl-code-block-border-radius: var(--cv-detail-radius);
+  border: 1px solid var(--cv-detail-border);
+  border-radius: var(--cv-detail-radius);
+  corner-shape: round;
+  box-shadow: none;
+}
+
+:global([data-dsh-clearview][data-motion]) .markdown :global(.md-code-block) pre {
+  border: 0;
+  border-radius: 0 0 calc(var(--cv-detail-radius) - 1px) calc(var(--cv-detail-radius) - 1px);
+  corner-shape: round;
+  box-shadow: none;
+  margin: 0;
+  font-family: var(--cc-font-mono);
+}
+
+:global([data-dsh-clearview][data-motion]) .markdown :global(.md-code-block) > div:first-child,
+:global([data-dsh-clearview][data-motion]) .markdown :global(.md-code-block) > div:first-child > div:first-child {
+  border-radius: calc(var(--cv-detail-radius) - 1px) calc(var(--cv-detail-radius) - 1px) 0 0;
+  corner-shape: round;
+}
+
 :global([data-dsh-clearview][data-motion]) .markdown :not(pre) > code {
   display: inline-flex;
   align-items: center;

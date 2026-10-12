@@ -294,13 +294,18 @@ try {
       lineCount: lines.length, lineHeights: heights,
       toolSummaries: summaries.length, clippedSummaries: clipped.length,
       fonts: { delta, hostBodySize, prose: sample(prose), command: sample(command), line: sample(root.querySelector('[data-reader-line]')), code: sample(code), toolLine: sample(root.querySelector('[data-reader-tool-call] [data-reader-line]')),
-        user: sample(root.querySelector('[data-reader-user-bubble]')), response: { fontSetCheck: document.fonts.check('14px anthropic-sans'), loaded: [...document.fonts].some(face => face.family.replace(/["']/g, '') === 'anthropic-sans' && face.status === 'loaded'), cssStack: prose ? cs(prose).fontFamily : null } },
+        user: sample(root.querySelector('[data-reader-user-bubble]')), response: {
+          fontSetCheck: prose ? document.fonts.check(cs(prose).fontWeight + ' ' + cs(prose).fontSize + ' ' + cs(prose).fontFamily) : null,
+          loaded: prose ? [...document.fonts].some(face => face.family.replace(/["']/g, '') === cs(prose).fontFamily.split(',')[0].trim().replace(/["']/g, '') && face.status === 'loaded') : null,
+          expectedStack: cs(document.body).getPropertyValue('--dsh-claude-font-prose').trim() || cs(document.body).getPropertyValue('--dsw-font-family').trim() || cs(document.body).fontFamily,
+          cssStack: prose ? cs(prose).fontFamily : null } },
       rootBackground: cs(root).backgroundColor, backdropBackground: backdrop ? cs(backdrop).backgroundColor : null,
       hierarchy: (() => {
         const thoughts = all('[data-reader-reasoning]');
-        const label = root.querySelector('[data-reader-reasoning] > [data-reader-line] [data-reader-line-label]');
+        const label = root.querySelector('[data-reader-group] > [data-reader-line] [data-reader-line-label]');
         const groups = all('[data-reader-group][data-group-state="settled"] > [data-reader-line] > button');
-        const thoughtAndToolMixed = thoughts.filter(node => node.querySelector('[data-reader-tool-call], [data-reader-group]') || node.closest('[data-reader-tool-call], [data-reader-group]')).length;
+        const thoughtAndToolMixed = thoughts.filter(node => node.querySelector('[data-reader-tool-call], [data-reader-group]') || node.closest('[data-reader-tool-call]')).length;
+        const thoughtsGrouped = thoughts.every(node => !!node.closest('[data-reader-group]'));
         const groupAffordance = groups.map(button => ({
           expanded: button.getAttribute('aria-expanded'), hint: button.querySelector('[data-reader-line-hint]')?.textContent,
           chevron: !!button.querySelector('svg[data-open]'),
@@ -315,9 +320,10 @@ try {
           return Object.fromEntries(['minHeight', 'paddingTop', 'paddingBottom', 'paddingLeft', 'paddingRight', 'fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'borderTopWidth', 'borderRadius'].map(key => [key, style[key]]));
         };
         const thoughtStyle = thoughtButtons[0] ? rowStyle(thoughtButtons[0]) : null;
-        const processRowsConsistent = !!thoughtStyle && groups.length > 0 && groups.every(button => JSON.stringify(rowStyle(button)) === JSON.stringify(thoughtStyle));
-        return { body: sample(prose), process: sample(label), primaryColor, secondaryColor, bodyPrimary, bodyDistinct, thoughts: thoughts.length, thoughtAndToolMixed, groupAffordance, groupsClear, thoughtStyle, processRowsConsistent,
-          pass: bodyPrimary && bodyDistinct && thoughts.length > 0 && thoughtAndToolMixed === 0 && groupsClear && processRowsConsistent };
+        const processStyle = groups[0] ? rowStyle(groups[0]) : null;
+        const processRowsConsistent = !!processStyle && [...groups, ...thoughtButtons].every(button => JSON.stringify(rowStyle(button)) === JSON.stringify(processStyle));
+        return { body: sample(prose), process: sample(label), primaryColor, secondaryColor, bodyPrimary, bodyDistinct, thoughts: thoughts.length, thoughtAndToolMixed, thoughtsGrouped, groupAffordance, groupsClear, thoughtStyle, processRowsConsistent,
+          pass: bodyPrimary && bodyDistinct && thoughtsGrouped && thoughtAndToolMixed === 0 && groupsClear && processRowsConsistent };
       })(),
       overflowX: { page: document.documentElement.scrollWidth > document.documentElement.clientWidth, scroller: scroller ? scroller.scrollWidth > scroller.clientWidth + 1 : null, root: root.scrollWidth > root.clientWidth + 1 },
       // Elements that stick out past the reader root's right edge (a horizontal-overflow culprit hunt).
@@ -463,7 +469,7 @@ try {
     await send('CSS.enable');
     const fontTarget = await evaluate(`(() => {
       const root = document.querySelector('[data-dsh-clearview]');
-      const node = [...root.querySelectorAll('[data-reader-answer] p, [data-reader-flow] article[data-reader-key] p')].find(node => /[\\u4e00-\\u9fff]/.test(node.textContent) && getComputedStyle(node).fontFamily.includes('anthropic-sans'));
+      const node = [...root.querySelectorAll('[data-reader-answer] p, [data-reader-flow] article[data-reader-key] p')].find(node => /[\\u4e00-\\u9fff]/.test(node.textContent));
       if (!node) return null;
       node.setAttribute('data-reader-font-probe', '');
       return { fontFamily: getComputedStyle(node).fontFamily, fontSize: getComputedStyle(node).fontSize, fontWeight: getComputedStyle(node).fontWeight };
@@ -521,7 +527,7 @@ try {
     // Open the first closed group (clicking an already open one would collapse it), then the first
     // closed tool row. Only local disclosure state is toggled.
     item.groupOpened = await evaluate(`(() => {
-      const group = [...document.querySelectorAll('[data-dsh-clearview] [data-reader-group]')].find(node => node.querySelector(':scope > [data-reader-line] > button[aria-expanded="false"]'));
+      const group = [...document.querySelectorAll('[data-dsh-clearview] [data-reader-group][data-reader-group-tools]')].find(node => node.querySelector(':scope > [data-reader-line] > button[aria-expanded="false"]'));
       if (!group) return null;
       group.setAttribute('data-live-check', 'group');
       const button = group.querySelector(':scope > [data-reader-line] > button[aria-expanded="false"]');
@@ -596,7 +602,7 @@ try {
       const button = group?.querySelector(':scope > [data-reader-line] > button[aria-expanded]');
       if (!button) return null;
       const snap = () => {
-        const member = group.querySelector('[data-reader-tool-call], [data-reader-record-kind]');
+        const member = group.querySelector('[data-reader-tool-call], [data-reader-record-kind], [data-reader-reasoning]');
         return { expanded: button.getAttribute('aria-expanded'), dataExpanded: group.getAttribute('data-expanded'),
           memberVisible: !!member && member.getBoundingClientRect().height > 0 && member.checkVisibility({ checkVisibilityCSS: true }) };
       };
@@ -873,7 +879,7 @@ try {
       visibleWidth1440: visibleWidthGate(item.measured),
       visibleWidth480: visibleWidthGate(item.narrow) && visibleWidthGate(item.narrowBottom),
       overflow1440: covered('geometry1440', noOverflow(item.measured)), overflow480: covered('geometry480', item.narrow && item.narrowBottom ? noOverflow(item.narrow) && noOverflow(item.narrowBottom) : null),
-      proseCssStack: !item.measured?.fonts?.prose ? 'n/a' : family.startsWith('anthropic-sans') ? 'declared' : 'fallback-stack',
+      proseCssStack: !item.measured?.fonts?.prose ? 'n/a' : (item.measured.fonts.response.cssStack ?? '').replace(/[\s"']/g, '').toLowerCase() === (item.measured.fonts.response.expectedStack ?? '').replace(/[\s"']/g, '').toLowerCase() ? 'declared' : 'mismatch',
       // CSS stack and FontFace loaded status are evidence, never proof of the font used for a glyph.
       fontLoaded: item.measured?.fonts?.response?.loaded ?? null,
       typography: item.typography.every(state => state.pass) && Object.values(item.typographyMatrix).every(state => state.pass),

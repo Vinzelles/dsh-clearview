@@ -1,4 +1,4 @@
-.row { display: flex; flex-direction: column; align-items: stretch; box-sizing: border-box; max-width: 82%; min-width: 0; color: var(--cc-text-100); font-family: var(--cc-font-ui); font-size: calc(15px + var(--dsh-content-font-delta, 0px)); line-height: 1.6; }
+.row { display: flex; flex-direction: column; align-items: stretch; box-sizing: border-box; max-width: 82%; min-width: 0; margin-inline-start: auto; color: var(--cc-text-100); font-family: var(--cc-font-ui); font-size: var(--cc-size-body); line-height: 1.6; }
 .bubble { --cv-blocks-gap: 10px; position: relative; box-sizing: border-box; min-width: 0; padding: 10px 16px; border: 1px solid var(--cc-border); border-radius: 12px; corner-shape: round; background: var(--cv-user-surface); }
 .row[data-small="true"] { font-size: var(--cc-size-ui); }
 .bubble[data-small="true"] { padding: 8px 14px; }

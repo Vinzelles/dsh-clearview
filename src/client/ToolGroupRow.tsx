@@ -18,6 +18,8 @@ export function groupOpen(choice: boolean | null, running: boolean): boolean {
 /** Stable operation seats: a singleton stays open; groups fold their rows but never their media. */
 export interface ToolGroupRowProps {
   group: GroupEntry; motion: boolean; onRead: () => void;
+  retain?: boolean;
+  onCloseThoughts?: (items: readonly PanelItem[]) => void;
   renderItem: (item: PanelItem, onOpenChange?: MemberOpenChange) => ReactNode;
   renderMedia?: (item: PanelItem) => ReactNode;
 }
@@ -38,7 +40,8 @@ function sameItem(a: PanelItem, b: PanelItem): boolean {
 }
 
 export function sameToolGroupProps(a: ToolGroupRowProps, b: ToolGroupRowProps): boolean {
-  if (a.motion !== b.motion || a.onRead !== b.onRead || a.renderItem !== b.renderItem || a.renderMedia !== b.renderMedia) return false;
+  if (a.motion !== b.motion || a.onRead !== b.onRead || a.renderItem !== b.renderItem || a.renderMedia !== b.renderMedia
+      || a.retain !== b.retain || a.onCloseThoughts !== b.onCloseThoughts) return false;
   if (a.group === b.group) return true;
   const left = a.group, right = b.group;
   if (left.key !== right.key || left.items.length !== right.items.length
@@ -50,7 +53,7 @@ export function sameToolGroupProps(a: ToolGroupRowProps, b: ToolGroupRowProps): 
   return left.items.every((item, index) => sameItem(item, right.items[index]!));
 }
 
-export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedia }: ToolGroupRowProps) {
+export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedia, retain = false, onCloseThoughts }: ToolGroupRowProps) {
   const [choice, setChoice] = useState<boolean | null>(null);
   const [openMembers, setOpenMembers] = useState<ReadonlySet<string>>(() => new Set());
   const memberOpenChange = useCallback<MemberOpenChange>((key, open) => {
@@ -62,12 +65,13 @@ export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedi
   }, []);
   // Only current members count. An explicit group close still wins over member details.
   const readingMember = group.items.some(item => openMembers.has(item.key));
-  const grouped = group.items.length >= 2;
-  const open = group.items.length === 1 || groupOpen(choice, group.facts.running || readingMember);
+  const grouped = group.items.length >= 2 || group.items.some(item => item.kind === 'reasoning');
+  const open = !grouped || groupOpen(choice, group.facts.running || readingMember || retain);
   const id = useId();
-  const toggle = useCallback(() => { onRead(); setChoice(!open); }, [onRead, open]);
+  const toggle = useCallback(() => { onRead(); if (open) onCloseThoughts?.(group.items); setChoice(!open); }, [onRead, open, onCloseThoughts, group.items]);
   const { running, failed } = group.facts;
-  return <div className={css.group} data-reader-group={grouped ? group.key : undefined} data-group-state={grouped ? running ? 'running' : 'settled' : undefined} data-expanded={open}>
+  return <div className={css.group} data-reader-group={grouped ? group.key : undefined} data-reader-group-tools={group.items.some(item => item.kind === 'tool') || undefined}
+    data-group-state={grouped ? running ? 'running' : 'settled' : undefined} data-expanded={open}>
     {grouped && <Line icon={<IconFlatListOutlineRegular size={14} />} label={groupSummary(group.facts)} tone={failed > 0 ? 'failed' : running ? 'running' : 'idle'}
       shimmer={running && motion} trailing={failed > 0 ? <span>· {failed} 次失败</span> : undefined}
       open={open} onToggle={toggle} controls={id} />}

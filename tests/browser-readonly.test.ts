@@ -265,12 +265,12 @@ test('fonts.prose measures the paragraph and independently resolves/removes its 
       querySelectorAll: () => [], querySelector: (selector: string) => selector.endsWith(' p') ? paragraph : selector.includes('[data-tool-category="terminal"]') ? command : null,
       getBoundingClientRect: () => ({ right: 100 }), appendChild: (node: unknown) => { assert.equal(node, deltaProbe); attached = true; } };
     const fonts = Object.assign([], { check: () => false });
-    const document = { createElement: (tag: string) => { assert.equal(tag, 'span'); created++; return deltaProbe; },
+    const document = { body: {}, createElement: (tag: string) => { assert.equal(tag, 'span'); created++; return deltaProbe; },
       querySelector: (selector: string) => selector === '[data-dsh-clearview]' ? root : null,
       documentElement: { scrollWidth: 100, clientWidth: 100 }, fonts };
     const getComputedStyle = (node: unknown) => {
       if (node === deltaProbe) assert.equal(attached, true, 'probe must be mounted before its computed size is read');
-      return { backgroundColor: 'rgb(255, 255, 255)',
+      return { backgroundColor: 'rgb(255, 255, 255)', getPropertyValue: (name: string) => name === '--dsh-claude-font-prose' ? 'anthropic-serif, Georgia' : '',
         fontSize: (node === deltaProbe ? (probeSize.startsWith('calc(100px') ? 100 + delta : 14 + delta) : node === paragraph ? 14 + delta : node === command ? 13 + delta : 14 + delta) + 'px',
         lineHeight: node === paragraph ? (1.6 * (14 + delta)) + 'px' : '21px',
         fontWeight: node === paragraph ? '400' : '500', fontFamily: node === paragraph ? 'anthropic-serif, Georgia' : 'system-ui' };
@@ -283,6 +283,7 @@ test('fonts.prose measures the paragraph and independently resolves/removes its 
     assert.equal(measured.fonts.prose.line, (1.6 * (14 + delta)) + 'px');
     assert.equal(measured.fonts.prose.weight, '400');
     assert.equal(measured.fonts.prose.family, 'anthropic-serif, Georgia');
+    assert.equal(measured.fonts.response.expectedStack, 'anthropic-serif, Georgia');
     assert.equal(measured.fonts.command.size, (13 + delta) + 'px');
     assert.equal(created, 1);
     assert.equal(removed, 1);

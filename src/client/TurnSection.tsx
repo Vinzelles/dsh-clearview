@@ -8,7 +8,7 @@ import { SystemPromptRow } from './native/SystemPromptRow.js';
 import { nodeText } from './node-payloads.js';
 import { Opening } from './Opening.js';
 import { PlanCard } from './PlanCard.js';
-import { commandOutputText, elapsedLabel, layoutTurn, panelStatus, runningLabel, statusLabel, type PanelItem } from './process-steps.js';
+import { commandOutputText, elapsedLabel, elapsedTimeLabel, layoutTurn, panelStatus, runningLabel, statusLabel, type PanelItem, type ReasoningItem } from './process-steps.js';
 import { assistantSegments, boundaryOf, terminalLabel, type ReaderGroup } from './projection.js';
 import { useReaderActions } from './reader-context.js';
 import { createGroupSelector } from './reader-selection.js';
@@ -20,7 +20,7 @@ import { ThoughtRow } from './ThoughtRow.js';
 import { activitySummary, readerFlow } from './tool-activity.js';
 import { ToolGroupRow } from './ToolGroupRow.js';
 import { ToolImages, ToolRow } from './ToolRow.js';
-import { buildTranscript, liveThoughtKey, planStatus, type TranscriptEntry } from './transcript-model.js';
+import { buildTranscript, liveThoughtKey, planStatus, transcriptThoughts, type TranscriptEntry } from './transcript-model.js';
 import { TurnFooter } from './TurnFooter.js';
 import { TurnDisclosure } from './TurnDisclosure.js';
 import { isProcessEntry, processCounts, transcriptSeatKey, turnProcessOpen } from './turn-process.js';
@@ -64,7 +64,7 @@ const ThoughtSegment = memo(function ThoughtSegment({ useSession, nodeKey, start
   }, [data]);
   if (!data || !part) return null;
   const seat = active || held || retain;
-  return <div data-reader-live-seat={seat || undefined} data-reader-key={thoughtKey}
+  return <div data-reader-live-seat={active || held || undefined} data-reader-key={thoughtKey}
     onFocusCapture={seat ? () => onFocusChange?.(thoughtKey, true) : undefined}
     onBlurCapture={seat ? event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onFocusChange?.(thoughtKey, false); } : undefined}
     onMouseEnter={seat ? () => onHoverChange?.(thoughtKey, true) : undefined} onMouseLeave={() => onHoverChange?.(thoughtKey, false)}>
@@ -111,6 +111,15 @@ function useNow(active: boolean): number {
   return now;
 }
 
+/** A one-second clock belongs to the activity text, never to historical process renderers. */
+const LiveStatusLine = memo(function LiveStatusLine({ phase, label, start, thinkingStart, motion, tail = false }: {
+  phase: 'running' | 'waiting'; label: string; start: number | undefined; thinkingStart?: number; motion: boolean; tail?: boolean;
+}) {
+  const now = useNow(true);
+  const thinking = typeof thinkingStart === 'number' ? formatSeconds(Math.max(0, Math.round((now - thinkingStart) / 1000))) : null;
+  return <StatusLine phase={phase} label={label} elapsed={elapsedTimeLabel(start, now, true)} thinking={thinking} motion={motion} tail={tail} />;
+});
+
 /** One turn: opening, the transcript flow, tool media, answer, notices, status line, live thinking, footer. */
 export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewindHidden, rewindSpans, flowTail, ...props }: ReaderProps & {
   group: ReaderGroup; pinnedKeys: readonly string[];
@@ -149,8 +158,9 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
   const closed = boundary.status === 'closed';
   const open = boundary.status === 'open';
   const entries = useMemo(() => buildTranscript(layout.transcript, get, closed), [layout.transcript, get, closed]);
+  const thoughts = useMemo(() => transcriptThoughts(entries), [entries]);
   const liveKey = useMemo(() => liveThoughtKey(entries, get, open), [entries, get, open]);
-  const live = liveKey ? entries.at(-1) as Extract<TranscriptEntry, { kind: 'thought' }> : null;
+  const live = liveKey ? thoughts.find(item => item.key === liveKey) : undefined;
   const [recentLive, setRecentLive] = useState<{ key: string | null; held: ReadonlySet<string> }>(() => ({ key: liveKey, held: new Set(liveKey ? [liveKey] : []) }));
   if (recentLive.key !== liveKey) setRecentLive(previous => ({ key: liveKey, held: liveKey ? new Set([...previous.held, liveKey]) : previous.held }));
   const [focusedLive, setFocusedLive] = useState<string | null>(null);
@@ -177,11 +187,11 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
     manualRead(key, false);
     setHoveredLive(previous => previous === key ? null : previous);
   }, [manualRead]);
-  const selectedLive = entries.filter((entry): entry is Extract<TranscriptEntry, { kind: 'thought' }> => entry.kind === 'thought' && pinnedKeys.includes(entry.key));
+  const selectedLive = thoughts.filter(item => pinnedKeys.includes(item.key));
   const flowPinned = pinnedKeys.includes(group.key) || selectedLive.length > 0;
   // Keep the selected/focused thought's existing DOM until reading ends, even when a new step starts.
-  const liveSeats = entries.filter((entry): entry is Extract<TranscriptEntry, { kind: 'thought' }> => entry.kind === 'thought'
-    && (entry.key === liveKey || recentLive.held.has(entry.key) || entry.key === focusedLive || entry.key === hoveredLive || manualLive.has(entry.key) || pinnedKeys.includes(entry.key)));
+  const liveSeats = thoughts.filter(item => item.key === liveKey || recentLive.held.has(item.key)
+    || item.key === focusedLive || item.key === hoveredLive || manualLive.has(item.key) || pinnedKeys.includes(item.key));
   const processId = useId();
   const choiceKey = `process:${props.sessionId}:${group.key}`;
   const processChoice = props.useStore(state => state.expanded[choiceKey]);
@@ -206,15 +216,31 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
     setProcessFocused(false);
     props.actions.setExpanded(choiceKey, next);
   }, [props.actions, choiceKey, processOpen, readingProcess]);
-  const now = useNow(status === 'running' || status === 'waiting');
-  const liveData = live ? get(live.item.nodeKey)?.data as AssistantChatData | undefined : undefined;
-  const thinking = live && typeof liveData?.time === 'number' ? formatSeconds(Math.max(0, Math.round((now - liveData.time) / 1000))) : null;
+  const now = Date.now();
+  const liveData = live ? get(live.nodeKey)?.data as AssistantChatData | undefined : undefined;
+  const thinkingStart = live && typeof liveData?.time === 'number' ? liveData.time : undefined;
   const closingSeq = closingOf(turn)?.seq;
   // The host hands back a fresh resolver per call; keep one per turn and closing reply so the answer's Blocks stay memoised.
   const mentions = useMemo(() => status === 'done' && turn && closingSeq !== undefined ? fileMentions?.(turn, closingSeq) : undefined, [status, turn, closingSeq, fileMentions]);
   const shared = useMemo(() => ({ renderSlotChain: props.renderSlotChain, loadImage: props.loadImage }), [props.renderSlotChain, props.loadImage]);
   const noop = useCallback(() => {}, []);
   const lastAnswerKey = layout.answer.at(-1)?.key;
+  const activeLabel = status === 'waiting' ? '等待你的操作' : runningLabel(turn, group.keys, get);
+  const turnStart = turn?.start?.time;
+  const liveStatus = useMemo(() => liveKey ? <LiveStatusLine phase={status === 'waiting' ? 'waiting' : 'running'}
+    label={activeLabel} start={turnStart} thinkingStart={thinkingStart} motion={motion} /> : undefined,
+  [liveKey, status, activeLabel, turnStart, thinkingStart, motion]);
+  const closeThoughts = useCallback((items: readonly PanelItem[]) => {
+    for (const item of items) if (item.kind === 'reasoning') releaseRead(item.key);
+  }, [releaseRead]);
+  const renderThought = useCallback((item: ReasoningItem): ReactNode => <BlockBoundary><ThoughtSegment {...shared}
+    useSession={props.useSession} nodeKey={item.nodeKey} start={item.start} pinned={flowPinned} onRead={noop}
+    followStep={open ? boundary.latestStep : null} active={item.key === liveKey} held={recentLive.held.has(item.key)}
+    retain={item.key === focusedLive || item.key === hoveredLive || manualLive.has(item.key) || pinnedKeys.includes(item.key)}
+    onReleased={releaseRead} onManualReadChange={manualRead} onFocusChange={focusRead} onHoverChange={hoverRead}
+    liveStatus={item.key === liveKey ? liveStatus : undefined} /></BlockBoundary>,
+  [shared, props.useSession, flowPinned, noop, open, boundary.latestStep, liveKey, recentLive.held, focusedLive, hoveredLive,
+    manualLive, pinnedKeys, releaseRead, manualRead, focusRead, hoverRead, liveStatus]);
   const renderItem = useCallback((item: PanelItem, onOpenChange?: (key: string, open: boolean) => void): ReactNode => {
     switch (item.kind) {
       case 'tool': return <BlockBoundary><ToolRow {...shared} entry={item.entry} turnClosed={closed} onRead={noop} onOpenChange={onOpenChange} /></BlockBoundary>;
@@ -222,27 +248,23 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
       case 'input': return <BlockBoundary><InputBubble {...shared} useSession={props.useSession} nodeKey={item.nodeKey} /></BlockBoundary>;
       case 'narration': return <BlockBoundary><BodySegment {...shared} useSession={props.useSession} nodeKey={item.nodeKey} start={item.start} answer={item.answer}
         pinned={flowPinned || pinnedKeys.includes(item.nodeKey)} fileMentions={item.answer && item.key === lastAnswerKey ? mentions : undefined} /></BlockBoundary>;
-      case 'reasoning': return <BlockBoundary><ThoughtSegment {...shared} useSession={props.useSession} nodeKey={item.nodeKey} start={item.start} pinned={flowPinned} onRead={noop} followStep={open ? boundary.latestStep : null} /></BlockBoundary>;
+      case 'reasoning': return renderThought(item);
       case 'media': return <BlockBoundary><ToolImages {...shared} entries={[item.entry]} /></BlockBoundary>;
       case 'output': return <BlockBoundary><CommandOutput {...shared} useSession={props.useSession} nodeKey={item.nodeKey} /></BlockBoundary>;
       case 'notice': return <BlockBoundary><TurnNotice useSession={props.useSession} nodeKey={item.nodeKey} /></BlockBoundary>;
     }
-  }, [shared, props.useSession, props.contextT, closed, open, boundary.latestStep, noop, flowPinned, pinnedKeys, mentions, lastAnswerKey]);
+  }, [shared, props.useSession, props.contextT, closed, noop, flowPinned, pinnedKeys, mentions, lastAnswerKey, renderThought]);
   const renderMedia = useCallback((item: PanelItem): ReactNode => item.kind === 'tool'
     ? <BlockBoundary><ToolImages {...shared} entries={[item.entry]} /></BlockBoundary> : null, [shared]);
   const renderEntry = (entry: TranscriptEntry): ReactNode => {
     switch (entry.kind) {
-      case 'group': return <ToolGroupRow key={entry.key} group={entry} motion={motion} onRead={noop} renderItem={renderItem} renderMedia={renderMedia} />;
+      case 'group': return <ToolGroupRow key={entry.key} group={entry} motion={motion} onRead={noop} renderItem={renderItem} renderMedia={renderMedia}
+        retain={entry.items.some(item => liveSeats.some(seat => seat.key === item.key))} onCloseThoughts={closeThoughts} />;
       case 'plan': return <BlockBoundary key={entry.key}><PlanCard key="plan" todos={entry.todos} {...planStatus(entry, closed)}>
         {entry.calls.map(call => <Fragment key={call.key}>{renderItem(call)}</Fragment>)}
       </PlanCard>{entry.calls.map(call => <Fragment key={call.key}>{renderMedia(call)}</Fragment>)}</BlockBoundary>;
       case 'input': return <div key={entry.key} className={css.input}>{renderItem(entry.item)}</div>;
-      case 'thought': return <BlockBoundary><ThoughtSegment {...shared} useSession={props.useSession} nodeKey={entry.item.nodeKey} start={entry.item.start}
-        pinned={flowPinned} onRead={noop} followStep={open ? boundary.latestStep : null} active={entry.key === liveKey} held={recentLive.held.has(entry.key)}
-        retain={entry.key === focusedLive || entry.key === hoveredLive || manualLive.has(entry.key) || pinnedKeys.includes(entry.key)}
-        onReleased={releaseRead} onManualReadChange={manualRead} onFocusChange={focusRead} onHoverChange={hoverRead}
-        liveStatus={entry.key === liveKey ? <StatusLine phase={status === 'waiting' ? 'waiting' : 'running'} label={status === 'waiting' ? '等待你的操作' : runningLabel(turn, group.keys, get)}
-          elapsed={elapsedLabel(turn, now, status)} thinking={thinking} motion={motion} /> : undefined} /></BlockBoundary>;
+      case 'thought': return renderThought(entry.item);
       case 'item': {
         if (entry.facts) {
           const key = `group:${entry.key}`;
@@ -283,8 +305,8 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
         </div>;
       })}
     </div>}
-    {open && !liveKey && <StatusLine tail phase={status === 'waiting' ? 'waiting' : 'running'} label={status === 'waiting' ? '等待你的操作' : runningLabel(turn, group.keys, get)}
-      elapsed={elapsedLabel(turn, now, status)} thinking={thinking} motion={motion} />}
+    {open && !liveKey && <LiveStatusLine tail phase={status === 'waiting' ? 'waiting' : 'running'} label={activeLabel}
+      start={turnStart} motion={motion} />}
     {stopped && <StatusLine phase={status === 'interrupted' ? 'interrupted' : 'error'} label={terminal ?? statusLabel(status, boundary.reason, '')} elapsed={elapsedLabel(turn, now, status)} thinking={null} motion={motion} />}
     {closed && <BlockBoundary><TurnFooter turn={turn} answerText={answerText} /></BlockBoundary>}
     {flowTail}

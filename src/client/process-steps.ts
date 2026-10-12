@@ -150,10 +150,13 @@ export function statusLabel(status: PanelStatus, reason: string | null, running:
 }
 
 export function elapsedLabel(turn: TurnLocation | undefined, now: number, status: PanelStatus): string | null {
-  const start = turn?.start?.time;
-  if (typeof start !== 'number') return null;
   const live = status === 'running' || status === 'waiting';
-  const end = live ? now : turn?.end?.time;
+  return elapsedTimeLabel(turn?.start?.time, live ? now : turn?.end?.time, live);
+}
+
+/** The live status can own its clock without subscribing the entire transcript to each tick. */
+export function elapsedTimeLabel(start: number | undefined, end: number | undefined, live: boolean): string | null {
+  if (typeof start !== 'number') return null;
   if (typeof end !== 'number' || end < start) return null;
   const seconds = Math.round((end - start) / 1000);
   const value = seconds < 60 ? `${seconds} 秒` : `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;

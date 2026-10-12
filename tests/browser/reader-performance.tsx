@@ -660,7 +660,9 @@ async function reader() {
     check(host.querySelectorAll('[data-reader-turn]').length === 21, 'full Reader turn count');
     check(!host.querySelector('[data-reader-block-error]'), 'Reader error boundary');
     if (__TRANSCRIPT__) {
-        check(activeTurn().querySelectorAll('[data-reader-group]').length === 10, 'adjacent tool pairs were not grouped');
+        const operationGroups = [...activeTurn().querySelectorAll<HTMLElement>('[data-reader-group]')]
+            .filter(group => /(?:调用了|运行了|读取了|写入了|编辑了)/.test(disclosure(group)?.textContent ?? ''));
+        check(operationGroups.length === 10, 'adjacent tool pairs were not grouped');
         check(!activeTurn().querySelector('[data-reader-group][data-expanded="true"]'), 'settled groups should auto-fold');
     }
     // Open only the synthetic active turn's containers, outside the timed window.

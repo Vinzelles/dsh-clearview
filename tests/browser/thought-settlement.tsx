@@ -58,6 +58,13 @@ function finish(kind: string, seedData: ReturnType<typeof seed>) {
   draw();
 }
 
+const thoughtGroup = () => host.querySelector<HTMLElement>('[data-reader-group="group:thought-a:0"]')!;
+async function openThoughtGroup() {
+  if (thoughtGroup().getAttribute('data-expanded') !== 'true') {
+    thoughtGroup().querySelector<HTMLButtonElement>('[data-reader-line] > button')!.click(); await wait(350);
+  }
+}
+
 (window as any).runClearviewPerformance = async () => {
   const cases = [];
   for (const kind of ['body', 'tools', 'next', 'closed', 'off']) {
@@ -82,10 +89,12 @@ function finish(kind: string, seedData: ReturnType<typeof seed>) {
       await new Promise(requestAnimationFrame);
     }
     const smooth = heights.some(height => height > 1 && height < 100);
-    const row = host.querySelector<HTMLElement>('[data-reader-key="thought-a:0"] [data-reader-reasoning]');
-    const folded = !!row && row.getAttribute('data-expanded') === 'false';
+    let row = host.querySelector<HTMLElement>('[data-reader-key="thought-a:0"] [data-reader-reasoning]');
+    const folded = row ? row.getAttribute('data-expanded') === 'false' : thoughtGroup().getAttribute('data-expanded') === 'false';
     check(folded && (motion ? smooth : !smooth), `${kind}: completed thinking must honor the folding motion preference`);
     if (kind === 'closed') { host.querySelector<HTMLButtonElement>('[data-reader-turn-disclosure]')?.click(); await wait(300); }
+    await openThoughtGroup();
+    row = host.querySelector<HTMLElement>('[data-reader-key="thought-a:0"] [data-reader-reasoning]');
     row?.querySelector<HTMLButtonElement>('[data-reader-line] > button')?.click(); await wait(350);
     const fullText = row?.querySelector('[data-reader-reasoning-text]')?.textContent === source;
     check(fullText, `${kind}: manually reopening loses thought content`);
@@ -135,12 +144,13 @@ let hoverPort: HTMLElement | null = null;
   const box = hoverPort!.getBoundingClientRect(); return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
 };
 (window as any).inspectThoughtHover = () => {
-  const row = host.querySelector<HTMLElement>('[data-reader-key="thought-a:0"] [data-reader-reasoning]')!;
-  const port = row.querySelector<HTMLElement>('[data-reader-reasoning-scroll]');
-  return { expanded: row.getAttribute('data-expanded'), phase: row.getAttribute('data-thought-phase'), originalConnected: !!hoverPort?.isConnected,
+  const row = host.querySelector<HTMLElement>('[data-reader-key="thought-a:0"] [data-reader-reasoning]');
+  const port = row?.querySelector<HTMLElement>('[data-reader-reasoning-scroll]');
+  return { expanded: row?.getAttribute('data-expanded') ?? thoughtGroup().getAttribute('data-expanded'), phase: row?.getAttribute('data-thought-phase') ?? 'group-folded', originalConnected: !!hoverPort?.isConnected,
     viewport: port?.clientHeight ?? 0, fullText: port?.textContent === source };
 };
-(window as any).thoughtControlPoint = () => {
+(window as any).thoughtControlPoint = async () => {
+  await openThoughtGroup();
   const control = host.querySelector<HTMLElement>('[data-reader-key="thought-a:0"] [data-reader-line] > button')!;
   const box = control.getBoundingClientRect(); const x = box.left + 20, y = box.top + box.height / 2;
   return { x, y, hit: document.elementFromPoint(x, y)?.closest('button') === control };

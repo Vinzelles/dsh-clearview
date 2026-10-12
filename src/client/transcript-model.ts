@@ -4,7 +4,7 @@ import { assistantSegments } from './projection.js';
 import { activityPhase, activitySummary, objectValue } from './tool-activity.js';
 
 type Getter = (key: string) => ChatConversationViewNode | undefined;
-export type GroupKind = 'command' | 'read' | 'write' | 'edit' | 'search' | 'web' | 'skill' | 'tool' | 'operation';
+export type GroupKind = 'thinking' | 'command' | 'read' | 'write' | 'edit' | 'search' | 'web' | 'skill' | 'tool' | 'operation';
 export interface GroupFacts { counts: Partial<Record<GroupKind, number>>; order: GroupKind[]; running: boolean; failed: number }
 export interface PlanTodo { content: string; status: 'pending' | 'in_progress' | 'completed' }
 export type ToolItem = Extract<PanelItem, { kind: 'tool' }>;
@@ -32,6 +32,7 @@ export type TranscriptEntry =
 const STANDALONE_TOOLS = new Set(['todo_write', 'dispatch', 'ask_user_question']);
 const STATUSES = new Set(['pending', 'in_progress', 'completed']);
 const WORDS: Record<GroupKind, (count: number) => string> = {
+  thinking: () => '思考',
   command: n => `运行了 ${n} 条命令`, read: n => `读取了 ${n} 个文件`, write: n => `写入了 ${n} 个文件`, edit: n => `编辑了 ${n} 个文件`,
   search: n => `搜索了 ${n} 次`, web: n => `访问了 ${n} 次网页`, skill: n => `使用了 ${n} 个技能`, tool: n => `调用了 ${n} 次工具`, operation: n => `执行了 ${n} 个操作`,
 };
@@ -96,6 +97,11 @@ function factsOf(items: readonly PanelItem[], get: Getter, turnClosed: boolean):
     facts.counts[kind] = (facts.counts[kind] ?? 0) + 1;
   };
   for (const item of items) {
+    if (item.kind === 'reasoning') {
+      count('thinking');
+      if (isLiveThought(item, get, !turnClosed)) facts.running = true;
+      continue;
+    }
     if (item.kind === 'tool') {
       count(toolKind(item));
       const phase = activityPhase(item.entry, turnClosed);
@@ -156,15 +162,14 @@ export function buildTranscript(items: readonly PanelItem[], get: Getter, turnCl
   }
   let run: PanelItem[] = [];
   const flush = () => {
-    if (run.length === 1) entries.push({ kind: 'item', key: run[0]!.key, item: run[0]!, facts: factsOf(run, get, turnClosed) });
-    else if (run.length > 1) entries.push({ kind: 'group', key: `group:${run[0]!.key}`, items: run, facts: factsOf(run, get, turnClosed) });
+    if (run.length === 1 && run[0]!.kind !== 'reasoning') entries.push({ kind: 'item', key: run[0]!.key, item: run[0]!, facts: factsOf(run, get, turnClosed) });
+    else if (run.length > 0) entries.push({ kind: 'group', key: `group:${run[0]!.key}`, items: run, facts: factsOf(run, get, turnClosed) });
     run = [];
   };
   for (const item of items) {
-    if (isOperational(item, get)) { run.push(item); continue; }
+    if (item.kind === 'reasoning' || isOperational(item, get)) { run.push(item); continue; }
     flush();
     if (item.kind === 'narration') entries.push({ kind: 'narration', key: item.key, item });
-    else if (item.kind === 'reasoning') entries.push({ kind: 'thought', key: item.key, item });
     else if (item.kind === 'input') entries.push({ kind: 'input', key: item.key, item });
     else if (item.kind === 'tool' && activitySummary(item.entry).name === 'todo_write') {
       if (!plan || !history.includes(item)) entries.push({ kind: 'item', key: item.key, item });
@@ -175,13 +180,24 @@ export function buildTranscript(items: readonly PanelItem[], get: Getter, turnCl
   return entries;
 }
 
-/** The trailing thought of an open turn while its step is still streaming reasoning; it renders under the status line. */
+function isLiveThought(item: ReasoningItem, get: Getter, open: boolean): boolean {
+  if (!open) return false;
+  const node = get(item.nodeKey);
+  if (node?.kind !== 'assistant-step') return false;
+  const data = node.data as AssistantChatData;
+  return data.status === 'running' && data.blocks.at(-1)?.kind === 'reasoning'
+    && assistantSegments(data.blocks).at(-1)?.start === item.start;
+}
+
+/** Reading/grace seats are keyed to the thought itself, independently of its containing process group. */
+export function transcriptThoughts(entries: readonly TranscriptEntry[]): ReasoningItem[] {
+  return entries.flatMap(entry => entry.kind === 'thought' ? [entry.item] : entry.kind === 'group'
+    ? entry.items.filter((item): item is ReasoningItem => item.kind === 'reasoning') : []);
+}
+
+/** Only source-trailing reasoning is live, including when it belongs to a mixed process group. */
 export function liveThoughtKey(entries: readonly TranscriptEntry[], get: Getter, open: boolean): string | null {
   const last = entries.at(-1);
-  if (!open || last?.kind !== 'thought') return null;
-  const node = get(last.item.nodeKey);
-  if (node?.kind !== 'assistant-step') return null;
-  const data = node.data as AssistantChatData;
-  if (data.status !== 'running' || data.blocks.at(-1)?.kind !== 'reasoning') return null;
-  return assistantSegments(data.blocks).at(-1)?.start === last.item.start ? last.key : null;
+  const item = last?.kind === 'group' ? last.items.at(-1) : last?.kind === 'thought' ? last.item : undefined;
+  return item?.kind === 'reasoning' && isLiveThought(item, get, open) ? item.key : null;
 }

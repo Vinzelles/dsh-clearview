@@ -60,12 +60,13 @@ function groupInteraction() {
   };
   const internals = (React as any).__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
   let memberChange: ((key: string, open: boolean) => void) | undefined;
-  return (running: boolean, items = group(running).items, renderMedia?: (item: GroupEntry['items'][number]) => React.ReactNode) => {
+  return (running: boolean, items = group(running).items, renderMedia?: (item: GroupEntry['items'][number]) => React.ReactNode,
+    retain = false, onCloseThoughts?: ToolGroupRowProps['onCloseThoughts']) => {
     cursor = 0;
     const previous = internals.ReactCurrentDispatcher.current;
     internals.ReactCurrentDispatcher.current = dispatcher;
     try {
-      const row = ToolGroupRowView({ group: { ...group(running), items }, motion: false, onRead: () => {}, renderMedia, renderItem: (_item, onOpenChange) => { memberChange = onOpenChange; return null; } });
+      const row = ToolGroupRowView({ group: { ...group(running), items }, motion: false, onRead: () => {}, renderMedia, retain, onCloseThoughts, renderItem: (_item, onOpenChange) => { memberChange = onOpenChange; return null; } });
       const line = row.props.children[0];
       return { row, open: row.props['data-expanded'], toggle: line && line.props.onToggle, member: (key: string, open: boolean) => memberChange!(key, open) };
     } finally { internals.ReactCurrentDispatcher.current = previous; }
@@ -78,6 +79,28 @@ test('opening a member in an auto-open running group preserves it when the group
   assert.equal(render(false).open, true);
   render(false).member('r1', false);
   assert.equal(render(false).open, false);
+});
+
+test('reading grace holds a settled group, but an explicit close releases its retained thought seats', () => {
+  const draw = groupInteraction();
+  const thought = { kind: 'reasoning' as const, key: 'thought:0', nodeKey: 'thought', start: 0, step: 1 };
+  const items = [thought, group(false).items[0]!];
+  let released: readonly GroupEntry['items'][number][] | undefined;
+  const release = (value: readonly GroupEntry['items'][number][]) => { released = value; };
+  assert.equal(draw(false, items, undefined, true, release).open, true);
+  draw(false, items, undefined, true, release).toggle();
+  assert.deepEqual(released, items);
+  assert.equal(draw(false, items, undefined, true, release).open, false, 'explicit close wins over grace');
+});
+
+test('a thought-only group has a header and preserves its keyed member seat when a tool arrives', () => {
+  const draw = groupInteraction();
+  const thought = { kind: 'reasoning' as const, key: 'thought:0', nodeKey: 'thought', start: 0, step: 1 };
+  const first = draw(true, [thought]);
+  const next = draw(true, [thought, group(true).items[0]!]);
+  assert.equal(first.row.props['data-reader-group'], next.row.props['data-reader-group']);
+  assert.equal(first.row.props.children[1].props.children[0].key, next.row.props.children[1].props.children[0].key);
+  assert.equal(first.row.props.children[1].props['data-single'], false);
 });
 
 test('multiple open members, removed members and an explicit group close retain distinct intent', () => {

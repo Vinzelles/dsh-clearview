@@ -93,7 +93,7 @@ test('plan updates keep the first key and position, all source calls, and the la
   const items = [say('before'), first, tool('a', 'bash'), tool('b', 'read'), say('middle'), second, think('after')];
   const snapshot = JSON.stringify(items);
   const entries = buildTranscript(items, none, true);
-  assert.deepEqual(kinds(entries), ['narration', 'plan', 'group', 'narration', 'thought']);
+  assert.deepEqual(kinds(entries), ['narration', 'plan', 'group', 'narration', 'group']);
   const plan = onlyPlan(items);
   assert.equal(plan.key, first.key);
   assert.equal(onlyPlan([first]).key, plan.key, 'append does not change the React identity');
@@ -241,11 +241,12 @@ test('future chronological media/output/notice items break groups and retain sou
   assert.equal(entry.kind === 'narration' && entry.item, answer);
 });
 
-test('narration, thoughts and inputs are kept in order and break runs', () => {
+test('narration and inputs break runs while thoughts stay within their source-ordered process', () => {
   const entries = buildTranscript([say('a'), tool('1', 'bash', { command: 'ls' }), tool('2', 'read', { path: 'x' }), think('t'), tool('3', 'bash'), say('b'),
     { kind: 'input', key: 'in', nodeKey: 'in', step: 1 }, tool('4', 'write', { path: 'y' }), tool('5', 'edit', { path: 'y' })], none, true);
-  assert.deepEqual(kinds(entries), ['narration', 'group', 'thought', 'item', 'narration', 'input', 'group']);
+  assert.deepEqual(kinds(entries), ['narration', 'group', 'narration', 'input', 'group']);
   assert.equal(entries[1]!.key, 'group:reader-tool:1');
+  assert.deepEqual(entries[1]!.kind === 'group' && entries[1]!.items.map(item => item.key), ['reader-tool:1', 'reader-tool:2', 't', 'reader-tool:3']);
 });
 
 test('every narration paragraph of a long turn survives', () => {
