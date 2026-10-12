@@ -34,6 +34,10 @@
 
 ## 证据与命令
 
+追加整轮折叠条调整：状态点与折叠箭头共用一个 16px grid 槽位，收起空闲时显示状态点，悬停/键盘聚焦切换为箭头，展开后保持向下箭头。保留成功/异常颜色、整行按钮、统计和原有过程控制。100ms 切换支持关闭动效及 reduced-motion。
+
+追加验证：412 / 412 测试通过，构建、外部依赖与浏览器语法门禁通过。`turn-summary-icons/optimized.json` 使用真实鼠标和键盘输入验证悬停、打开、移出、关闭、Tab/Enter/Space、异常颜色、关闭动效及 reduced-motion；箭头和状态点中心重合，文字位移 0px。深浅色和 480px 窄屏截图无横向溢出，错误和失败均为 0。会话清单 780 → 780，ID 哈希不变，测试 Chrome/profile 已移除。此次为真实宿主 primitives 加载下的合成组件检查，没有将本地版本发布或应用。
+
 工作区 `.perf-results/`：`tests.log`、`build.log`、`style/optimized.json`、`reader/optimized.json`、`thought/optimized.json`、`live-final/report.json`、`artifact.json` 和 `package/dsh-clearview-0.3.9.tgz`。以下在该工作区执行：
 
 ```powershell
@@ -47,6 +51,6 @@ $env:CLEARVIEW_PERF_OUTPUT='.perf-results/style'
 node scripts/verify-reader-performance.mjs --style-refinement --screenshots
 ```
 
-客户端 SHA-256：`37b81def796aac7e9fed0709ca062aff48549edd147a4d85b9a6e71d661fd7d0`。后端 SHA-256：`e4069d190c1a3a91a83a90ccbfb9aad92abeccf5687ea57fc4acbbc7beb78efb`，与 0.3.8 一致。
+客户端 SHA-256：`9685d75b500a57a29bd6d372a33cbdf80d5e3e2cbe3703bbd8693981bac6d69e`。后端 SHA-256：`e4069d190c1a3a91a83a90ccbfb9aad92abeccf5687ea57fc4acbbc7beb78efb`，与 0.3.8 一致。
 
 0.3.9 已本地打包，没有调用 plugins.publish 或 runtime.commit，没有合并主分支或推送。临时 npm 缓存递归清理被自动审批拒绝（blocked by policy），该目录已保留，未换用其他工具重试。
