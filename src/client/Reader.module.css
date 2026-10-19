@@ -35,6 +35,9 @@
   --cv-detail-radius: 10px;
   --cv-process-size: calc(13px + var(--dsh-content-font-delta, 0px));
   --cv-process-text: #73736f;
+  /* A batch of operations shares one capped body: past this height the body scrolls so the
+     group's own summary row never leaves the viewport. */
+  --cv-process-max-height: 320px;
   --cv-indent: 28px;
   --cv-rail-offset: 22px;
   --cv-surface: rgba(20, 20, 19, .035);

@@ -1,4 +1,4 @@
-import { Fragment, memo, useCallback, useId, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { IconFlatListOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
 import { Line } from './Line.js';
@@ -17,6 +17,19 @@ export type MemberOpenChange = (key: string, open: boolean) => void;
  */
 export function groupOpen(choice: boolean | null, running: boolean, retained = false): boolean {
   return choice ?? (running || retained);
+}
+
+/** How close to its tail a capped body sits before new members stop following it, in px. */
+export const PROCESS_TAIL_SLACK = 24;
+
+/** A capped body follows new members only while the reader has not scrolled away from the tail. */
+export function followsTail(distance: number): boolean {
+  return distance <= PROCESS_TAIL_SLACK;
+}
+
+/** A body is a scroll region only once its members outgrow the cap. */
+export function processOverflow(scrollHeight: number, clientHeight: number): boolean {
+  return scrollHeight > clientHeight + 1;
 }
 
 /** Stable operation seats: a singleton stays open; groups fold their rows but never their media. */
@@ -74,6 +87,36 @@ export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedi
   const grouped = group.items.length >= 2 || group.items.some(item => item.kind === 'reasoning');
   const open = !grouped || groupOpen(choice, group.facts.running || readingMember, retain || live);
   const id = useId();
+  // A capped body keeps its newest member in view while the batch streams. A group the reader opens
+  // themselves starts at its first member, and scrolling away from the tail stops the follow until
+  // they scroll back down.
+  const members = useRef<HTMLDivElement | null>(null);
+  const sticking = useRef(true);
+  const opened = useRef(open);
+  const [overflowing, setOverflowing] = useState(false);
+  useLayoutEffect(() => {
+    const element = members.current;
+    if (!element) return;
+    if (opened.current !== open) {
+      opened.current = open;
+      sticking.current = open && (group.facts.running || live);
+      if (open) element.scrollTop = sticking.current ? element.scrollHeight : 0;
+    } else if (open && sticking.current) {
+      element.scrollTop = element.scrollHeight;
+    }
+    setOverflowing(processOverflow(element.scrollHeight, element.clientHeight));
+  });
+  useEffect(() => {
+    const element = members.current;
+    if (!element) return;
+    const track = () => {
+      sticking.current = followsTail(element.scrollHeight - element.scrollTop - element.clientHeight);
+    };
+    element.addEventListener('scroll', track, { passive: true });
+    return () => element.removeEventListener('scroll', track);
+  }, []);
+  // Only a capped body is a scroll region; the summary row above it stays the reader's handle.
+  const region = grouped && open && overflowing;
   const toggle = useCallback(() => { onRead(); if (open) onCloseThoughts?.(group.items); setChoice(!open); }, [onRead, open, onCloseThoughts, group.items]);
   const { running, failed } = group.facts;
   return <div className={css.group} data-reader-group={grouped ? group.key : undefined} data-reader-group-tools={group.items.some(item => item.kind === 'tool') || undefined}
@@ -81,7 +124,9 @@ export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedi
     {grouped && <Line icon={<IconFlatListOutlineRegular size={14} />} label={groupSummary(group.facts)} tone={failed > 0 ? 'failed' : running ? 'running' : 'idle'}
       shimmer={running && motion} trailing={failed > 0 ? <span>· {failed} 次失败</span> : undefined}
       open={open} onToggle={toggle} controls={id} />}
-    <div id={id} className={css.members} data-single={!grouped}>
+    <div id={id} ref={members} className={css.members} data-single={!grouped}
+      role={region ? 'region' : undefined} tabIndex={region ? 0 : undefined}
+      aria-label={region ? `${groupSummary(group.facts)}，可滚动阅读` : undefined}>
       {group.items.map(item => <Fragment key={item.key}>
         <CollapseBody open={open} motion={motion}>{renderItem(item, memberOpenChange)}</CollapseBody>
         {renderMedia?.(item)}
