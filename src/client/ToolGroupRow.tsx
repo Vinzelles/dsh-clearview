@@ -10,15 +10,21 @@ import css from './ToolGroupRow.module.css';
 export type GroupEntry = Extract<TranscriptEntry, { kind: 'group' }>;
 export type MemberOpenChange = (key: string, open: boolean) => void;
 
-/** A choice the reader made wins; with no choice the group is open exactly while it runs. */
-export function groupOpen(choice: boolean | null, running: boolean): boolean {
-  return choice ?? running;
+/**
+ * A choice the reader made wins; with no choice the group is open while it runs.
+ * `retained` keeps it open without claiming activity: a live tail has no running member
+ * for the moment between two steps, and folding there would reopen it one step later.
+ */
+export function groupOpen(choice: boolean | null, running: boolean, retained = false): boolean {
+  return choice ?? (running || retained);
 }
 
 /** Stable operation seats: a singleton stays open; groups fold their rows but never their media. */
 export interface ToolGroupRowProps {
   group: GroupEntry; motion: boolean; onRead: () => void;
   retain?: boolean;
+  /** The turn is open and this group is its process tail, so it never auto-folds. */
+  live?: boolean;
   onCloseThoughts?: (items: readonly PanelItem[]) => void;
   renderItem: (item: PanelItem, onOpenChange?: MemberOpenChange) => ReactNode;
   renderMedia?: (item: PanelItem) => ReactNode;
@@ -41,7 +47,7 @@ function sameItem(a: PanelItem, b: PanelItem): boolean {
 
 export function sameToolGroupProps(a: ToolGroupRowProps, b: ToolGroupRowProps): boolean {
   if (a.motion !== b.motion || a.onRead !== b.onRead || a.renderItem !== b.renderItem || a.renderMedia !== b.renderMedia
-      || a.retain !== b.retain || a.onCloseThoughts !== b.onCloseThoughts) return false;
+      || a.retain !== b.retain || a.live !== b.live || a.onCloseThoughts !== b.onCloseThoughts) return false;
   if (a.group === b.group) return true;
   const left = a.group, right = b.group;
   if (left.key !== right.key || left.items.length !== right.items.length
@@ -53,7 +59,7 @@ export function sameToolGroupProps(a: ToolGroupRowProps, b: ToolGroupRowProps): 
   return left.items.every((item, index) => sameItem(item, right.items[index]!));
 }
 
-export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedia, retain = false, onCloseThoughts }: ToolGroupRowProps) {
+export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedia, retain = false, live = false, onCloseThoughts }: ToolGroupRowProps) {
   const [choice, setChoice] = useState<boolean | null>(null);
   const [openMembers, setOpenMembers] = useState<ReadonlySet<string>>(() => new Set());
   const memberOpenChange = useCallback<MemberOpenChange>((key, open) => {
@@ -63,10 +69,10 @@ export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedi
       return next;
     });
   }, []);
-  // Only current members count. An explicit group close still wins over member details.
+  // Only current members count. An explicit group close still wins over member details and over a live tail.
   const readingMember = group.items.some(item => openMembers.has(item.key));
   const grouped = group.items.length >= 2 || group.items.some(item => item.kind === 'reasoning');
-  const open = !grouped || groupOpen(choice, group.facts.running || readingMember || retain);
+  const open = !grouped || groupOpen(choice, group.facts.running || readingMember, retain || live);
   const id = useId();
   const toggle = useCallback(() => { onRead(); if (open) onCloseThoughts?.(group.items); setChoice(!open); }, [onRead, open, onCloseThoughts, group.items]);
   const { running, failed } = group.facts;

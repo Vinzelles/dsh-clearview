@@ -18,6 +18,18 @@ test('the reader’s choice wins; otherwise open exactly while running', () => {
   assert.equal(groupOpen(null, false), false);
   assert.equal(groupOpen(true, false), true, 'opened while running, stays open after it settles');
   assert.equal(groupOpen(false, true), false);
+  assert.equal(groupOpen(null, false, true), true, 'a live tail stays open between steps');
+  assert.equal(groupOpen(false, false, true), false, 'an explicit close still wins over a live tail');
+});
+
+test('a settled live tail keeps its members open without claiming activity', () => {
+  const html = renderToStaticMarkup(createElement(ToolGroupRow, {
+    group: group(false), motion: true, onRead: () => {}, live: true,
+    renderItem: item => createElement('i', { 'data-member': item.key }),
+  }));
+  assert.match(html, /data-group-state="settled"[^>]*data-expanded="true"/);
+  assert.match(html, /data-member="r1"/);
+  assert.doesNotMatch(html, /data-shimmer="true"/);
 });
 
 test('a running group is open, shimmering and shows its members', () => {
@@ -213,6 +225,7 @@ test('memo skips recreated wrappers around the same ordered immutable tool paylo
     else next[field] = () => null;
     assert.equal(sameToolGroupProps(props, next), false, field);
   }
+  assert.equal(sameToolGroupProps(props, { ...copied(), live: true }), false, 'live');
   for (const change of ['block', 'draft', 'step', 'key', 'order', 'running', 'failed', 'counts', 'kindOrder']) {
     const next = copied(), row = next.group.items[0];
     if (row.kind !== 'tool') throw Error('tool fixture');
