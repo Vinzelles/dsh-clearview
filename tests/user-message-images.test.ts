@@ -77,6 +77,11 @@ test('the user block flow lays thumbnails in a wrapping row and gives text a ful
   const others = rule('.blocks[data-reader-blocks-source=user] > :not([data-reader-image]) {');
   assert.match(others, /flex: 1 1 100%;/);
   assert.match(others, /min-width: 0;/);
+  // The host wraps slot content in a display:contents [data-slot]; the real flex items are its
+  // children, so the full-line constraint has to reach through the wrapper as well.
+  const slotted = rule('.blocks[data-reader-blocks-source=user] > [data-slot] > :not([data-reader-image]) {');
+  assert.match(slotted, /flex: 1 1 100%;/);
+  assert.match(slotted, /min-width: 0;/);
 });
 
 test('thumbnails use one square token and crop instead of letterboxing', () => {

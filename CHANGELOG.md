@@ -2,6 +2,8 @@
 
 ## 0.3.14
 
+- 修复用户消息里「缩略图与正文并排」：宿主在槽位外再包一层 `display:contents` 的 `[data-slot]`，真正的 flex 项是它里面的块，原来只约束 `.blocks` 的直接子元素，文字块因此按内容宽度落在缩略图右侧。补一条穿透槽位的选择器后，真实引擎实测（1440 与 520 两种宽度）都是「88px 方图在上、正文独占整行」：块流 250×120.4 = 88 + 10 gap + 22.4，正文字块 width 250、`flex-basis: 100%`、位于方图下方 10px；`npm test` 446 项全绿，新断言锁住槽位选择器。
+
 - 上下文注入行与系统提示词行改用阅读器自己的行语言：此前是宿主 24px 折叠行（14px 副文本比 13px 标题还大、hover 只有字色变化、展开体是 141px 代码视口），夹在 32px 的过程行之间矮一截。现为同一套 `Line`：32px 行高、5px/8px 内距、8px 圆角、13px + 宿主字号的正文层级，hover 与展开共享 `--cv-row-hover` / `--cv-row-open` 表面，16px 图标槽在 hover/展开时换成右→下箭头；`tool-registry` 这类生产者名降为 `--cc-text-500` 副文本，与角色名之间是过程行同形的 2px 圆点（`corner-shape: round`）。保留 `data-context-source`、`data-context-summary`、`data-context-injection-body`、`data-context-form`、`data-system-prompt-body` 与 `data-reader-line-*` 标记。
 - 展开体改用阅读器共享详情面：1px `--cv-detail-border`、`--cv-detail-radius`(10px)、`--cv-surface` 底色、左缩进 `--cv-indent`(28px)，仍以 `--cv-process-max-height`(320px) 封顶并在内部滚动，等宽字体与代码字号不变；折叠时不再挂载 body（原来先渲染再由动画裁剪）。
 - 实测（真实引擎，组件 SSR 标记 + 仓库样式表，因为宿主此时仍在服务启动快照里的旧 bundle）：行 726×32、padding 5/8、圆角 8、标签 13px/20px；hover 底色 rgba(20,20,19,.055)、展开 rgba(20,20,19,.035)；图标 opacity 1→0、箭头 opacity 0→1 并 rotate(90deg)；展开体宽 690（726−28−8）、margin 6px 8px 12px 28px、1px rgba(20,20,19,.1)、圆角 10px、max-height 320px、13px/18px 等宽。`npm test` 446 项全绿，新增 `tests/context-injection-row.test.ts` 8 项锁住行语法与详情面。

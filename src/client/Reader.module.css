@@ -139,6 +139,9 @@
    每张图一个固定方框，多张图按 8px 列距折行。 */
 .blocks[data-reader-blocks-source=user] { flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: var(--cv-blocks-gap, 16px) 8px; }
 .blocks[data-reader-blocks-source=user] > :not([data-reader-image]) { flex: 1 1 100%; min-width: 0; }
+/* 宿主在槽位外再包一层 display:contents 的 [data-slot]，真正的 flex 项是它里面的块。
+   没有下面这条，文字块按内容宽度与缩略图并排（实测气泡里 88px 方图左、正文右）。 */
+.blocks[data-reader-blocks-source=user] > [data-slot] > :not([data-reader-image]) { flex: 1 1 100%; min-width: 0; }
 .readingText { min-width: 0; }
 .readingText button { min-width: 24px; min-height: 24px; }
 .userText { white-space: pre-wrap; word-break: break-word; }
