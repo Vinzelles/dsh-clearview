@@ -1,15 +1,16 @@
 .card { min-width: 0; margin: 6px 8px; border: 1px solid var(--cv-detail-border); border-radius: var(--cv-detail-radius); corner-shape: round; background: var(--cv-surface); font-family: var(--cc-font-ui); font-size: var(--cc-size-body); line-height: 1.5; overflow-wrap: anywhere; }
 .header { display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap; padding: 5px 10px; color: var(--cv-process-text); font-size: var(--cv-process-size); }
-.title { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
-.status { font-size: var(--cc-size-small); }
+/* One inline formatting context: the smaller status keeps its own size but sits on the title's baseline. */
+.summary { min-width: 0; }
+.title { font-weight: 500; }
+.title svg { vertical-align: -0.16em; margin-inline-end: 6px; }
+.status { margin-inline-start: 10px; font-size: var(--cc-size-small); }
 .actions { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; min-width: 0; flex-wrap: wrap; }
 .card[data-question-state="failed"] .status, .card[data-question-state="interrupted"] .status { color: var(--cc-danger); }
 .questions { min-width: 0; }
-.item { padding: 6px 10px; min-width: 0; }
+.item { display: flex; flex-direction: column; gap: 1px; padding: 6px 10px; min-width: 0; }
 .item + .item { border-top: 1px solid var(--cv-detail-border); }
 .heading { color: var(--cv-process-text); font-size: var(--cc-size-small); }
-.pair { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 4px 8px; margin: 0; }
-.label { color: var(--cv-process-text); font-size: var(--cc-size-small); padding-top: 1px; }
 .question { min-width: 0; margin: 0; color: var(--cc-text-300); white-space: pre-wrap; }
 .answer { min-width: 0; margin: 0; color: var(--cc-text-100); }
 .selected { display: flex; flex-wrap: wrap; gap: 2px 12px; margin: 0; padding: 0; list-style: none; }
@@ -33,5 +34,4 @@
 .chevron { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; transition: transform var(--cv-fast) var(--cv-ease); }
 .chevron[data-open="true"] { transform: rotate(90deg); }
 [data-motion=off] .chevron { transition: none; }
-@container (max-width: 340px) { .pair { grid-template-columns: minmax(0, 1fr); gap: 2px; } .pair .label:not(:first-child) { margin-top: 4px; } }
 @media (prefers-reduced-motion: reduce) { .chevron { transition: none; } }

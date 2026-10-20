@@ -18,8 +18,10 @@ export function QuestionRecord({ history, callId, phase, open, onToggle, control
   return <section className={css.card} aria-label="问答记录" data-reader-question-record
     data-reader-tool-call={callId} data-tool-phase={phase} data-tool-category="other" data-expanded={open} data-question-state={history.state}>
     <div className={css.header}>
-      <span className={css.title}><IconQuestionOutlineRegular size={14} />问答记录</span>
-      <span className={css.status}>{history.status}</span>
+      <span className={css.summary}>
+        <span className={css.title} data-question-title><IconQuestionOutlineRegular size={14} />问答记录</span>
+        <span className={css.status} data-question-status>{history.status}</span>
+      </span>
       <div className={css.actions}>
         <button type="button" className={css.original} aria-expanded={open} aria-controls={controls} onClick={onToggle} data-reader-question-original>
           <svg className={css.chevron} data-open={open} viewBox="0 0 12 12" aria-hidden="true"><path d="m4 2 4 4-4 4" /></svg>原始记录
@@ -27,21 +29,17 @@ export function QuestionRecord({ history, callId, phase, open, onToggle, control
         {inspectCall && <InspectButton callId={callId} inspectCall={inspectCall} />}
       </div>
     </div>
-    <div className={css.questions}>{history.questions.map((item, index) => <div className={css.item} key={item.id} data-question-id={item.id}>
-      <dl className={css.pair}>
-        <dt className={css.label}>问题{history.questions.length > 1 ? ` ${index + 1}` : ''}</dt><dd className={css.question}>
-          {item.header && <span className={css.heading}>{item.header} · </span>}{item.question}
-        </dd>
-        <dt className={css.label}>用户回答</dt><dd className={css.answer} data-question-answer={item.answerState}>
-          {item.answerState === 'answered' ? <>
-            {item.selected.length > 0 && <ul className={css.selected}>{item.selected.map((value, i) => <li key={i}>
-              <svg className={css.check} viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 6 4.7 8.7 10 3.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              <span>{value}</span>
-            </li>)}</ul>}
-            {item.custom && <div className={css.custom}>{item.selected.length > 0 && <span className={css.customLabel}>补充：</span>}<p>{item.custom}</p></div>}
-          </> : <span className={css.empty}>{EMPTY_ANSWERS[item.answerState]}</span>}
-        </dd>
-      </dl>
+    <div className={css.questions}>{history.questions.map(item => <div className={css.item} key={item.id} data-question-id={item.id}>
+      <p className={css.question}>{item.header && <span className={css.heading}>{item.header} · </span>}{item.question}</p>
+      <div className={css.answer} data-question-answer={item.answerState}>
+        {item.answerState === 'answered' ? <>
+          {item.selected.length > 0 && <ul className={css.selected}>{item.selected.map((value, i) => <li key={i}>
+            <svg className={css.check} viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 6 4.7 8.7 10 3.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <span>{value}</span>
+          </li>)}</ul>}
+          {item.custom && <div className={css.custom}>{item.selected.length > 0 && <span className={css.customLabel}>补充：</span>}<p>{item.custom}</p></div>}
+        </> : <span className={css.empty}>{EMPTY_ANSWERS[item.answerState]}</span>}
+      </div>
     </div>)}</div>
     {history.note && <p className={css.note}>{history.note}</p>}
     <CollapseBody open={open} motion={motion}><div id={controls}>

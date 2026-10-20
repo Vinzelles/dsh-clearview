@@ -87,7 +87,7 @@ test('a completed question tool displays the question and answer immediately and
   const html = row(answered([{ id: 'scope', selected: ['完整修复（推荐）'] }, { id: 'notes', selected: [], custom: '保留动画。' }]), true, () => {});
   assert.match(html, /data-reader-question-record/);
   assert.match(html, /这次要修复哪些问题？/);
-  assert.match(html, /用户回答/);
+  assert.doesNotMatch(html, /<dt\b|用户回答/, 'questions and answers are read as plain consecutive rows, without label cells');
   assert.match(html, /完整修复（推荐）/);
   assert.match(html, /保留动画。/);
   assert.match(html, /data-reader-question-original[^>]*>.*原始记录/s);
