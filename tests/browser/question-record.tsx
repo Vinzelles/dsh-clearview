@@ -87,12 +87,28 @@ const click = async (selector: string) => { const button = host.querySelector<HT
   document.body.toggleAttribute('data-ds-dark-theme', theme === 'dark');
   host.style.background = theme === 'dark' ? '#141413' : '#fff';
   host.scrollTop = 0; draw(); await settle();
-  const q = card().querySelector<HTMLElement>('dd')!;
+  const baseline = (selector: string) => {
+    const host = card().querySelector<HTMLElement>(selector)!;
+    const probe = document.createElement('span');
+    probe.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
+    host.append(probe);
+    const y = probe.getBoundingClientRect().top;
+    probe.remove();
+    return y;
+  };
+  const titleSize = getComputedStyle(card().querySelector('[data-question-title]')!).fontSize;
+  const statusSize = getComputedStyle(card().querySelector('[data-question-status]')!).fontSize;
+  const headerBaseline = Math.round(Math.abs(baseline('[data-question-title]') - baseline('[data-question-status]')) * 100) / 100;
+  const question = card().querySelector<HTMLElement>('[data-question-id] p')!;
   const answer = card().querySelector<HTMLElement>('[data-question-answer]')!;
-  const facts = { theme, viewport: innerWidth, cardWidth: card().getBoundingClientRect().width, cardHeight: card().getBoundingClientRect().height, questionColor: getComputedStyle(q).color,
-    answerColor: getComputedStyle(answer).color, fontSize: getComputedStyle(answer).fontSize, overflow: host.scrollWidth - host.clientWidth,
-    visible: visible(card()), columns: getComputedStyle(card().querySelector('dl')!).gridTemplateColumns };
+  const facts = { theme, viewport: innerWidth, cardWidth: card().getBoundingClientRect().width, cardHeight: card().getBoundingClientRect().height,
+    questionColor: getComputedStyle(question).color, answerColor: getComputedStyle(answer).color, fontSize: getComputedStyle(answer).fontSize,
+    overflow: host.scrollWidth - host.clientWidth, visible: visible(card()), labelCells: card().querySelectorAll('dt, dd, [data-question-label]').length,
+    titleSize, statusSize, headerBaseline };
   check(facts.visible, `${theme}: question receipt hidden`);
+  check(facts.labelCells === 0, `${theme}: question rows still print label cells`);
+  check(titleSize !== statusSize, `${theme}: header lost its size hierarchy (both ${titleSize})`);
+  check(facts.headerBaseline <= 0.25, `${theme}: header title and status share no baseline (off by ${facts.headerBaseline}px)`);
   check(facts.questionColor !== facts.answerColor, `${theme}: question and answer have no color hierarchy`);
   check(facts.overflow <= 1, `${theme}: horizontal overflow`);
   return facts;
