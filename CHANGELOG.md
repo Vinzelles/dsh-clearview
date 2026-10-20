@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.14
+
+- 上下文注入行与系统提示词行改用阅读器自己的行语言：此前是宿主 24px 折叠行（14px 副文本比 13px 标题还大、hover 只有字色变化、展开体是 141px 代码视口），夹在 32px 的过程行之间矮一截。现为同一套 `Line`：32px 行高、5px/8px 内距、8px 圆角、13px + 宿主字号的正文层级，hover 与展开共享 `--cv-row-hover` / `--cv-row-open` 表面，16px 图标槽在 hover/展开时换成右→下箭头；`tool-registry` 这类生产者名降为 `--cc-text-500` 副文本，与角色名之间是过程行同形的 2px 圆点（`corner-shape: round`）。保留 `data-context-source`、`data-context-summary`、`data-context-injection-body`、`data-context-form`、`data-system-prompt-body` 与 `data-reader-line-*` 标记。
+- 展开体改用阅读器共享详情面：1px `--cv-detail-border`、`--cv-detail-radius`(10px)、`--cv-surface` 底色、左缩进 `--cv-indent`(28px)，仍以 `--cv-process-max-height`(320px) 封顶并在内部滚动，等宽字体与代码字号不变；折叠时不再挂载 body（原来先渲染再由动画裁剪）。
+- 实测（真实引擎，组件 SSR 标记 + 仓库样式表，因为宿主此时仍在服务启动快照里的旧 bundle）：行 726×32、padding 5/8、圆角 8、标签 13px/20px；hover 底色 rgba(20,20,19,.055)、展开 rgba(20,20,19,.035)；图标 opacity 1→0、箭头 opacity 0→1 并 rotate(90deg)；展开体宽 690（726−28−8）、margin 6px 8px 12px 28px、1px rgba(20,20,19,.1)、圆角 10px、max-height 320px、13px/18px 等宽。`npm test` 446 项全绿，新增 `tests/context-injection-row.test.ts` 8 项锁住行语法与详情面。
+
 ## 0.3.13
 
 - 兼容内核 0.2.1-rc.2 的构建契约：`dsh-client-ui-primitives` 从 0.2.1 起把 `TerminalBlockLabels.commandLine` 由可选改为必填（命令行横向溢出时的可访问名，1-based 行号）。缺这个键会让 `tsc` 报 `TS2322`，`npm run build` 的 tsc 阶段 exit=2、整包出不来。现补 ``commandLine: (line: number) => `第 ${line} 行命令行` ``；0.2.0 及更早的类型不声明该字段，多传一个键经 `{ ...TERMINAL_LABELS, ...labels }` 展开合并无副作用。

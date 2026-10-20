@@ -4,7 +4,8 @@
   "adaptations": [
     "Public type import in place of private type-only path",
     "ESM .js import suffixes",
-    "Local ReferenceIcon location"
+    "Local ReferenceIcon location",
+    "ContextInjectionRow.tsx and its stylesheet render on the reader's own Line header and detail surface instead of the host DisclosureRow, and SystemPromptRow follows the same grammar"
   ],
   "files": [
     {

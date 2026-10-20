@@ -1,62 +1,51 @@
-/* Figma 10:2482: 24px Tool calls header, 4px gap, 141px code block cap. */
+/* A logged context row is a reader transcript row, not a host disclosure: the
+   shared 32px Line header, then one bounded body on the shared detail surface. */
 
 .root {
   min-width: 0;
 }
 
-.root[data-open] {
-  padding-bottom: 4px;
-}
-
-.chevron {
-  color: var(--cc-text-300);
-}
-
-/* Separator and producer name beside the role title: ToolRow's summary geometry,
-   so the two disclosure rows keep one 24px rhythm and one separator shape. */
+/* Separator between the role title and the producer beside it, in the process
+   rows' dot shape. Inline, because the header is one wrapping sentence rather
+   than a flex row of parts. */
 .sep {
-  flex: none;
+  display: inline-block;
   width: 2px;
   height: 2px;
   margin: 0 8px;
-  border-radius: 1px;
+  border-radius: 999px;
+  corner-shape: round;
   background: var(--cc-text-500);
+  vertical-align: middle;
 }
 
+/* The producer the durable source names: dimmer than the role it qualifies,
+   at the row's own size instead of the 24px header's 14px. */
 .source {
-  flex: none;
-  min-width: 0;
-  overflow: hidden;
   color: var(--cc-text-500);
-  font-size: 14px;
-  line-height: 24px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
-/* A notice's one-line account: the reason it rarely needs expanding. */
+/* A notice's one-line account: the reason it rarely needs expanding. It wraps
+   with the rest of the sentence rather than truncating the role. */
 .summary {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
   color: var(--cc-text-500);
-  font-size: 14px;
-  line-height: 24px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
-.body {
+.detail {
   box-sizing: border-box;
-  width: calc(100% - 22px);
-  max-height: 141px;
-  margin: 4px 0 0 22px;
+  margin: 6px 8px 12px var(--cv-indent);
+  max-height: var(--cv-process-max-height, 320px);
   overflow: auto;
-  padding: 10px 16px 12px 12px;
-  border: none;
-  border-radius: 8px;
-  background: var(--cc-bg-200);
-  color: var(--cc-text-500);
-  /* Figma 10:2482 code text: the form bodies inherit it from the scrollport. */
-  font: 400 11px/16px var(--cc-font-mono);
+  padding: 10px 12px;
+  border: 1px solid var(--cv-detail-border);
+  border-radius: var(--cv-detail-radius);
+  corner-shape: round;
+  background: var(--cv-surface);
+  color: var(--cc-text-300);
+  /* Every form body inherits the code face from this scrollport; the forms
+     themselves only draw structure inside it. */
+  font: var(--cc-size-code)/18px var(--cc-font-mono);
+  overflow-wrap: anywhere;
 }
