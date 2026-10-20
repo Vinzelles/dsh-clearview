@@ -47,8 +47,12 @@ export class BlockBoundary extends Component<{ children: ReactNode }, { failed: 
   }
 }
 
-export const ImageBlock = memo(function ImageBlock({ attachment, loadImage }: {
-  attachment: ImageAttachmentRef; loadImage: BlockRenderProps['loadImage'];
+/** 0.3.12：用户消息里的图片收成方形缩略图（同一尺寸、一行一个格子），回答与工具
+ *  结果里的图片仍是原尺寸大图。差异只落在变体上，避免两条渲染分支各自漂移。 */
+export type ImageVariant = 'full' | 'thumb';
+
+export const ImageBlock = memo(function ImageBlock({ attachment, loadImage, variant = 'full' }: {
+  attachment: ImageAttachmentRef; loadImage: BlockRenderProps['loadImage']; variant?: ImageVariant;
 }) {
   // 附件引用缺失（宿主块形状漂移）或宿主没注入 loadImage 时，一律走既有占位分支：
   // 渲染期不再解引用 attachment，效果里也不再调用 undefined 的加载器——这两种情况
@@ -75,9 +79,12 @@ export const ImageBlock = memo(function ImageBlock({ attachment, loadImage }: {
   }, [usable, reference, attempt, loadImage]);
   const width = positive(reference?.width) ?? 4;
   const height = positive(reference?.height) ?? 3;
-  return <figure className={css.imageFigure} data-reader-image data-image-state={error ? 'error' : decoded ? 'ready' : 'loading'}>
-    <div className={css.imageFrame} style={{ aspectRatio: `${width} / ${height}` }}>
-      {!error && url && <button ref={opener} type="button" className={css.imageOpen} aria-label={`放大图片${reference?.name ? `：${reference.name}` : ''}`} onClick={() => dialog.current?.showModal()}>
+  // 缩略图不写 aspect-ratio：容器是固定方框，裁剪由 object-fit: cover 承担；
+  // 也不出 figcaption——文件名改挂在放大按钮的 title 上，避免占掉气泡的整行。
+  const thumb = variant === 'thumb';
+  return <figure className={css.imageFigure} data-reader-image data-image-variant={variant} data-image-state={error ? 'error' : decoded ? 'ready' : 'loading'}>
+    <div className={css.imageFrame} style={thumb ? undefined : { aspectRatio: `${width} / ${height}` }}>
+      {!error && url && <button ref={opener} type="button" className={css.imageOpen} title={thumb ? reference?.name : undefined} aria-label={`放大图片${reference?.name ? `：${reference.name}` : ''}`} onClick={() => dialog.current?.showModal()}>
         <img src={url} alt={reference?.name ?? '会话图片'} width={width} height={height} onLoad={() => setDecoded(true)} onError={() => setError(true)} data-ready={decoded} />
       </button>}
       {(!decoded || error) && <div className={css.imagePlaceholder}>
@@ -85,7 +92,7 @@ export const ImageBlock = memo(function ImageBlock({ attachment, loadImage }: {
         {error && usable && <button type="button" className={css.textButton} onClick={() => setAttempt(value => value + 1)}>重试</button>}
       </div>}
     </div>
-    {reference?.name && <figcaption>{reference.name}</figcaption>}
+    {!thumb && reference?.name && <figcaption>{reference.name}</figcaption>}
     <dialog ref={dialog} className={css.imageDialog} aria-label="图片预览" onClose={() => opener.current?.focus()} onClick={event => { if (event.target === dialog.current) dialog.current?.close(); }}>
       <button type="button" autoFocus className={css.dialogClose} aria-label="关闭图片预览" onClick={() => dialog.current?.close()}>×</button>
       {url && <img src={url} alt={reference?.name ?? '会话图片'} />}
@@ -95,7 +102,7 @@ export const ImageBlock = memo(function ImageBlock({ attachment, loadImage }: {
 
 type TextPresentation = { startedAt?: number; interrupted?: boolean; liveText?: boolean; revealKey?: string };
 
-function ReadingMarkdown({ text, streaming, holdFormatting, startedAt, interrupted = false, liveText = false, revealKey, kind = 'body', fileMentions }: { text: string; streaming: boolean; holdFormatting: boolean; kind?: 'body' | 'reasoning'; fileMentions?: MarkdownFileMentions } & TextPresentation) {
+function ReadingMarkdown({ text, streaming, holdFormatting, startedAt, interrupted = false, liveText = false, revealKey, kind = 'body', fileMentions, mediaUrl }: { text: string; streaming: boolean; holdFormatting: boolean; kind?: 'body' | 'reasoning'; fileMentions?: MarkdownFileMentions; mediaUrl?: BlockRenderProps['mediaUrl'] } & TextPresentation) {
   const root = useRef<HTMLDivElement>(null);
   const presentation = useStreamingText(text, streaming, { startedAt, interrupted: interrupted || !liveText, selected: holdFormatting, revealKey });
   // Native Markdown changes block keys for its full final parse. Keep the last
@@ -106,7 +113,7 @@ function ReadingMarkdown({ text, streaming, holdFormatting, startedAt, interrupt
   useLayoutEffect(() => { committedMode.current = effectiveMode; }, [effectiveMode]);
   return <div ref={root} className={css.readingText} data-reader-text data-reader-text-kind={kind} data-received-length={text.length} data-shown-length={presentation.text.length}
     data-presentation-pending={presentation.pending || undefined} data-motion-style="opacity-blur" data-ud-motion="reader-text-arrival" data-ud-motion-type="reveal" data-ud-motion-no-flash="true">
-    <MotionMarkdown text={presentation.text} streaming={effectiveMode} enabled={liveText && presentation.reveal && effectiveMode} revision={presentation.revision} fileMentions={fileMentions} />
+    <MotionMarkdown text={presentation.text} streaming={effectiveMode} enabled={liveText && presentation.reveal && effectiveMode} revision={presentation.revision} fileMentions={fileMentions} mediaUrl={mediaUrl} />
   </div>;
 }
 
@@ -118,10 +125,10 @@ function ReadingReasoning({ text, streaming, holdFormatting, startedAt, interrup
   </div>;
 }
 
-function fallback(block: AssistantBlock, streaming: boolean, source: ReaderBlockOwner['source'], loadImage: BlockRenderProps['loadImage'], holdFormatting: boolean, presentation: TextPresentation, fileMentions: MarkdownFileMentions | undefined): ReactNode {
+function fallback(block: AssistantBlock, streaming: boolean, source: ReaderBlockOwner['source'], loadImage: BlockRenderProps['loadImage'], holdFormatting: boolean, presentation: TextPresentation, fileMentions: MarkdownFileMentions | undefined, mediaUrl: BlockRenderProps['mediaUrl']): ReactNode {
   switch (block.kind) {
-    case 'text': return source === 'user' ? <UserText text={block.text} /> : <ReadingMarkdown text={block.text} streaming={streaming} holdFormatting={holdFormatting} fileMentions={fileMentions} {...presentation} />;
-    case 'image': return <ImageBlock attachment={block.attachment} loadImage={loadImage} />;
+    case 'text': return source === 'user' ? <UserText text={block.text} /> : <ReadingMarkdown text={block.text} streaming={streaming} holdFormatting={holdFormatting} fileMentions={fileMentions} mediaUrl={mediaUrl} {...presentation} />;
+    case 'image': return <ImageBlock attachment={block.attachment} loadImage={loadImage} variant={source === 'user' ? 'thumb' : 'full'} />;
     case 'reasoning': return <ReadingReasoning text={block.text} streaming={streaming} holdFormatting={holdFormatting} {...presentation} />;
     case 'tool-call': return <JsonBlockL label={`工具参数 · ${block.name}`} payload={block.argsRaw} />;
     case 'other': return <div className={css.unknown}>
@@ -131,14 +138,14 @@ function fallback(block: AssistantBlock, streaming: boolean, source: ReaderBlock
   }
 }
 
-export const Blocks = memo(function Blocks({ blocks, streaming = false, source = 'assistant', holdFormatting = false, startedAt, interrupted, liveText, revealKey, renderSlotChain, loadImage, fileMentions }: BlockRenderProps & TextPresentation & {
+export const Blocks = memo(function Blocks({ blocks, streaming = false, source = 'assistant', holdFormatting = false, startedAt, interrupted, liveText, revealKey, renderSlotChain, loadImage, fileMentions, mediaUrl }: BlockRenderProps & TextPresentation & {
   blocks: readonly AssistantBlock[]; streaming?: boolean; source?: ReaderBlockOwner['source']; holdFormatting?: boolean; fileMentions?: MarkdownFileMentions;
 }) {
   // Generic data-streaming is owned by host reveal engines (CSS Highlight ranges).
   // Reader text has its own reveal clock; never opt into a second fading layer.
-  return <div className={css.blocks} data-reader-streaming={streaming || undefined}>
+  return <div className={css.blocks} data-reader-blocks-source={source} data-reader-streaming={streaming || undefined}>
     {blocks.map((block, index) => <BlockBoundary key={blockKey(block, index)}>
-      <Fragment>{renderSlotChain('dsh-clearview.block', { block, streaming, source }, { fallback: fallback(block, streaming, source, loadImage, holdFormatting, { startedAt, interrupted, liveText, revealKey: revealKey === undefined ? undefined : `${revealKey}:${index}` }, fileMentions) })}</Fragment>
+      <Fragment>{renderSlotChain('dsh-clearview.block', { block, streaming, source }, { fallback: fallback(block, streaming, source, loadImage, holdFormatting, { startedAt, interrupted, liveText, revealKey: revealKey === undefined ? undefined : `${revealKey}:${index}` }, fileMentions, mediaUrl) })}</Fragment>
     </BlockBoundary>)}
   </div>;
 });

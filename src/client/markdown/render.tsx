@@ -7,7 +7,8 @@
  *
  * Untrusted-output policy (unchanged from the replaced pipeline): link and
  * image destinations pass a protocol allowlist, images additionally require
- * absolute HTTP(S), raw HTML renders as literal text (no HTML enters the
+ * absolute HTTP(S) unless the owner installs a resolver (the Reader maps
+ * workspace paths onto the host file route), raw HTML renders as literal text (no HTML enters the
  * DOM), and KaTeX runs without trusted commands. Fragment-anchor URLs fail
  * the allowlist, so footnote references and back-references render as plain
  * text rather than in-page links.
@@ -136,6 +137,12 @@ export interface MarkdownRenderContext {
   readonly inBlockquote?: boolean
   /** Inline-code file mentions; absent wherever no opener vocabulary exists. */
   readonly fileMentions: MarkdownFileMentions | undefined
+  /**
+   * Reader addition: map one authored image destination (a workspace path, or
+   * anything else the owner answers for) onto a displayable URL. The result
+   * still has to survive the absolute-HTTP(S) allowlist.
+   */
+  readonly resolveImage?: (url: string) => string | undefined
   /** Inside an anchor's children: interactive mentions must not nest there. */
   readonly inLink?: boolean
   /** Reference targets visible to this pass. */
@@ -297,7 +304,7 @@ function renderNode(node: Md.RootContent, key: Key, context: MarkdownRenderConte
     case 'linkReference':
       return renderLinkReference(node, key, context)
     case 'image':
-      return renderImage(node.url, node.alt ?? '', key)
+      return renderImage(node.url, node.alt ?? '', key, context)
     case 'imageReference':
       return renderImageReference(node, key, context)
     case 'footnoteReference':
@@ -504,8 +511,13 @@ function inlineCodeHttpUrl(value: string): string | undefined {
   }
 }
 
-function renderImage(url: string, alt: string, key: Key): ReactNode {
-  const imageSrc = remoteImageUrl(sanitizeUrl(normalizeUri(url)))
+function renderImage(url: string, alt: string, key: Key, context: MarkdownRenderContext): ReactNode {
+  const authored = normalizeUri(url)
+  // Remote destinations keep the allowlist. A reader resolver may map an
+  // authored workspace path onto the host file route; its answer is checked
+  // against the same allowlist so a resolver can never smuggle in a scheme.
+  const imageSrc = remoteImageUrl(sanitizeUrl(authored))
+    ?? remoteImageUrl(context.resolveImage?.(authored) ?? '')
   if (imageSrc === undefined) {
     return <span key={key} className={css.imageAlt}>{alt}</span>
   }
@@ -552,7 +564,7 @@ function renderImageReference(
 ): ReactNode {
   const definition = context.targets.definitions.get(node.identifier.toUpperCase())
   if (definition === undefined) return `![${node.alt ?? ''}${referenceSuffix(node)}`
-  return renderImage(definition.url, node.alt ?? '', key)
+  return renderImage(definition.url, node.alt ?? '', key, context)
 }
 
 function renderFootnoteReference(

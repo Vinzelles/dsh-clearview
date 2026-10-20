@@ -51,7 +51,7 @@ export function Reader(rawProps: ReaderProps) {
     scroll.jump();
     setResumeSignal(value => value + 1);
   };
-  const { openFile, fork, fileMentions, inspectCall, openView } = props;
+  const { openFile, fork, fileMentions, inspectCall, openView, mediaUrl } = props;
   // One value for every row: motion, host file/fork/inspect/view actions.
   const actions = useMemo<ReaderActions>(() => ({
     motion,
@@ -59,9 +59,10 @@ export function Reader(rawProps: ReaderProps) {
     openFile: openFile ? path => { void openFile(path).catch(() => {}); } : undefined,
     fork,
     fileMentions,
+    mediaUrl,
     inspectCall,
     showInChat: focus => openView('chat', focus),
-  }), [motion, resumeSignal, openFile, fork, fileMentions, inspectCall, openView]);
+  }), [motion, resumeSignal, openFile, fork, fileMentions, mediaUrl, inspectCall, openView]);
   const { viewRequest, completeViewRequest } = props;
   useEffect(() => {
     if (!viewRequest || viewRequest.view !== 'reader') return;

@@ -225,7 +225,7 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
   const closingSeq = closingOf(turn)?.seq;
   // The host hands back a fresh resolver per call; keep one per turn and closing reply so the answer's Blocks stay memoised.
   const mentions = useMemo(() => status === 'done' && turn && closingSeq !== undefined ? fileMentions?.(turn, closingSeq) : undefined, [status, turn, closingSeq, fileMentions]);
-  const shared = useMemo(() => ({ renderSlotChain: props.renderSlotChain, loadImage: props.loadImage }), [props.renderSlotChain, props.loadImage]);
+  const shared = useMemo(() => ({ renderSlotChain: props.renderSlotChain, loadImage: props.loadImage, mediaUrl: props.mediaUrl }), [props.renderSlotChain, props.loadImage, props.mediaUrl]);
   const noop = useCallback(() => {}, []);
   const lastAnswerKey = layout.answer.at(-1)?.key;
   const activeLabel = status === 'waiting' ? '等待你的操作' : runningLabel(turn, group.keys, get);

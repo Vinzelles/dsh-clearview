@@ -15,6 +15,8 @@ The receipt uses a compact header with its status and history/inspection links, 
 - Preserve native context sources, tool types, summaries, filenames, details and results.
 - Preserve the native conversation, input, model selector and approval system.
 - Leave nontext and unknown content available through native renderers or a safe fallback.
+- Model-written Markdown images resolve the way native Chat resolves them: a workspace-relative destination joins the session cwd, an absolute destination passes through, and the result must still be an absolute HTTP(S) URL — the host file route is the only extra gateway. Destinations that name no workspace file keep the documented alt-text fallback, and a resolver can never widen the protocol allowlist.
+- User-message images are thumbnails: one square container per image, the same size in every message, laid out in rows of the bubble. The attachment name stays available as the preview title instead of a caption row, and every other block keeps a full line, so text is never collapsed, clipped or squeezed by the images. Answers and tool results keep the full-size image with its caption.
 
 ## Lifecycle
 
@@ -32,7 +34,7 @@ The completed-turn summary also uses a shared 16px leading slot: its status dot 
 
 A turn is one column without an outer container or an "earlier steps" row. Completed turns have the summary described above. Narration and the final answer share one `.prose` style using the current native conversation font. Entries:
 
-- User message: a right-hand bubble, six lines then clamped behind 展开全文 / 收起 (inside the bordered bubble; excluded from copied message text). Mid-turn input and command input are smaller bubbles at their chronological position; the rewind seat is always present.
+- User message: a right-hand bubble, six lines then clamped behind 展开全文 / 收起 (inside the bordered bubble; excluded from copied message text). Images inside it are 88px square thumbnails in a wrapping row, with the text on its own full line below them. Mid-turn input and command input are smaller bubbles at their chronological position; the rewind seat is always present.
 - Operation row: icon, Chinese verb and target ("运行 `npm run build`", "编辑 path +2 −1"), no durations. Opening it shows the detail block (output, arguments, search results, red/green diff for edits). A failure is marked red in the row only and never opens by itself.
 - Thought: a member of the continuous process group. Opening the group exposes its 「思考了 N 秒」 disclosure and full original text in a 128px scroll viewport. A thought-only group uses the same process header and stable group key when tools arrive. Historical thoughts remain at the reader's position; an opened current-step thought can follow while that step is active. No preview and no character count.
 - Plan: the first successful, parseable, nonempty `todo_write` creates a checklist card updated in place. Later successful updates replace its items, including an explicit empty list that clears it. Pending, failed or interrupted updates preserve the last successful checklist and remain inspectable in the original-call history. Before a card is established, malformed or empty calls remain ordinary operation rows; promotion preserves their open details, focus and selection. `todo_write` and `dispatch` never join a group.
