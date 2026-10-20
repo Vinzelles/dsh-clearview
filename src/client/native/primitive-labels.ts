@@ -48,6 +48,9 @@ export const JSON_TRUNCATED = (total: number): string => `… 已截断，共 ${
 
 /** 终端卡（terminal.* 词典；fold 文案含单位，与原生 expandRest 模板一致）。 */
 export const TERMINAL_LABELS = {
+  // 0.2.1 起 TerminalBlockLabels.commandLine 由可选变必填（命令行横向溢出的可访问名，
+  // 1-based 行号）；0.2.0 及更早不声明该字段，多传一个键经展开合并后无副作用。
+  commandLine: (line: number) => `第 ${line} 行命令行`,
   noExitCode: '无退出码',
   signal: (signal: string) => `信号 ${signal}`,
   exitCode: (code: number) => `退出码 ${code}`,

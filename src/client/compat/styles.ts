@@ -8,6 +8,7 @@
  *  - reader-scroll-anchor.css        对话滚动容器交给原生 scroll anchoring
  *  - reader-perf-long-content.css    已关闭旧轮次的离屏渲染（heavy 标记）
  *  - rewind-reader-bridge.css        rewind 兼容桥 actions 行样式
+ *  - reader-native-image.css         原生对话 markdown 图片段落高度修正
  *
  * 0.2.0 起移除：工具状态胶囊、回到最新药丸定位、思考卡渐隐/短思考、失败去重、
  * 统计行（这些表面已由组件自身样式承担）。
@@ -93,6 +94,20 @@ export const COMPAT_CSS = `/* ==== reader-scroll-anchor.css ==== */
 
 [data-dsh-clearview] .dshcp-rewind-reader-action.is-copied svg {
   stroke: var(--dsw-alias-success-color, var(--dsw-alias-label-primary));
+}
+/* ==== reader-native-image.css ==== */
+/* 原生对话里 markdown 图片的段落高度修正。
+ * 宿主把图片渲染为 <p><button class="_imageButton_…" title="查看大图"><img
+ * class="_image_…" loading="lazy"></button></p>，其中 button 是
+ * display:inline-block + vertical-align:middle。实测该行盒不随图片撑开：<p>
+ * 恒为 19px（一行文字高度），button 高至 360px，于是图片向上溢出段落、后文
+ * 直接压在图片上（多图回复尤其明显）。
+ * 把图片按钮改成块盒后，段落按图片高度撑开（实测 19px → 360px，图片独占一行、
+ * 后文顺延到图片下方）。选择器只匹配「p 的直接子 button 且内含 img」这一宿主
+ * markdown 图片形状，不影响工具行、头像等其它按钮；用属性选择器而非宿主哈希
+ * 类名，宿主升级改名后仍然生效。 */
+[data-conversation-scroll] p > button:has(> img) {
+  display: block;
 }
 `;
 

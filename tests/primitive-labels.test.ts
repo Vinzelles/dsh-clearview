@@ -16,9 +16,10 @@ test('terminal labels cover status, fold and copy chrome with native wording', (
   assert.equal(TERMINAL_LABELS.done, '已完成');
   assert.equal(TERMINAL_LABELS.signal('KILL'), '信号 KILL');
   assert.equal(TERMINAL_LABELS.exitCode(7), '退出码 7');
+  assert.equal(TERMINAL_LABELS.commandLine(3), '第 3 行命令行');
   assert.equal(TERMINAL_LABELS.expand(18), '… 其余 18 行');
   assert.equal(TERMINAL_LABELS.expandAria(18), '展开其余 18 行输出');
-  for (const key of ['copy', 'copied', 'noOutput', 'collapseAria', 'collapse', 'failed']) {
+  for (const key of ['copy', 'copied', 'noOutput', 'collapseAria', 'collapse', 'failed', 'commandLine']) {
     assert.ok(TERMINAL_LABELS[key as keyof typeof TERMINAL_LABELS] !== undefined, `missing ${key}`);
   }
 });

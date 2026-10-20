@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.2.3
+
+修复原生对话里模型回答带图片时的错版：图片不再溢出段落、把后文压在图上。只改展示。
+
+### 原生对话的 markdown 图片
+
+- 宿主把 markdown 图片渲染成 `<p>` 里的行内块按钮（`display: inline-block` + `vertical-align: middle`），这个行盒不随图片撑开：段落实测恒为 19px（一行文字的高度），图片却高至 360px，于是图片向上溢出段落，后面的正文和列表直接压在图片上（一条回答里放两张截图时最明显）。
+- 兼容样式补一条限定在对话滚动容器里的规则：`[data-conversation-scroll] p > button:has(> img) { display: block }`。图片按钮变成块盒后，段落按图片高度撑开，图片独占一行，后文顺延到图片下方；图片自身的最大宽高（`min(100%, 640px)` / `360px`）、圆角、点击看大图都不变。
+- 选择器只认「p 的直接子 button 且内含 img」这一图片形状，工具行、头像等其它按钮不受影响；用属性选择器而不是宿主的哈希类名，宿主升级改名后仍然生效。
+
+### 实测
+
+- 同一段回答（1440 宽，两张截图）A/B 实测：命中兼容规则时图片段落 360px（等于图片高度）、按钮 `display: block`，与图片盒相交的文字块 0 个；在页面上把按钮改回 `inline-block` 后，段落退回 19px、图片向上溢出，相交的文字块 39 个（含「本次没有动你之前提到的另一件事」列表的 `liTitle`/`li`、GenUI 围栏容器）。图片框 576×360 / 168×360 不变。
+- 单测锁定这条兼容规则的选择器与 `display: block`，并禁止退化成裸 `button` 选择器（那会把工具行、头像也块盒化）。
+
+### 内核 0.2.1-rc.2 兼容（构建与安装清单）
+
+- `dsh-client-ui-primitives` 0.2.1 起把 `TerminalBlockLabels.commandLine` 由可选改为必填（命令行横向溢出时的可访问名，1-based 行号）。`TERMINAL_LABELS` 缺这个键会让 `tsc` 报 `TS2322`，`npm run build` 的 tsc 阶段 exit=2、整包出不来。现补 ``commandLine: (line: number) => `第 ${line} 行命令行` ``；0.2.0 及更早的类型不声明该字段，多传一个键经 `{ ...TERMINAL_LABELS, ...labels }` 展开合并无副作用。
+- 0.2.1 起 `dsh-app-boot` 新增插件兼容门禁：manifest 有 `engines.dsh` 时只认它，否则逐条检查 `@deepseek-ai/dsh*` 的 peer 范围（`semver.satisfies` 且 `includePrerelease`）。原先 10 条 dsh peer 精确钉死 `0.2.0-rc.2`，在 0.2.1-rc.2 上判为不兼容并把插件**静默跳过**（只留一条警告日志），不报错。现改为 `^0.2.0-rc.2`，并显式声明 `engines.dsh: "^0.2.0-rc.2"`。
+- 范围没有放宽成通配：`0.3.0-rc.1`、`1.0.0` 仍被判不兼容，与预期一致。
+
+### 实测
+
+- 干净房间 A/B（0.2.1-rc.2 + cordis 4.0.5 / 0.2.0-rc.2 + cordis 4.0.4）：`tsc --noEmit` 均 0 错误、`npm run build` 均通过、测试各 327/327。
+- 0.2.0 的 `TerminalBlockLabels` 完全不声明 `commandLine`，tsc 仍 0 错 —— 证明多传该键在旧内核安全。
+- 用内核真实导出 `evaluatePluginCompatibility` 复验：改动前 0.2.1-rc.2 判不兼容（逐条列出 10 条 requirements），改动后判兼容。
+- bundle externals 未变（`@deepseek-ai/dsh-client-ui-primitives, react, react/jsx-runtime`），仍落在宿主前端的共享模块表内。
+
+## 0.2.2
+
+用户消息里的图片改成统一大小的方形缩略图，一条消息里的文字不再被图片挤出视野。只改展示。
+
+### 用户消息的图片
+
+- 用户消息的图片一律是同一尺寸的正方形缩略图（`--cv-image-thumb`，88px），裁切填满（`object-fit: cover`）、圆角沿用图片框的 `--dsw-radius-lg`，两张以上在同一行排开，超出气泡宽度时换行。文件名不再作图注显示，改为缩略图的悬停标题；点开仍是原图预览（原尺寸、`图片预览` 对话框、Esc 或点击背景关闭）。
+- 用户消息里除图片外的每个块（正文、通知、未知内容）独占一整行（`flex: 1 1 100%`、`min-width: 0`）：图片再多也只占一行，文字始终完整排在下面，不会被折叠、裁切或压成窄条。
+- 回答区与工具结果里的图片不变：仍是按自身宽高比的大图，带文件名图注。
+
+### 实测
+
+- 1440 宽：一条「2 张截图 + 一段文字」的用户消息，气泡 553.2×162px；两个缩略图的框（含 .5px 描边）都是 88×88，`cover` 裁切、无图注，点开预览拿到原图 788×267。
+- 420 宽：气泡 348.8×184px，缩略图仍是 88×88 且仍在一行，正文独占整行、无横向溢出。
+- 单测锁定：用户消息渲染为 `data-image-variant="thumb"`、不带 `aspect-ratio`、无 `figcaption`，正文 `userText` 在缩略图之后完整出现；`data-reader-blocks-source="assistant"` 仍是 `full` + 比例 + 图注。
+
 ## 0.2.1
 
 视觉打磨：更安静的过程面板，合并连续工具调用，阅读流底部留白。只改展示。

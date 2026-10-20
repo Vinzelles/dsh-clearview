@@ -47,9 +47,13 @@ export class BlockBoundary extends Component<{ children: ReactNode }, { failed: 
   }
 }
 
-export const ImageBlock = memo(function ImageBlock({ attachment, loadImage }: {
-  attachment: ImageAttachmentRef; loadImage: BlockRenderProps['loadImage'];
+/** `thumb` is the user-message rendering: one square, the same size for every image in every message. */
+export type ImageVariant = 'full' | 'thumb';
+
+export const ImageBlock = memo(function ImageBlock({ attachment, loadImage, variant = 'full' }: {
+  attachment: ImageAttachmentRef; loadImage: BlockRenderProps['loadImage']; variant?: ImageVariant;
 }) {
+  const thumb = variant === 'thumb';
   // 附件引用缺失（宿主块形状漂移）或宿主没注入 loadImage 时，一律走既有占位分支：
   // 渲染期不再解引用 attachment，效果里也不再调用 undefined 的加载器——这两种情况
   // 过去都会抛异常，整条用户消息被边界吞成兜底文案。
@@ -75,9 +79,9 @@ export const ImageBlock = memo(function ImageBlock({ attachment, loadImage }: {
   }, [usable, reference, attempt, loadImage]);
   const width = positive(reference?.width) ?? 4;
   const height = positive(reference?.height) ?? 3;
-  return <figure className={css.imageFigure} data-reader-image data-image-state={error ? 'error' : decoded ? 'ready' : 'loading'}>
-    <div className={css.imageFrame} style={{ aspectRatio: `${width} / ${height}` }}>
-      {!error && url && <button ref={opener} type="button" className={css.imageOpen} aria-label={`放大图片${reference?.name ? `：${reference.name}` : ''}`} onClick={() => dialog.current?.showModal()}>
+  return <figure className={css.imageFigure} data-reader-image data-image-variant={variant} data-image-state={error ? 'error' : decoded ? 'ready' : 'loading'}>
+    <div className={css.imageFrame} style={thumb ? undefined : { aspectRatio: `${width} / ${height}` }}>
+      {!error && url && <button ref={opener} type="button" className={css.imageOpen} title={thumb ? reference?.name : undefined} aria-label={`放大图片${reference?.name ? `：${reference.name}` : ''}`} onClick={() => dialog.current?.showModal()}>
         <img src={url} alt={reference?.name ?? '会话图片'} width={width} height={height} onLoad={() => setDecoded(true)} onError={() => setError(true)} data-ready={decoded} />
       </button>}
       {(!decoded || error) && <div className={css.imagePlaceholder}>
@@ -85,7 +89,7 @@ export const ImageBlock = memo(function ImageBlock({ attachment, loadImage }: {
         {error && usable && <button type="button" className={css.textButton} onClick={() => setAttempt(value => value + 1)}>重试</button>}
       </div>}
     </div>
-    {reference?.name && <figcaption>{reference.name}</figcaption>}
+    {!thumb && reference?.name && <figcaption>{reference.name}</figcaption>}
     <dialog ref={dialog} className={css.imageDialog} aria-label="图片预览" onClose={() => opener.current?.focus()} onClick={event => { if (event.target === dialog.current) dialog.current?.close(); }}>
       <button type="button" autoFocus className={css.dialogClose} aria-label="关闭图片预览" onClick={() => dialog.current?.close()}>×</button>
       {url && <img src={url} alt={reference?.name ?? '会话图片'} />}
@@ -121,7 +125,7 @@ function ReadingReasoning({ text, streaming, holdFormatting, startedAt, interrup
 function fallback(block: AssistantBlock, streaming: boolean, source: ReaderBlockOwner['source'], loadImage: BlockRenderProps['loadImage'], holdFormatting: boolean, presentation: TextPresentation, fileMentions: MarkdownFileMentions | undefined): ReactNode {
   switch (block.kind) {
     case 'text': return source === 'user' ? <UserText text={block.text} /> : <ReadingMarkdown text={block.text} streaming={streaming} holdFormatting={holdFormatting} fileMentions={fileMentions} {...presentation} />;
-    case 'image': return <ImageBlock attachment={block.attachment} loadImage={loadImage} />;
+    case 'image': return <ImageBlock attachment={block.attachment} loadImage={loadImage} variant={source === 'user' ? 'thumb' : 'full'} />;
     case 'reasoning': return <ReadingReasoning text={block.text} streaming={streaming} holdFormatting={holdFormatting} {...presentation} />;
     case 'tool-call': return <JsonBlockL label={`工具参数 · ${block.name}`} payload={block.argsRaw} />;
     case 'other': return <div className={css.unknown}>
@@ -134,7 +138,7 @@ function fallback(block: AssistantBlock, streaming: boolean, source: ReaderBlock
 export const Blocks = memo(function Blocks({ blocks, streaming = false, source = 'assistant', holdFormatting = false, startedAt, interrupted, liveText, revealKey, renderSlotChain, loadImage, fileMentions }: BlockRenderProps & TextPresentation & {
   blocks: readonly AssistantBlock[]; streaming?: boolean; source?: ReaderBlockOwner['source']; holdFormatting?: boolean; fileMentions?: MarkdownFileMentions;
 }) {
-  return <div className={css.blocks} data-streaming={streaming || undefined}>
+  return <div className={css.blocks} data-streaming={streaming || undefined} data-reader-blocks-source={source}>
     {blocks.map((block, index) => <BlockBoundary key={blockKey(block, index)}>
       <Fragment>{renderSlotChain('dsh-clearview.block', { block, streaming, source }, { fallback: fallback(block, streaming, source, loadImage, holdFormatting, { startedAt, interrupted, liveText, revealKey: revealKey === undefined ? undefined : `${revealKey}:${index}` }, fileMentions) })}</Fragment>
     </BlockBoundary>)}

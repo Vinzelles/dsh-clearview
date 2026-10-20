@@ -10,6 +10,7 @@
   --cv-panel-bg: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 72%, transparent);
   --cv-panel-ring: 0 0 0 .5px var(--dsw-alias-border-l3);
   --cv-inset-bg: var(--dsw-alias-markdown-code-block);
+  --cv-image-thumb: 88px;
   color: var(--dsw-alias-label-primary);
   font-family: inherit;
   font-size: var(--cv-font-body);
@@ -35,6 +36,10 @@
 .readingText { min-width: 0; }
 .readingText button { min-width: 24px; min-height: 24px; }
 .userText { white-space: pre-wrap; word-break: break-word; }
+/* A user message puts its images on one row of equal-size thumbnails; every other block keeps a whole line, so the text of a
+   message full of screenshots sits below the pictures instead of being pushed out of the bubble. */
+.blocks[data-reader-blocks-source=user] { flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: var(--cv-blocks-gap, 16px) 8px; }
+.blocks[data-reader-blocks-source=user] > :not([data-reader-image]) { flex: 1 1 100%; min-width: 0; }
 .reasonPlain { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; color: inherit; }
 .streamWord { display: inline-block; }
 .streamInlineWord { display: inline; }
@@ -110,6 +115,11 @@
 .imagePlaceholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--dsw-alias-label-tertiary); font-size: var(--cv-font-secondary); pointer-events: none; }
 .imagePlaceholder button { pointer-events: auto; }
 .imageFigure figcaption { margin-top: 6px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
+/* Message scale: one square container per image, the picture cropped to fill it, the attachment name kept as the preview title. */
+.imageFigure[data-image-variant=thumb] { width: var(--cv-image-thumb, 88px); }
+.imageFigure[data-image-variant=thumb] .imageFrame { box-sizing: border-box; width: var(--cv-image-thumb, 88px); height: var(--cv-image-thumb, 88px); min-height: 0; max-height: none; }
+.imageFigure[data-image-variant=thumb] .imageOpen img { object-fit: cover; }
+.imageFigure[data-image-variant=thumb] .imagePlaceholder { gap: 2px; padding: 4px; font-size: 11px; line-height: 14px; text-align: center; }
 .imageDialog { max-width: 90vw; max-height: 90vh; padding: 38px 20px 20px; border: .5px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-lg); corner-shape: round; background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary); box-shadow: var(--dsw-elevation-panel); }
 .imageDialog::backdrop { background: var(--dsw-alias-bg-mask-photo); opacity: 0; transition: opacity var(--cv-swap) var(--cv-ease); }
 .imageDialog[open]::backdrop { opacity: 1; }

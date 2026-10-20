@@ -11,6 +11,7 @@ Keep native DeepSeek Harness process information readable while separating the f
 - Preserve native context sources, tool types, summaries, filenames, details and results.
 - Preserve the native conversation, input, model selector and approval system.
 - Leave nontext and unknown content available through native renderers or a safe fallback.
+- A user message's images are thumbnails: one square container per image, the same size in every message, on one row of the bubble, with the attachment name kept as the preview title instead of a caption. Every other block of that message keeps a full line, so text is never collapsed, clipped or squeezed beside the pictures. Answers and tool results keep the full-size image with its caption.
 
 ## Lifecycle
 
