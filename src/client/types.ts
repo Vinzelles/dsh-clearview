@@ -37,6 +37,8 @@ export interface ReaderInjected {
   fork?: (atSeq: number) => Promise<void>;
   /** 收尾正文的文件名链接解析器（ui-deliverables 提供）。 */
   fileMentions?: (turn: TurnLocation, seq: number) => MarkdownFileMentions | undefined;
+  /** 正文里写的图片目标（工作区路径/相对路径）解析成可直接显示的 URL；宿主缺席时保持纯文字降级。 */
+  mediaUrl?: (url: string) => string | undefined;
 }
 /**
  * 0.1.2 起从 session 快照里拆出的两个标准钩子；0.1.1 缺席（undefined）。
@@ -54,4 +56,4 @@ export type ReaderProps = PropsRuntime<'conversation.view'>
   & PropsStore<ReturnType<typeof createReaderStore>>
   & ReaderInjected
   & ReaderCompatHooks;
-export type BlockRenderProps = Pick<ReaderProps, 'renderSlotChain' | 'loadImage'>;
+export type BlockRenderProps = Pick<ReaderProps, 'renderSlotChain' | 'loadImage' | 'mediaUrl'>;

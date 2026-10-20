@@ -203,6 +203,9 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
   useEffect(() => { if (dismissReading && (!closed || !readingProcess)) setDismissReading(false); }, [closed, readingProcess, dismissReading]);
   const processOpen = turnProcessOpen(processChoice, closed, boundary.reason, readingProcess && !dismissReading);
   const hasProcess = entries.some(isProcessEntry);
+  // The tail process group of an open turn stays open: between two steps nothing is running for a
+  // moment, and folding there made the same block collapse and reopen once per tool call.
+  const liveProcessKey = open ? [...entries].reverse().find(isProcessEntry)?.key : undefined;
   const counts = useMemo(() => processCounts(turn, layout.panel), [turn, layout.panel]);
   const pointerChoice = useRef<boolean | null>(null);
   const captureProcessToggle = useCallback(() => { pointerChoice.current = !processOpen; }, [processOpen]);
@@ -222,7 +225,7 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
   const closingSeq = closingOf(turn)?.seq;
   // The host hands back a fresh resolver per call; keep one per turn and closing reply so the answer's Blocks stay memoised.
   const mentions = useMemo(() => status === 'done' && turn && closingSeq !== undefined ? fileMentions?.(turn, closingSeq) : undefined, [status, turn, closingSeq, fileMentions]);
-  const shared = useMemo(() => ({ renderSlotChain: props.renderSlotChain, loadImage: props.loadImage }), [props.renderSlotChain, props.loadImage]);
+  const shared = useMemo(() => ({ renderSlotChain: props.renderSlotChain, loadImage: props.loadImage, mediaUrl: props.mediaUrl }), [props.renderSlotChain, props.loadImage, props.mediaUrl]);
   const noop = useCallback(() => {}, []);
   const lastAnswerKey = layout.answer.at(-1)?.key;
   const activeLabel = status === 'waiting' ? '等待你的操作' : runningLabel(turn, group.keys, get);
@@ -259,6 +262,7 @@ export const TurnSection = memo(function TurnSection({ group, pinnedKeys, rewind
   const renderEntry = (entry: TranscriptEntry): ReactNode => {
     switch (entry.kind) {
       case 'group': return <ToolGroupRow key={entry.key} group={entry} motion={motion} onRead={noop} renderItem={renderItem} renderMedia={renderMedia}
+        live={entry.key === liveProcessKey}
         retain={entry.items.some(item => liveSeats.some(seat => seat.key === item.key))} onCloseThoughts={closeThoughts} />;
       case 'plan': return <BlockBoundary key={entry.key}><PlanCard key="plan" todos={entry.todos} {...planStatus(entry, closed)}>
         {entry.calls.map(call => <Fragment key={call.key}>{renderItem(call)}</Fragment>)}

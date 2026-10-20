@@ -26,6 +26,44 @@ export function fileAddressFor(sessionId: string, cwd: string | undefined, path:
   return sessionFileAddress(sessionId, normalized);
 }
 
+const CONTROL_CHARS = /[\u0000-\u001f\u007f]/u;
+const WINDOWS_ABSOLUTE = /^[A-Za-z]:[/\\]/;
+const URI_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*:/u;
+
+/**
+ * Resolve one authored Markdown image destination to an absolute workspace
+ * file path: absolute paths pass through, relative paths join the session cwd
+ * the way native Chat's resolveWorkspacePath does, and everything that names
+ * no workspace file (remote URLs, fragments, control characters) returns
+ * undefined.
+ */
+export function resolveImagePath(cwd: string | undefined, url: string): string | undefined {
+  let decoded = url;
+  try { decoded = decodeURIComponent(url); } catch { /* keep the authored text */ }
+  const trimmed = decoded.trim();
+  if (trimmed === '' || trimmed.startsWith('#') || CONTROL_CHARS.test(trimmed)) return undefined;
+  // A scheme means a URL — except a Windows drive letter, which names a file.
+  if (URI_SCHEME.test(trimmed) && !WINDOWS_ABSOLUTE.test(trimmed)) return undefined;
+  if (trimmed.startsWith('//')) return undefined;
+  const normalized = trimmed.replace(/\\/g, '/').replace(/^(?:\.\/)+/, '');
+  if (isAbsoluteWorkspacePath(normalized)) return normalized;
+  if (cwd === undefined || cwd === '') return undefined;
+  return `${cwd.replace(/\\/g, '/').replace(/\/+$/, '')}/${normalized}`;
+}
+
+/**
+ * Absolute URL on the host file route (`api/file?path=…`) for one workspace
+ * path, mirroring the native Chat attachment resolver: the base must be
+ * http(s) or the app scheme, and the path absolute, UNC-free and free of
+ * control characters.
+ */
+export function fileMediaUrl(base: string | undefined, path: string): string | undefined {
+  if (base === undefined || base === '') return undefined;
+  if (!/^https?:/u.test(base) && !base.startsWith('dsh-app://app/')) return undefined;
+  if (!isAbsoluteWorkspacePath(path) || path.startsWith('//') || CONTROL_CHARS.test(path)) return undefined;
+  return new URL(`api/file?path=${encodeURIComponent(path)}`, base).href;
+}
+
 /** Structural view of the optional host services, read through ctx.get at call time. */
 export interface HostServices {
   sidebarRight?: { openResource(address: string): void } | undefined;

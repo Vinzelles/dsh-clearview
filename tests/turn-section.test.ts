@@ -266,6 +266,25 @@ test('the footer and every flow row sit inside their own BlockBoundary, never ar
   assert.match(source, /<section className=\{css\.turn\} data-reader-turn=/);
 });
 
+test('an open turn keeps its process group expanded while it is still the live tail', () => {
+  // Between two steps nothing runs for a moment: the last thought has settled and every tool has returned.
+  // The tail group must not fold here, or the reader watches the same block collapse and reopen per step.
+  const turn = turnLocation({ status: 'open', start: 0, steps: [1] });
+  const user = chatNode('user', { content: [{ type: 'text', text: '跑一批命令' }] }, turn);
+  const step = assistantNode(turn, 1, [reasoning('先看工作区'), toolCall('c1', 'bash', { command: 'ls' }), toolCall('c2', 'bash', { command: 'Get-ChildItem' })]);
+  const first = chatNode('tool-call', { root: settledTool('c1', 'bash', { command: 'ls' }) }, turn, 1);
+  const second = chatNode('tool-call', { root: settledTool('c2', 'bash', { command: 'Get-ChildItem' }) }, turn, 1);
+  const html = renderTurn([user, step, first, second], turn);
+  assert.match(html, /data-reader-turn-state="open"/);
+  assert.match(html, /data-reader-group="[^"]+"[^>]*data-group-state="settled"[^>]*data-expanded="true"/);
+});
+
+test('a closed turn still folds its settled process group behind the disclosure', () => {
+  const { turn, nodes } = completedTurn();
+  const html = renderTurn(nodes, turn);
+  assert.match(html, /data-reader-group="[^"]+"[^>]*data-group-state="settled"[^>]*data-expanded="false"/);
+});
+
 test('a closed turn shows an unfinished retry record as settled, an open turn keeps it active', () => {
   const retryData = { current: { retryState: 'started', retry: 1 }, attempts: [] };
   const closedTurn = turnLocation({ status: 'closed', reason: 'error', steps: [1] });

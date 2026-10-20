@@ -35,6 +35,9 @@
   --cv-detail-radius: 10px;
   --cv-process-size: calc(13px + var(--dsh-content-font-delta, 0px));
   --cv-process-text: #73736f;
+  /* A batch of operations shares one capped body: past this height the body scrolls so the
+     group's own summary row never leaves the viewport. */
+  --cv-process-max-height: 320px;
   --cv-indent: 28px;
   --cv-rail-offset: 22px;
   --cv-surface: rgba(20, 20, 19, .035);
@@ -46,6 +49,8 @@
   --cv-row-hover: rgba(20, 20, 19, .055);
   --cv-row-open: rgba(20, 20, 19, .035);
   --cv-detail-border: rgba(20, 20, 19, .1);
+  /* 用户消息里的图片统一收成这个边长的方框；回答里的图片仍按原比例铺开。 */
+  --cv-image-thumb: 88px;
   --cv-ease: cubic-bezier(.2,.8,.2,1);
   --cv-fast: 100ms;
   --cv-swap: 200ms;
@@ -130,6 +135,10 @@
 .blocks > :first-child { margin-top: 0; }
 .blocks > :last-child { margin-bottom: 0; }
 .blocks :global(.md-table-wide) { max-width: 100%; }
+/* 用户消息的块流改成「缩略图横排 + 其他块各占一整行」：图片再多也不会把文字挤掉，
+   每张图一个固定方框，多张图按 8px 列距折行。 */
+.blocks[data-reader-blocks-source=user] { flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: var(--cv-blocks-gap, 16px) 8px; }
+.blocks[data-reader-blocks-source=user] > :not([data-reader-image]) { flex: 1 1 100%; min-width: 0; }
 .readingText { min-width: 0; }
 .readingText button { min-width: 24px; min-height: 24px; }
 .userText { white-space: pre-wrap; word-break: break-word; }
@@ -204,6 +213,12 @@
 .imagePlaceholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--cc-text-500); font-size: var(--cc-size-small); pointer-events: none; }
 .imagePlaceholder button { pointer-events: auto; }
 .imageFigure figcaption { margin-top: 6px; color: var(--cc-text-500); font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
+/* 用户消息缩略图：正方形格子，按 cover 裁切。border-box 很关键——边框算进 88px，
+   实测 content-box 会让方框外扩 2px（88 + 2×.5 边框）而不再严格等大。 */
+.imageFigure[data-image-variant=thumb] { width: var(--cv-image-thumb, 88px); }
+.imageFigure[data-image-variant=thumb] .imageFrame { box-sizing: border-box; width: var(--cv-image-thumb, 88px); height: var(--cv-image-thumb, 88px); min-height: 0; max-height: none; }
+.imageFigure[data-image-variant=thumb] .imageOpen img { object-fit: cover; }
+.imageFigure[data-image-variant=thumb] .imagePlaceholder { gap: 2px; padding: 4px; font-size: 11px; line-height: 14px; text-align: center; }
 .imageDialog { max-width: 90vw; max-height: 90vh; padding: 38px 20px 20px; border: .5px solid var(--cc-border); border-radius: 12px; corner-shape: round; background: var(--cc-bg-100); color: var(--cc-text-100); box-shadow: 0 4px 24px hsl(0 0% 0% / .2); }
 .imageDialog::backdrop { background: hsl(0 0% 0% / .5); opacity: 0; transition: opacity var(--cv-swap) var(--cv-ease); }
 .imageDialog[open]::backdrop { opacity: 1; }

@@ -1,4 +1,4 @@
-import { Fragment, memo, useCallback, useId, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { IconFlatListOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
 import { Line } from './Line.js';
@@ -10,15 +10,62 @@ import css from './ToolGroupRow.module.css';
 export type GroupEntry = Extract<TranscriptEntry, { kind: 'group' }>;
 export type MemberOpenChange = (key: string, open: boolean) => void;
 
-/** A choice the reader made wins; with no choice the group is open exactly while it runs. */
-export function groupOpen(choice: boolean | null, running: boolean): boolean {
-  return choice ?? running;
+/**
+ * A choice the reader made wins; with no choice the group is open while it runs.
+ * `retained` keeps it open without claiming activity: a live tail has no running member
+ * for the moment between two steps, and folding there would reopen it one step later.
+ */
+export function groupOpen(choice: boolean | null, running: boolean, retained = false): boolean {
+  return choice ?? (running || retained);
+}
+
+/** How close to its tail a capped body sits before new members stop following it, in px. */
+export const PROCESS_TAIL_SLACK = 24;
+
+/** A capped body follows new members only while the reader has not scrolled away from the tail. */
+export function followsTail(distance: number): boolean {
+  return distance <= PROCESS_TAIL_SLACK;
+}
+
+/** A body is a scroll region only once its members outgrow the cap. */
+export function processOverflow(scrollHeight: number, clientHeight: number): boolean {
+  return scrollHeight > clientHeight + 1;
+}
+
+/** The offset that puts a capped body's newest member in view. */
+export function tailOffset(scrollHeight: number, clientHeight: number): number {
+  return Math.max(0, scrollHeight - clientHeight);
+}
+
+/**
+ * `null` when the offset is our own follow write; otherwise whether the reader is still at the tail.
+ * The reader's scroll is the only thing that releases the follow.
+ */
+export function followDecision(current: number, written: number, scrollHeight: number, clientHeight: number): boolean | null {
+  if (Math.abs(current - written) < 1) return null;
+  return followsTail(scrollHeight - current - clientHeight);
+}
+
+/**
+ * One frame of tail following: the offset to write, or `null` when the body is already at its tail.
+ * Members keep growing between React commits — a thought streams, the open animation expands its
+ * members — so the follow runs on the frame clock instead of only when this row re-renders.
+ */
+export function followFrame(
+  port: { scrollTop: number; scrollHeight: number; clientHeight: number },
+  sticking: boolean,
+): number | null {
+  if (!sticking) return null;
+  const offset = tailOffset(port.scrollHeight, port.clientHeight);
+  return Math.abs(port.scrollTop - offset) > 1 ? offset : null;
 }
 
 /** Stable operation seats: a singleton stays open; groups fold their rows but never their media. */
 export interface ToolGroupRowProps {
   group: GroupEntry; motion: boolean; onRead: () => void;
   retain?: boolean;
+  /** The turn is open and this group is its process tail, so it never auto-folds. */
+  live?: boolean;
   onCloseThoughts?: (items: readonly PanelItem[]) => void;
   renderItem: (item: PanelItem, onOpenChange?: MemberOpenChange) => ReactNode;
   renderMedia?: (item: PanelItem) => ReactNode;
@@ -41,7 +88,7 @@ function sameItem(a: PanelItem, b: PanelItem): boolean {
 
 export function sameToolGroupProps(a: ToolGroupRowProps, b: ToolGroupRowProps): boolean {
   if (a.motion !== b.motion || a.onRead !== b.onRead || a.renderItem !== b.renderItem || a.renderMedia !== b.renderMedia
-      || a.retain !== b.retain || a.onCloseThoughts !== b.onCloseThoughts) return false;
+      || a.retain !== b.retain || a.live !== b.live || a.onCloseThoughts !== b.onCloseThoughts) return false;
   if (a.group === b.group) return true;
   const left = a.group, right = b.group;
   if (left.key !== right.key || left.items.length !== right.items.length
@@ -53,7 +100,7 @@ export function sameToolGroupProps(a: ToolGroupRowProps, b: ToolGroupRowProps): 
   return left.items.every((item, index) => sameItem(item, right.items[index]!));
 }
 
-export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedia, retain = false, onCloseThoughts }: ToolGroupRowProps) {
+export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedia, retain = false, live = false, onCloseThoughts }: ToolGroupRowProps) {
   const [choice, setChoice] = useState<boolean | null>(null);
   const [openMembers, setOpenMembers] = useState<ReadonlySet<string>>(() => new Set());
   const memberOpenChange = useCallback<MemberOpenChange>((key, open) => {
@@ -63,11 +110,84 @@ export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedi
       return next;
     });
   }, []);
-  // Only current members count. An explicit group close still wins over member details.
+  // Only current members count. An explicit group close still wins over member details and over a live tail.
   const readingMember = group.items.some(item => openMembers.has(item.key));
   const grouped = group.items.length >= 2 || group.items.some(item => item.kind === 'reasoning');
-  const open = !grouped || groupOpen(choice, group.facts.running || readingMember || retain);
+  const open = !grouped || groupOpen(choice, group.facts.running || readingMember, retain || live);
   const id = useId();
+  // A capped body keeps its newest member in view while the batch streams. A group the reader opens
+  // themselves starts at its first member, and scrolling away from the tail stops the follow until
+  // they scroll back down.
+  const members = useRef<HTMLDivElement | null>(null);
+  const sticking = useRef(true);
+  const opened = useRef(open);
+  const written = useRef(-1);
+  const measured = useRef(-1);
+  const [overflowing, setOverflowing] = useState(false);
+  const overflowed = useRef(false);
+  // The cap crossing is a boolean the frame clock may rediscover many times per animation; only the
+  // crossing itself is a state change, so the members are not re-rendered on every measured height.
+  const syncOverflow = (element: HTMLDivElement) => {
+    const next = processOverflow(element.scrollHeight, element.clientHeight);
+    if (next === overflowed.current) return;
+    overflowed.current = next;
+    setOverflowing(next);
+  };
+  useLayoutEffect(() => {
+    const element = members.current;
+    if (!element) return;
+    if (opened.current !== open) {
+      opened.current = open;
+      sticking.current = open && (group.facts.running || live);
+      if (open) {
+        const offset = sticking.current ? tailOffset(element.scrollHeight, element.clientHeight) : 0;
+        element.scrollTop = offset;
+        written.current = offset;
+      }
+    } else if (open && sticking.current) {
+      const offset = tailOffset(element.scrollHeight, element.clientHeight);
+      if (Math.abs(element.scrollTop - offset) > 1) {
+        element.scrollTop = offset;
+        written.current = offset;
+      }
+    }
+    syncOverflow(element);
+  });
+  useEffect(() => {
+    const element = members.current;
+    if (!element) return;
+    // A scroll offset we did not write is the reader's own: follow resumes only at the tail.
+    const track = () => {
+      const decision = followDecision(element.scrollTop, written.current, element.scrollHeight, element.clientHeight);
+      if (decision !== null) sticking.current = decision;
+    };
+    element.addEventListener('scroll', track, { passive: true });
+    return () => element.removeEventListener('scroll', track);
+  }, []);
+  // The body keeps growing between commits — a thought streams and the open animation expands its
+  // members — so a live batch follows its tail on the frame clock instead of only on React commits.
+  const follow = group.facts.running || live;
+  useEffect(() => {
+    if (!open || !follow) return;
+    let frame = requestAnimationFrame(function tick() {
+      const element = members.current;
+      if (element) {
+        if (element.scrollHeight !== measured.current) {
+          measured.current = element.scrollHeight;
+          syncOverflow(element);
+        }
+        const offset = followFrame(element, sticking.current);
+        if (offset !== null) {
+          element.scrollTop = offset;
+          written.current = offset;
+        }
+      }
+      frame = requestAnimationFrame(tick);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open, follow]);
+  // Only a capped body is a scroll region; the summary row above it stays the reader's handle.
+  const region = grouped && open && overflowing;
   const toggle = useCallback(() => { onRead(); if (open) onCloseThoughts?.(group.items); setChoice(!open); }, [onRead, open, onCloseThoughts, group.items]);
   const { running, failed } = group.facts;
   return <div className={css.group} data-reader-group={grouped ? group.key : undefined} data-reader-group-tools={group.items.some(item => item.kind === 'tool') || undefined}
@@ -75,7 +195,9 @@ export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedi
     {grouped && <Line icon={<IconFlatListOutlineRegular size={14} />} label={groupSummary(group.facts)} tone={failed > 0 ? 'failed' : running ? 'running' : 'idle'}
       shimmer={running && motion} trailing={failed > 0 ? <span>· {failed} 次失败</span> : undefined}
       open={open} onToggle={toggle} controls={id} />}
-    <div id={id} className={css.members} data-single={!grouped}>
+    <div id={id} ref={members} className={css.members} data-single={!grouped}
+      role={region ? 'region' : undefined} tabIndex={region ? 0 : undefined}
+      aria-label={region ? `${groupSummary(group.facts)}，可滚动阅读` : undefined}>
       {group.items.map(item => <Fragment key={item.key}>
         <CollapseBody open={open} motion={motion}>{renderItem(item, memberOpenChange)}</CollapseBody>
         {renderMedia?.(item)}

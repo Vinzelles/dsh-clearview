@@ -6,7 +6,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client';
 import type {} from '@deepseek-ai/dsh-client-locale/client';
 import type {} from '@deepseek-ai/dsh-api-job-controller/client';
 import { Reader } from './Reader.js';
-import { createReaderHost, type HostServices, type ReaderHost } from './host.js';
+import { createReaderHost, fileMediaUrl, resolveImagePath, type HostServices, type ReaderHost } from './host.js';
 import { createReaderStore } from './store.js';
 import { installReaderEntry } from './entry.js';
 import { startCompat } from './compat/index.js';
@@ -80,6 +80,14 @@ export function apply(ctx: Context): void {
         contextT: ctx.locale.bind('chat'),
         loadOlder: async () => { await session().loadOlder(); },
         loadImage: attachment => host.imageUrl(attachment),
+        mediaUrl: url => {
+          // 正文里写的图片目标（工作区相对路径/绝对路径）映射到宿主文件路由，
+          // 与原生对话同一套解析规则；远程 URL 仍走 markdown 自带的策略。
+          const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd;
+          const path = resolveImagePath(cwd, url);
+          const base = typeof document === 'undefined' ? undefined : document.baseURI;
+          return path === undefined ? undefined : fileMediaUrl(base, path);
+        },
         openFile: path => host.openFile(path),
         fork: atSeq => host.fork(atSeq),
         fileMentions: (turn, seq) => host.fileMentions(turn, seq),

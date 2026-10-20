@@ -174,7 +174,7 @@ export function MotionPlainText({ text, enabled, revision }: { text: string; ena
 }
 
 /** Native DSH Markdown semantics with a stable text-leaf animation hook. */
-export function MotionMarkdown({ text, streaming, enabled, revision, fileMentions }: { text: string; streaming: boolean; enabled: boolean; revision: number; fileMentions?: MarkdownFileMentions }) {
+export function MotionMarkdown({ text, streaming, enabled, revision, fileMentions, mediaUrl }: { text: string; streaming: boolean; enabled: boolean; revision: number; fileMentions?: MarkdownFileMentions; mediaUrl?: (url: string) => string | undefined }) {
   const timeline = useRef<WordTimeline>();
   timeline.current ??= new WordTimeline();
   timeline.current.begin(text, enabled, revision, Number(document.timeline.currentTime ?? performance.now()));
@@ -201,6 +201,6 @@ const renderText = useMemo(() => (value: string, offset: number, inline = false)
     return current.hasLiveText ? <InlineMotionAtom born={current.bornAt(offset)} generation={current.generation} offset={offset}>{children}</InlineMotionAtom> : children;
   }, []);
   return <WordScope.Provider value={scope}>
-    <MarkdownText text={text} streaming={streaming} codeLabels={CODE_LABELS} fileMentions={fileMentions} renderText={renderText} renderAtom={renderAtom} renderInlineAtom={renderInlineAtom} />
+    <MarkdownText text={text} streaming={streaming} codeLabels={CODE_LABELS} fileMentions={fileMentions} mediaUrl={mediaUrl} renderText={renderText} renderAtom={renderAtom} renderInlineAtom={renderInlineAtom} />
   </WordScope.Provider>;
 }

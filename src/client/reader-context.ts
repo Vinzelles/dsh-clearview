@@ -10,6 +10,8 @@ export interface ReaderActions {
   openFile?: (path: string) => void;
   fork?: (atSeq: number) => Promise<void>;
   fileMentions?: (turn: TurnLocation, seq: number) => MarkdownFileMentions | undefined;
+  /** 正文图片目标解析器：工作区路径 → 宿主文件路由 URL。 */
+  mediaUrl?: (url: string) => string | undefined;
   inspectCall?: (callId: string) => void;
   showInChat?: (focus: string) => void;
 }

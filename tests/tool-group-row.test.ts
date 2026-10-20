@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { groupOpen, ToolGroupRow, ToolGroupRowView, sameToolGroupProps, type ToolGroupRowProps, type GroupEntry } from '../src/client/ToolGroupRow.tsx';
+import { PROCESS_TAIL_SLACK, followDecision, followFrame, followsTail, groupOpen, processOverflow, tailOffset, ToolGroupRow, ToolGroupRowView, sameToolGroupProps, type ToolGroupRowProps, type GroupEntry } from '../src/client/ToolGroupRow.tsx';
 
 const group = (running: boolean, failed = 0): GroupEntry => ({
   kind: 'group', key: 'group:reader-tool:1',
@@ -18,6 +18,54 @@ test('the reader’s choice wins; otherwise open exactly while running', () => {
   assert.equal(groupOpen(null, false), false);
   assert.equal(groupOpen(true, false), true, 'opened while running, stays open after it settles');
   assert.equal(groupOpen(false, true), false);
+  assert.equal(groupOpen(null, false, true), true, 'a live tail stays open between steps');
+  assert.equal(groupOpen(false, false, true), false, 'an explicit close still wins over a live tail');
+});
+
+test('a capped body follows its tail only until the reader scrolls away from it', () => {
+  assert.equal(PROCESS_TAIL_SLACK, 24);
+  assert.equal(followsTail(0), true);
+  assert.equal(followsTail(PROCESS_TAIL_SLACK), true, 'a few px of rounding still counts as the tail');
+  assert.equal(followsTail(PROCESS_TAIL_SLACK + 1), false);
+  assert.equal(followsTail(1200), false, 'a reader who scrolled up keeps their place');
+  assert.equal(processOverflow(400, 320), true);
+  assert.equal(processOverflow(320, 320), false);
+  assert.equal(processOverflow(321, 320), false, 'a single px below the cap is not a scroll region');
+  assert.equal(processOverflow(322, 320), true);
+  assert.equal(tailOffset(500, 320), 180, 'the tail is the bottom of a capped body');
+  assert.equal(tailOffset(200, 320), 0, 'a body shorter than the cap cannot scroll');
+  assert.equal(followDecision(180, 180, 500, 320), null, 'our own follow write never releases the follow');
+  assert.equal(followDecision(100, 180, 500, 320), false, 'the reader scrolled away from the tail');
+  assert.equal(followDecision(176, 0, 500, 320), true, 'a reader within the slack distance has returned');
+  assert.equal(followFrame({ scrollTop: 0, scrollHeight: 500, clientHeight: 320 }, true), 180, 'a growing body is pinned to its tail');
+  assert.equal(followFrame({ scrollTop: 180, scrollHeight: 500, clientHeight: 320 }, true), null, 'an already pinned body is not written again');
+  assert.equal(followFrame({ scrollTop: 0, scrollHeight: 500, clientHeight: 320 }, false), null, 'a detached body is never moved');
+});
+
+test('the grouped body is capped and scrolls, so its fold line stays reachable', () => {
+  const css = readFileSync(new URL('../src/client/ToolGroupRow.module.css', import.meta.url), 'utf8');
+  const bodies = [...css.matchAll(/\.group\[data-expanded="true"\] > \.members:not\(\[data-single="true"\]\)\s*\{([^}]*)\}/g)].map(match => match[1]!);
+  assert.ok(bodies.length > 0, 'the expanded grouped body has its own rule');
+  const capped = bodies.find(body => /max-height/.test(body));
+  assert.ok(capped, 'one of its rules caps the body');
+  assert.match(capped, /max-height:\s*var\(--cv-process-max-height,\s*320px\)/);
+  assert.match(capped, /overflow-y:\s*auto/);
+  assert.match(capped, /overscroll-behavior-y:\s*contain/);
+  assert.match(capped, /overflow-anchor:\s*none/);
+  assert.match(capped, /scrollbar-width:\s*thin/);
+  assert.doesNotMatch(css, /max-height[^}]*data-single/, 'a singleton row never caps');
+  const reader = readFileSync(new URL('../src/client/Reader.module.css', import.meta.url), 'utf8');
+  assert.match(reader, /--cv-process-max-height:\s*320px/);
+});
+
+test('a settled live tail keeps its members open without claiming activity', () => {
+  const html = renderToStaticMarkup(createElement(ToolGroupRow, {
+    group: group(false), motion: true, onRead: () => {}, live: true,
+    renderItem: item => createElement('i', { 'data-member': item.key }),
+  }));
+  assert.match(html, /data-group-state="settled"[^>]*data-expanded="true"/);
+  assert.match(html, /data-member="r1"/);
+  assert.doesNotMatch(html, /data-shimmer="true"/);
 });
 
 test('a running group is open, shimmering and shows its members', () => {
@@ -56,6 +104,13 @@ function groupInteraction() {
       return [slots[index], (next: unknown) => { slots[index] = typeof next === 'function' ? next(slots[index]) : next; }];
     },
     useCallback: (callback: unknown) => callback,
+    useRef(initial: unknown) {
+      const index = cursor++;
+      if (!(index in slots)) slots[index] = { current: typeof initial === 'function' ? (initial as () => unknown)() : initial };
+      return slots[index];
+    },
+    useEffect: () => {},
+    useLayoutEffect: () => {},
     useId: () => 'group-detail',
   };
   const internals = (React as any).__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
@@ -213,6 +268,7 @@ test('memo skips recreated wrappers around the same ordered immutable tool paylo
     else next[field] = () => null;
     assert.equal(sameToolGroupProps(props, next), false, field);
   }
+  assert.equal(sameToolGroupProps(props, { ...copied(), live: true }), false, 'live');
   for (const change of ['block', 'draft', 'step', 'key', 'order', 'running', 'failed', 'counts', 'kindOrder']) {
     const next = copied(), row = next.group.items[0];
     if (row.kind !== 'tool') throw Error('tool fixture');

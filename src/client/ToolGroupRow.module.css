@@ -4,3 +4,13 @@
 .group[data-expanded="true"] > .members:not([data-single="true"]) { margin-top: 4px; margin-bottom: 8px; border-left-color: var(--cv-detail-border); }
 .members:empty { display: none }
 .members[data-single="true"] { margin: 0; padding-left: 0; border-left: 0 }
+/* A batch of operations is capped: the body scrolls inside the group so the group line that folds
+   it away never leaves the viewport, however long the batch runs. */
+.group[data-expanded="true"] > .members:not([data-single="true"]) {
+  max-height: var(--cv-process-max-height, 320px);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  /* New members must not jump the viewport; the tail follow below keeps the newest row in view. */
+  overflow-anchor: none;
+  scrollbar-width: thin;
+}
