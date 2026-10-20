@@ -53,7 +53,7 @@ export function apply(ctx: Context): void {
       // 右侧栏预览不可用时由 host 退回这里。
       const openWithSystem = (path: string): Promise<void> => {
         const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd;
-        const workspaces = ctx.workspaces as { openPath?: (path: string) => Promise<void> } | undefined;
+        const workspaces = (ctx as unknown as { workspaces?: { openPath?: (path: string) => Promise<void> } }).workspaces;
         if (typeof workspaces?.openPath === 'function') return workspaces.openPath(resolveWorkspacePath(cwd, path));
         const remote = (ctx as unknown as { remote?: { session?: { openWorkspacePath?: (input: { path: string }) => Promise<{ ok: boolean; error?: { message: string } }> } } }).remote;
         const open = remote?.session?.openWorkspacePath;
@@ -96,9 +96,9 @@ export function apply(ctx: Context): void {
           // 0.1.2：directoryPicker 远端（同一浏览能力，不同挂载面）。
           const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd;
           const resolved = resolveWorkspacePath(cwd, path);
-          const workspaces = ctx.workspaces as {
-            listDirectory?: (path: string, signal?: AbortSignal) => Promise<{ entries: readonly { name: string }[] }>;
-          } | undefined;
+          const workspaces = (ctx as unknown as {
+            workspaces?: { listDirectory?: (path: string, signal?: AbortSignal) => Promise<{ entries: readonly { name: string }[] }> };
+          }).workspaces;
           if (typeof workspaces?.listDirectory === 'function') {
             const listing = await workspaces.listDirectory(resolved);
             return new Set(listing.entries.map(entry => entry.name));
