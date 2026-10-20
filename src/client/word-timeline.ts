@@ -1,11 +1,16 @@
 /** Motion parameters from the public transitions.dev streaming-text recipe. */
 export const WORD_MOTION = {
+  initialOpacity: 0,
   duration: 350,
   gap: 60,
   blur: 1,
   easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
   maxDelay: 240,
 } as const;
+
+export type WordMotion = { [Key in keyof typeof WORD_MOTION]: Key extends 'easing' ? string : number };
+/** Thinking follows the newest paragraph: never queue invisible words ahead of the viewport. */
+export const REASONING_MOTION: WordMotion = { ...WORD_MOTION, initialOpacity: .8, duration: 180, gap: 0, maxDelay: 0 };
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: 'word' });
 const closingPunctuation = /^[\p{Pe}\p{Pf},.!?:;，。！？、；：％‰…·]+$/u;
@@ -15,6 +20,7 @@ interface SourceBirth { end: number; born: number | null }
 
 /** Source-offset identity survives reparsing, frozen blocks, and final formatting. */
 export class WordTimeline {
+  constructor(private readonly motion: WordMotion = WORD_MOTION) {}
   generation = 0;
   hasLiveText = false;
   private source: string | null = null;
@@ -45,7 +51,7 @@ export class WordTimeline {
       for (const part of segmenter.segment(source.slice(from))) {
         let born = Number.isFinite(this.lastBirth) ? this.lastBirth : null;
         if (part.segment.trim()) {
-          born = Math.min(now + WORD_MOTION.maxDelay, Math.max(now, this.lastBirth + WORD_MOTION.gap));
+          born = Math.min(now + this.motion.maxDelay, Math.max(now, this.lastBirth + this.motion.gap));
           this.lastBirth = born;
         }
         const end = from + part.index + part.segment.length;
@@ -84,7 +90,7 @@ export class WordTimeline {
   liveFloor(now: number): number {
     const source = this.source ?? '';
     if (!this.enabled || this.births.length === 0) return source.length;
-    const cutoff = now - WORD_MOTION.duration;
+    const cutoff = now - this.motion.duration;
     let low = 0;
     let high = this.births.length - 1;
     while (low < high) {

@@ -4,14 +4,14 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { COMPAT_CSS } from '../src/client/compat/styles.ts';
 
 const CLIENT = new URL('../src/client/', import.meta.url);
-const REDESIGNED = ['Reader', 'ProcessRow', 'ToolRow', 'ToolDetails', 'ReasoningRow', 'RecordRows', 'Opening', 'ProcessPanel', 'ClusterRow', 'TurnSection', 'TurnFooter', 'FloatingStatus', 'FileChanges'];
+const REDESIGNED = ['Reader', 'Line', 'ToolRow', 'ToolDetails', 'ToolGroupRow', 'ThoughtRow', 'LiveThought', 'StatusLine', 'UserBubble', 'PlanCard', 'QuestionRecord', 'RecordRows', 'Notice', 'Opening', 'TurnSection', 'TurnFooter', 'JumpButton', 'FileChanges'];
 const sheet = (name: string) => readFileSync(new URL(`${name}.module.css`, CLIENT), 'utf8');
 
 test('redesigned surfaces use token radii and no in-flow backdrop blur', () => {
   for (const name of REDESIGNED) {
     const text = sheet(name);
     assert.doesNotMatch(text, /backdrop-filter/, `${name} uses backdrop-filter`);
-    assert.doesNotMatch(text, /border-radius:\s*(?:6|7|10)px/, `${name} uses a retired radius`);
+    assert.doesNotMatch(text, /border-radius:\s*7px/, `${name} uses a retired radius`);
   }
 });
 
@@ -47,8 +47,7 @@ test('role=button rows keep a focus ring and user bubbles keep the tight block g
   const reader = sheet('Reader');
   assert.match(reader, /\.root \[role=button\]:not\(button\):focus-visible \{ outline: 2px solid/);
   assert.match(reader, /\.blocks \{[^}]*gap: var\(--cv-blocks-gap, 16px\)/);
-  assert.match(sheet('Opening'), /\.user \{[^}]*--cv-blocks-gap: 10px/);
-  assert.match(sheet('RecordRows'), /\.input \{[^}]*--cv-blocks-gap: 10px/);
+  assert.match(sheet('UserBubble'), /\.bubble \{[^}]*--cv-blocks-gap: 10px/);
 });
 
 test('the collapsed file-changes header cannot widen the reader (no negative side margin or width overshoot)', () => {
@@ -72,13 +71,11 @@ test('every rounded rule sets corner-shape: round beside its token radius', () =
   assert.deepEqual(missing, [], 'rounded rules without corner-shape: round');
 });
 
-test('the turn-trigger opening is a 24px row, not a padded card', () => {
+test('turn triggers share the process line and detail tokens', () => {
   const opening = sheet('Opening');
-  const button = /\.triggerButton \{([^}]*)\}/.exec(opening)?.[1] ?? '';
-  assert.match(button, /height: var\(--cv-row-height\)/);
-  assert.match(button, /font-weight: 500/);
-  assert.match(button, /color: var\(--dsw-alias-label-secondary\)/);
-  assert.doesNotMatch(button, /padding:\s*10px/);
+  assert.doesNotMatch(opening, /\.triggerButton|\.triggerAction|\.triggerIcon|\.triggerTitle/);
+  const detail = /\.triggerBody \{([^}]*)\}/.exec(opening)?.[1] ?? '';
+  for (const token of ['--cv-indent', '--cv-detail-border', '--cv-detail-radius', '--cv-surface']) assert.ok(detail.includes(`var(${token})`), token);
   assert.doesNotMatch(/\.trigger \{([^}]*)\}/.exec(opening)?.[1] ?? '', /background|box-shadow|border-radius/);
 });
 
@@ -89,18 +86,6 @@ test('the reader column keeps 24px of breathing room after its last element, wit
   for (const file of readdirSync(CLIENT).filter(name => name.endsWith('.tsx'))) {
     assert.doesNotMatch(readFileSync(new URL(file, CLIENT), 'utf8'), /reader-flow-min-height/, file);
   }
-});
-
-test('the cluster row uses the 24px row grammar with token colours only', () => {
-  const css = sheet('ClusterRow');
-  assert.match(css, /\.members \{[^}]*margin-left: calc\(22px/);
-  assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}\b|rgba?\(/);
-});
-
-test('the panel header meta items are 12/18 secondary text while the status keeps the row size', () => {
-  const css = sheet('ProcessPanel');
-  assert.match(/\.meta \{([^}]*)\}/.exec(css)?.[1] ?? '', /font-size: 12px; line-height: 18px/);
-  assert.doesNotMatch(/\.status \{([^}]*)\}/.exec(css)?.[1] ?? '', /font-size/);
 });
 
 /** Horizontal margin values a declaration sets (null when it sets none): `margin`, `margin-inline` and the longhands. */
@@ -132,11 +117,7 @@ test('no stylesheet under src/client widens its box with a negative horizontal m
   // Hover bleed past the text is drawn with side box-shadows (ink overflow). A negative side margin or an oversized width makes
   // rows poke out of a narrow column and gives the scroll container a horizontal scrollbar. Allow-list: `<file> <selector>`
   // pairs that are provably unable to widen the scroll area, each with the reason.
-  const allowed = new Map<string, string>([
-    // An inline anchor: its 3px transparent hit-area border is cancelled by the -3px margin, so the box is net zero width and
-    // it sits in text flow that already wraps at the container edge.
-    ['markdown/MarkdownText.module.css .markdown a', 'inline, net-zero width (3px border cancelled by -3px margin)'],
-  ]);
+  const allowed = new Map<string, string>();
   const sources: { name: string; text: string }[] = [];
   for (const entry of readdirSync(CLIENT, { recursive: true }) as string[]) {
     const name = entry.split(String.fromCharCode(92)).join('/');
@@ -164,12 +145,16 @@ test('no stylesheet under src/client widens its box with a negative horizontal m
   assert.deepEqual(offenders, []);
 });
 
-test('hover bleed on process rows is drawn with side shadows in the hover colour', () => {
-  for (const [file, selector] of [['ToolRow', '.row'], ['ClusterRow', '.row'], ['RecordRows', '.row'], ['ReasoningRow', '.row'], ['ProcessPanel', '.headerButton'], ['FileChanges', '.header']] as const) {
+test('process rows keep their compact hit area and file cards use their own bounded surface', () => {
+  for (const file of ['Line']) {
     const css = sheet(file);
-    const hover = new RegExp(String.raw`${selector.replace('.', String.raw`\.`)}:hover[^{]*\{([^}]*)\}`).exec(css)?.[1] ?? '';
-    assert.match(hover, /box-shadow: 6px 0 0 var\(--dsw-alias-interactive-bg-hover\), -6px 0 0 var\(--dsw-alias-interactive-bg-hover\)/, `${file} ${selector}`);
+    assert.match(css, /background: var\(--cv-row-hover/);
+    assert.match(css, /min-height: var\(--cv-row-height/);
+    assert.match(css, /padding: 5px 8px/);
   }
+  assert.doesNotMatch(sheet('Line'), /box-shadow:\s*6px/);
+  assert.match(sheet('FileChanges'), /border: 1px solid var\(--cv-detail-border\)/);
+  assert.match(sheet('FileChanges'), /\.fileRow[^}]*min-width: 0/);
 });
 
 test('a settled-open collapse body does not clip; it clips only while closed or animating', async () => {
@@ -185,35 +170,12 @@ test('a settled-open collapse body does not clip; it clips only while closed or 
   assert.equal(renderToStaticMarkup(createElement(CollapseBody, { open: false, motion: true }, createElement('span', null, 'x'))), '');
 });
 
-test('panel narration is 13px on the 21px process line in the thought-text colour, with the Markdown root overridden', () => {
-  const turn = sheet('TurnSection');
-  const narration = /\.narration \{([^}]*)\}/.exec(turn)?.[1] ?? '';
-  assert.match(narration, /color: var\(--dsw-alias-label-tertiary\)/);
-  assert.match(narration, /font-size: var\(--cv-font-secondary\)/);
-  assert.match(narration, /line-height: 21px/);
-  const root = /\.narration \[data-reader-text\] > \* \{([^}]*)\}/.exec(turn)?.[1] ?? '';
-  assert.match(root, /color: var\(--dsw-alias-label-tertiary\)/);
-  assert.match(root, /font-size: var\(--cv-font-secondary\)/);
-  assert.match(root, /line-height: 21px/);
-  assert.doesNotMatch(root, /font-weight|font:/, 'the Markdown base weight is already regular');
-  // The thought text (the inset viewport) uses the same colour and line.
-  assert.match(/\.viewport \{([^}]*)\}/.exec(sheet('ReasoningRow'))?.[1] ?? '', /color: var\(--dsw-alias-label-tertiary\)[\s\S]*line-height: 21px/);
-  // Inline code is one step stronger than the text; strong keeps the Markdown weight; links are not touched.
-  assert.match(turn, /\.narration \[data-reader-text\] :not\(pre\) > code \{[^}]*color: var\(--dsw-alias-label-secondary\)/);
-  assert.doesNotMatch(turn, /\.narration[^{]*\b(strong|a)\s*\{/);
-  // Linked inline code keeps the link colour instead of the inline-code colour.
-  assert.match(turn, /\.narration \[data-reader-text\] a > code \{ color: inherit; \}/);
-  // Nested lists keep the answer zone's 4px gap.
-  assert.match(turn, /\.narration \[data-reader-text\] li > :where\(ul, ol\) \{ margin-top: 4px; \}/);
-  // One line-height declaration per heading: the block rule owns it, the heading rule does not repeat it.
-  assert.doesNotMatch(/:where\(h1, h2, h3, h4, h5, h6\) \{([^}]*)\}/.exec(turn)?.[1] ?? '', /line-height/);
-  // Spacing scales with the smaller text: no 16px / 32px Markdown margins left on paragraphs, lists and headings.
-  assert.match(turn, /\.narration \[data-reader-text\] :where\(p, ul, ol, blockquote\) \{ margin: 8px 0; \}/);
-  // The Markdown block rules set their own line height, so the 21px line is also set on the blocks, not only on the root.
-  assert.match(turn, /\.narration \[data-reader-text\] :where\(p, li, blockquote, h1, h2, h3, h4, h5, h6\) \{ line-height: 21px; \}/);
-  assert.match(turn, /:where\(h1, h2, h3, h4, h5, h6\) \{[^}]*margin: 10px 0 4px[^}]*font-size: var\(--cv-font-secondary\)/);
-  // The rule being overridden: .markdown sets primary colour and the 16px base font on itself.
-  assert.match(/\.markdown \{([^}]*)\}/.exec(readFileSync(new URL('markdown/MarkdownText.module.css', CLIENT), 'utf8'))?.[1] ?? '', /color: var\(--dsw-alias-label-primary\)/);
+test('narration and answer share one primary prose class', () => {
+  const prose = /\.prose \{([^}]*)\}/.exec(sheet('TurnSection'))?.[1] ?? '';
+  assert.match(prose, /font-family: var\(--cc-font-response\)/);
+  assert.match(prose, /font-size: var\(--cc-size-body\)/);
+  assert.match(prose, /line-height: 1\.6/);
+  assert.match(prose, /color: var\(--cc-text-100\)/);
 });
 
 test('the Markdown table wrapper never exceeds its column', () => {
@@ -222,4 +184,71 @@ test('the Markdown table wrapper never exceeds its column', () => {
   assert.match(wrapper, /width: 100%/);
   assert.match(wrapper, /min-width: 0/);
   assert.match(wrapper, /contain: inline-size/);
+});
+
+test('reader root preserves the compatibility palette for light and dark', () => {
+  const text = sheet('Reader');
+  for (const name of ['--cc-bg-100', '--cc-bg-200', '--cc-bg-300', '--cc-text-100', '--cc-text-300', '--cc-text-500', '--cc-border', '--cc-danger', '--cc-success', '--cc-brand', '--cc-font-ui', '--cc-font-response', '--cc-font-mono', '--cc-size-body']) {
+    assert.match(text, new RegExp(`${name}:`), name);
+  }
+  assert.match(text, /48 33\.3% 97\.1%/, 'light bg-100 / dark text-100');
+  assert.match(text, /60 2\.7% 14\.5%/, 'dark bg-100');
+  assert.match(text, /:global\(body\[data-ds-dark-theme\]\)\s*\.root/, 'dark override keyed on the host attribute');
+  assert.match(text, /anthropic-serif/);
+  assert.match(text, /\.root\s*\{[^}]*background:\s*transparent/s);
+});
+
+const stylesheets = (): string[] => {
+  const names: string[] = [];
+  for (const dir of ['', 'markdown/', 'native/']) {
+    for (const file of readdirSync(new URL(dir, CLIENT)).filter(name => name.endsWith('.module.css'))) names.push(dir + file);
+  }
+  return names;
+};
+
+test('only the remap block in Reader.module.css names host colour tokens', () => {
+  const names = stylesheets();
+  assert.ok(names.length > 20, 'the scan found the stylesheets');
+  for (const name of names) {
+    let text = readFileSync(new URL(name, CLIENT), 'utf8');
+    if (name === 'Reader.module.css') text = text.replace(/\/\* host-remap:start[\s\S]*?\/\* host-remap:end \*\//, '');
+    assert.doesNotMatch(text, /var\(--dsw-(?!font-family\b)/, `${name} reads a host colour token`);
+  }
+});
+
+test('retired process-panel and inset surfaces are not reintroduced', () => {
+  for (const name of stylesheets()) {
+    assert.doesNotMatch(readFileSync(new URL(name, CLIENT), 'utf8'), /--cv-(?:panel-bg|panel-ring|inset-bg|font-body|line-body)/, name);
+  }
+});
+
+test('answer prose, UI and code inherit host font choices without creating alias cycles', () => {
+  const markdown = readFileSync(new URL('markdown/MarkdownText.module.css', CLIENT), 'utf8');
+  assert.match(markdown, /var\(--cc-font-mono\)/);
+  assert.match(markdown, /var\(--cc-link\)/);
+  assert.match(sheet('TurnSection'), /font-family:\s*var\(--cc-font-response\)/);
+  assert.match(sheet('Reader'), /--cc-font-response:\s*var\(--dsh-claude-font-prose,\s*var\(--cc-font-ui\)\)/);
+  assert.match(sheet('Reader'), /--cc-font-ui:\s*var\(--dsw-font-family,/);
+  assert.match(sheet('Reader'), /--cc-font-mono:\s*var\(--dsh-claude-font-code,/);
+  assert.doesNotMatch(sheet('Reader'), /--(?:dsw-font-family|ds-font-family-code|dsh-claude-font-(?:prose|code|serif))\s*:/);
+  for (const file of ['native/ContextInjectionRow.module.css', 'native/SystemPromptRow.module.css']) {
+    const css = readFileSync(new URL(file, CLIENT), 'utf8');
+    assert.match(css, /var\(--cc-font-mono\)/, `${file} uses the same code font as the reader`);
+    assert.doesNotMatch(css, /--ds-font-family-code/, `${file} must not revert to the host font`);
+  }
+});
+
+test('every user bubble owns its right alignment instead of depending on the opening wrapper', () => {
+  assert.match(sheet('UserBubble'), /\.row\s*\{[^}]*margin-inline-start:\s*auto/);
+  assert.match(sheet('UserBubble'), /font-size:\s*var\(--cc-size-body\)/);
+});
+
+test('native code cards have a single outer frame and square top content corners', () => {
+  const css = readFileSync(new URL('markdown/MarkdownText.module.css', CLIENT), 'utf8');
+  const content = /\.markdown :global\(\.md-code-block\) pre\s*\{([^}]*)\}/.exec(css)?.[1];
+  assert.ok(content, 'real CodeBlock pre override exists');
+  assert.match(content, /border:\s*0;/);
+  assert.match(content, /border-radius:\s*0 0 calc\(/);
+  assert.match(content, /box-shadow:\s*none/);
+  assert.match(css, /\.markdown :global\(\.md-code-block\)\s*\{[^}]*border:\s*1px solid var\(--cv-detail-border\)/);
 });

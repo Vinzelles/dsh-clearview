@@ -48,9 +48,10 @@ test('a scheduled trigger opens the turn as a trigger row, not a generic card', 
   assert.match(html, /data-reader-trigger="schedule"/);
   assert.match(html, /自动化任务/);
   assert.doesNotMatch(html, /工具调用/);
-  // A 24px row with an expand-original action; never a rewind seat.
-  assert.match(html, /展开原文/);
-  assert.match(html, /<button[^>]*aria-expanded="false"/);
+  // Triggers share the process line and its accessible disclosure; never a rewind seat.
+  assert.match(html, /data-reader-line="true"/);
+  assert.doesNotMatch(html, /展开原文|收起原文|data-reader-line-hint/);
+  assert.match(html, /<button[^>]*aria-expanded="false"[^>]*aria-controls="[^"]+"/);
   assert.doesNotMatch(html, /data-reader-anchor/);
 });
 
@@ -58,7 +59,9 @@ test('a user opening keeps the rewind seat contract and shows its labels', () =>
   const turn = turnLocation({ status: 'open' });
   const user = chatNode('user', { content: [{ type: 'text', text: '你好' }], skillNames: ['design'] }, turn);
   const html = render(Opening, { useSession: sessionHook(chatOf([user], [turn])), nodeKey: user.key, ...blocks });
-  assert.match(html, new RegExp(`<div class="user" data-reader-anchor="true" data-reader-key="${user.key}"`));
+  assert.match(html, /data-reader-user-bubble/);
+  assert.match(html, new RegExp(`data-reader-anchor="true"[^>]*data-reader-key="${user.key}"`));
+  assert.match(html, /你好/);
   assert.match(html, /技能 design/);
 });
 
@@ -70,11 +73,15 @@ test('rows, inputs and notices render from their nodes', () => {
   const useSession = sessionHook(chatOf([failed, steering, error], [turn]));
   const row = render(RecordRow, { useSession, nodeKey: failed.key, t: ((key: string) => key) as never, onRead: () => {}, ...blocks });
   assert.match(row, /data-record-tone="failed"/);
-  assert.match(row, /data-stub="StateDot" data-state="error"/);
+  assert.match(row, /data-reader-notice-tone="danger"/);
+  assert.doesNotMatch(row, /data-reader-line/);
   const input = render(InputBubble, { useSession, nodeKey: steering.key, ...blocks });
   assert.match(input, /补充消息[\s\S]*禁止使用子代理/);
   const notice = render(TurnNotice, { useSession, nodeKey: error.key });
-  assert.match(notice, /本轮出现错误[\s\S]*upstream 500[\s\S]*HTTP_500/);
+  assert.match(notice, /本轮出现错误[\s\S]*upstream 500/);
+  assert.match(notice, /data-reader-notice-tone="danger"/);
+  assert.doesNotMatch(notice, /data-reader-line/);
+  assert.doesNotMatch(notice, /<button/);
 });
 
 const body = (kind: string, data: unknown, showInChat?: (focus: string) => void) => {
@@ -121,8 +128,9 @@ test('a steering input keeps the seat the rewind bridge reads', () => {
   const turn = turnLocation({ status: 'open', steps: [1] });
   const steering = chatNode('steering', { content: [{ type: 'text', text: '换个方案' }] }, turn, 1);
   const html = render(InputBubble, { useSession: sessionHook(chatOf([steering], [turn])), nodeKey: steering.key, ...blocks });
-  // The bridge matches div[data-reader-anchor][data-reader-key] (not article) and reads a first-child <p> whose class contains "meta".
-  assert.match(html, new RegExp(`^<div class="input" data-reader-input="steering" data-reader-anchor="true" data-reader-key="${steering.key}"><p class="meta">补充消息</p>`));
+  // The outer message seat owns the anchor; the bubble and external actions live inside it.
+  assert.match(html, new RegExp(`data-reader-user-message[^>]*data-reader-input="steering"[^>]*data-reader-anchor="true"[^>]*data-reader-key="${steering.key}"`));
+  assert.match(html, /data-reader-user-bubble[^>]*><p class="meta">补充消息<\/p>/);
 });
 
 test('once the turn is closed an in-flight lifecycle record settles to idle with neutral wording', () => {
@@ -150,9 +158,13 @@ test('a retry record in a closed turn renders without an ongoing dot; in an open
   const settled = render(RecordRow, { useSession: sessionHook(chatOf([retry], [closed])), ...props, turnClosed: true });
   assert.match(settled, /data-record-tone="idle"/);
   assert.match(settled, /模型请求重试记录/);
-  assert.doesNotMatch(settled, /data-state="ongoing"|正在重试/);
+  assert.match(settled, /data-reader-notice-tone="warning"/);
+  assert.doesNotMatch(settled, /data-reader-line/);
+  assert.doesNotMatch(settled, /data-tone="running"|正在重试/);
   const live = render(RecordRow, { useSession: sessionHook(chatOf([retry], [open])), ...props, turnClosed: false });
   assert.match(live, /data-record-tone="active"/);
-  assert.match(live, /data-stub="StateDot" data-state="ongoing"/);
+  assert.match(live, /data-reader-notice-tone="warning"/);
+  assert.match(live, /aria-expanded="false"[^>]*aria-controls="[^"]+"/);
+  assert.doesNotMatch(live, /data-reader-line/);
   assert.match(live, /模型请求正在重试/);
 });

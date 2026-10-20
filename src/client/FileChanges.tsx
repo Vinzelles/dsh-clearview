@@ -18,20 +18,20 @@
  * 修改且已不存在 → 改判删除；删除且仍存在 → 剔除。任一目录查询失败则放弃
  * 校准，维持解析结果（宁缺勿错）。
  *
- * 展示设计（v4）：收起时是一行（标题 + 文件数 + 新增/修改/删除标签）；展开后是与过程
- * 面板同款的面板，按操作分组列出路径（目录弱化、文件名主色），点击在右侧栏预览。
+ * 展示设计：摘要、前三个路径及可靠编辑行数；按需展开其余文件和只读差异审阅。
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useChatSelector, useSessionSelector } from './compat/session-snapshot.js';
-import { EMPTY_FILE_CHANGES, collectFileChanges, reconcileFileChanges } from './file-changes.js';
-import type { FileChangeEntry, FileChangeKind, FileChangeSummary } from './file-changes.js';
+import { EMPTY_FILE_CHANGES, collectFileChanges, reconcileFileChanges, fileChangeCounts } from './file-changes.js';
+import type { FileChangeSummary } from './file-changes.js';
 import { CollapseBody, MountFade } from './motion.js';
 import { Chevron } from './ProcessRow.js';
+import { DiffBlockL } from './native/labeled-blocks.js';
 import type { ReaderProps } from './types.js';
 import css from './FileChanges.module.css';
 
-/** 展开后每组默认显示的文件数上限（超出折叠为「展开其余 N 个」）。 */
-const FILE_LIMIT = 12;
+/** 卡片默认显示前三个文件，剩余文件由「再显示」展开。 */
+const FILE_LIMIT = 3;
 
 export interface FileChangesPanelProps extends Pick<ReaderProps, 'useSession' | 'useSessions' | 'sessionId' | 'useProjection' | 'jobsSource' | 'watchJobs'> {
   order: readonly string[];
@@ -96,54 +96,56 @@ export function FileChangesPanel({
     })();
     return () => { cancelled = true; };
   }, [summary, hidden, listDirNames]);
-  const [open, setOpen] = useState(false);
-  // 空态（无文件改动，含校准后全部剔除）不渲染任何东西。
   const visible = !hidden && adjusted.total > 0;
-  return <MountFade mounted={visible} motion={motion}>{({ entering }) => !visible ? null : (
-    <section className={`${css.changes} ${entering ? css.entering : ''}`} data-reader-file-changes data-open={open} aria-label="本会话文件改动">
-      <button type="button" className={css.header} aria-expanded={open} onClick={() => setOpen(value => !value)}>
-        <Chevron open={open} />
-        <span className={css.title}>本会话文件改动</span>
-        <span className={css.meta}>{adjusted.total} 个文件{hasMore ? ' · 仅已加载记录' : ''}</span>
-        <span className={css.tags} aria-hidden="true">
-          {adjusted.added.length > 0 && <span className={css.tag} data-tone="added">新增 {adjusted.added.length}</span>}
-          {adjusted.modified.length > 0 && <span className={css.tag} data-tone="modified">修改 {adjusted.modified.length}</span>}
-          {adjusted.deleted.length > 0 && <span className={css.tag} data-tone="deleted">删除 {adjusted.deleted.length}</span>}
-        </span>
-      </button>
-      <CollapseBody open={open} motion={motion}>
-        <div className={css.body}>
-          <FileGroup label="新增" tone="added" items={adjusted.added} openFile={openFile} />
-          <FileGroup label="修改" tone="modified" items={adjusted.modified} openFile={openFile} />
-          <FileGroup label="删除" tone="deleted" items={adjusted.deleted} openFile={openFile} />
+  return <MountFade mounted={visible} motion={motion}>{({ entering }) => !visible ? null :
+    <FileChangesCard summary={adjusted} motion={motion} hasMore={hasMore} openFile={openFile} entering={entering} />
+  }</MountFade>;
+}
+
+/** A compact session summary, with three file rows visible before expanding the list. */
+export function FileChangesCard({ summary, motion, hasMore, openFile, entering = false }: {
+  summary: FileChangeSummary; motion: boolean; hasMore: boolean;
+  openFile?: FileChangesPanelProps['openFile']; entering?: boolean;
+}) {
+  const [showAll, setShowAll] = useState(false);
+  const [review, setReview] = useState(false);
+  const items = useMemo(() => [...summary.added, ...summary.modified, ...summary.deleted], [summary]);
+  const counts = useMemo(() => items.map(fileChangeCounts), [items]);
+  const known = counts.filter((item): item is NonNullable<typeof item> => item !== null);
+  const totals = known.reduce((sum, item) => ({ added: sum.added + item.added, removed: sum.removed + item.removed }), { added: 0, removed: 0 });
+  const visible = showAll ? items : items.slice(0, FILE_LIMIT);
+  return <section className={`${css.changes} ${entering ? css.entering : ''}`} data-reader-file-changes data-open={review} aria-label="本会话文件改动">
+    <div className={css.header}>
+      <span className={css.icon} aria-hidden="true"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4"><path d="M4 3h12v14H4zM10 6v7M6.5 9.5h7" /></svg></span>
+      <div className={css.heading}>
+        <strong className={css.title}>已改动 {summary.total} 个文件</strong>
+        <div className={css.meta}>
+          {known.length > 0 && <span className={css.stats} title="已加载工具编辑的累计行数，不代表工作区净差异"><span data-add>+{totals.added}</span><span data-del>−{totals.removed}</span></span>}
+          {hasMore && <span>仅已加载记录</span>}
+          {known.length > 0 && known.length < items.length && <span>部分行数可用</span>}
         </div>
-      </CollapseBody>
-    </section>
-  )}</MountFade>;
+      </div>
+      <button className={css.reviewButton} data-reader-file-review-toggle type="button" aria-expanded={review} onClick={() => setReview(value => !value)}>{review ? '关闭审阅' : '审阅'}</button>
+    </div>
+    <div className={css.body}>
+      {visible.map((item, index) => { const stat = counts[index]; return <div className={css.fileRow} key={item.key} data-reader-changed-file>
+        <button type="button" className={css.file} title={item.display} disabled={!openFile} onClick={() => openFileQuietly(openFile, item.display)}>{item.display}</button>
+        {stat ? <span className={css.stats} aria-label={`增加 ${stat.added} 行，删除 ${stat.removed} 行`}><span data-add>+{stat.added}</span><span data-del>−{stat.removed}</span></span>
+          : <span className={css.kind}>{item.kind === 'added' ? '新增' : item.kind === 'deleted' ? '删除' : '修改'}</span>}
+      </div>; })}
+      {items.length > FILE_LIMIT && <button type="button" className={css.more} aria-expanded={showAll} onClick={() => setShowAll(value => !value)}>{showAll ? '收起文件列表' : `再显示 ${items.length - FILE_LIMIT} 个文件`}<Chevron open={showAll} /></button>}
+    </div>
+    <CollapseBody open={review} motion={motion}><div className={css.review} data-reader-file-review>{review && <>
+      <p className={css.scope}>以下为本会话已加载的工具编辑记录；同一文件的多次编辑按记录顺序展示。</p>
+      {items.map(item => <div className={css.reviewFile} key={item.key}>
+        {item.edits?.length ? <DiffBlockL diffs={item.edits.map(edit => ({ path: item.display, ...edit }))} maxLines={24} />
+          : <><strong>{item.display}</strong><p className={css.scope}>此记录没有可用的逐行差异。</p></>}
+      </div>)}
+    </>}</div></CollapseBody>
+  </section>;
 }
 
 /** The host opener may reject (missing file, no handler); a click must never surface that as an unhandled rejection. */
 export function openFileQuietly(openFile: FileChangesPanelProps['openFile'], path: string): void {
   try { void Promise.resolve(openFile?.(path)).catch(() => {}); } catch { /* a synchronous throw degrades the same way */ }
-}
-
-/** One operation group: label + count, then one path row per file (directory muted, name primary). */
-function FileGroup({ label, tone, items, openFile }: {
-  label: string; tone: FileChangeKind; items: readonly FileChangeEntry[]; openFile?: FileChangesPanelProps['openFile'];
-}) {
-  const [showAll, setShowAll] = useState(false);
-  if (items.length === 0) return null;
-  const visible = showAll ? items : items.slice(0, FILE_LIMIT);
-  return <div className={css.group} data-tone={tone}>
-    <div className={css.groupLabel}><span className={css.dot} aria-hidden="true" />{label} · {items.length}</div>
-    {visible.map(item => {
-      const cut = item.display.lastIndexOf('/');
-      const directory = cut < 0 ? '' : item.display.slice(0, cut + 1);
-      const name = cut < 0 ? item.display : item.display.slice(cut + 1);
-      return <button key={item.key} type="button" className={css.file} title={item.display} disabled={!openFile} onClick={() => openFileQuietly(openFile, item.display)}>
-        {directory && <span className={css.directory}>{directory}</span>}<span className={css.name}>{name}</span>
-      </button>;
-    })}
-    {items.length > visible.length && <button type="button" className={css.more} onClick={() => setShowAll(true)}>展开其余 {items.length - visible.length} 个</button>}
-  </div>;
 }

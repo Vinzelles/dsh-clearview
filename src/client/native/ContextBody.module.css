@@ -3,7 +3,7 @@
 
 .text {
   margin: 0;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--cc-text-300);
   font: inherit;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -16,7 +16,7 @@
   gap: 2px;
   margin: 8px 0 0;
   padding-top: 8px;
-  border-top: 1px solid var(--dsw-alias-line-secondary);
+  border-top: 1px solid var(--cc-border);
 }
 
 .field {
@@ -28,14 +28,14 @@
 .fieldKey {
   flex: none;
   min-width: 96px;
-  color: var(--dsw-alias-label-caption);
+  color: var(--cc-text-500);
 }
 
 .fieldValue {
   flex: 1 1 auto;
   min-width: 0;
   margin: 0;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--cc-text-500);
   overflow-wrap: anywhere;
 }
 
@@ -57,18 +57,18 @@
 }
 
 .filePath {
-  color: var(--dsw-alias-label-secondary);
+  color: var(--cc-text-300);
   overflow-wrap: anywhere;
 }
 
 .fileAction {
-  color: var(--dsw-alias-label-caption);
+  color: var(--cc-text-500);
 }
 
 /* catalog: a replacement notice above one row per published entry. */
 .catalogNotice {
   margin: 0 0 6px;
-  color: var(--dsw-alias-label-caption);
+  color: var(--cc-text-500);
 }
 
 
@@ -89,14 +89,14 @@
 
 .entryName {
   flex: none;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--cc-text-300);
 }
 
 .entryDescription {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--cc-text-500);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -117,12 +117,12 @@
 }
 
 .sectionName {
-  color: var(--dsw-alias-label-caption);
+  color: var(--cc-text-500);
 }
 
 .sectionText {
   margin: 0;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--cc-text-300);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -130,7 +130,7 @@
 /* relay: who sent this, above what they said. */
 .relaySender {
   margin: 0 0 6px;
-  color: var(--dsw-alias-label-caption);
+  color: var(--cc-text-500);
   overflow-wrap: anywhere;
 }
 
@@ -151,11 +151,11 @@
 }
 
 .recallLabel {
-  color: var(--dsw-alias-label-secondary);
+  color: var(--cc-text-300);
   overflow-wrap: anywhere;
 }
 
 .recallCounts {
   flex: none;
-  color: var(--dsw-alias-label-caption);
+  color: var(--cc-text-500);
 }

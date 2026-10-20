@@ -2,8 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { AssistantChatData } from '@deepseek-ai/dsh-client-ui-conversation/client';
 import type { AssistantBlock, ChatConversationViewNode, TurnLocation, ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client';
-import { assistantSegments, boundaryOf, groupNodes, hasVisibleBody, processChoiceKey, processExpanded, terminalLabel } from '../src/client/projection.ts';
+import { assistantSegments, boundaryOf, groupNodes, hasVisibleBody, terminalLabel } from '../src/client/projection.ts';
 import type { TurnBoundary } from '../src/client/projection.ts';
+import { settledTool } from './support/chat-fixture.ts';
 import { activityPhase, activitySummary, inputFields, readerFlow } from '../src/client/tool-activity.ts';
 
 const text: AssistantBlock = { kind: 'text', text: '前序说明或回答：不能靠关键词判断。' };
@@ -22,32 +23,6 @@ test('reasoning and body retain original order, content and identities across st
   assert.equal(segments[0].blocks[0], first);
   const append = assistantSegments([first, text, later, { kind: 'text', text: '最终正文' }]);
   assert.deepEqual(append.slice(0, 3), segments);
-});
-
-test('process stays open through body output and later steps until successful turn completion', () => {
-  assert.equal(processExpanded(undefined, active), true);
-  assert.equal(processExpanded(undefined, { ...active, latestStep: 7 }), true);
-  assert.equal(processExpanded(undefined, completed), false);
-  assert.equal(processExpanded(undefined, { ...active, status: 'unknown' }), true);
-  for (const reason of ['error', 'aborted', 'interrupted', 'blocked', 'max-tokens', 'future-terminal']) {
-    assert.equal(processExpanded(undefined, { ...completed, reason }), true, reason);
-  }
-});
-
-test('deliberate process expansion or collapse overrides the automatic lifecycle', () => {
-  assert.equal(processExpanded(true, completed), true);
-  assert.equal(processExpanded(false, active), false);
-  assert.equal(processExpanded(false, { ...completed, reason: 'error' }), false);
-});
-
-test('reading during a run does not keep the completed process open; reopening after completion is deliberate', () => {
-  const choices: Record<string, boolean> = {};
-  choices[processChoiceKey('turn:1', active)] = true;
-  assert.equal(processExpanded(choices[processChoiceKey('turn:1', completed)], completed), false);
-  assert.equal(processChoiceKey('turn:1', active), processChoiceKey('turn:1', { ...active, latestStep: 9 }));
-  choices[processChoiceKey('turn:1', completed)] = true;
-  assert.equal(processExpanded(choices[processChoiceKey('turn:1', completed)], completed), true);
-  assert.equal(processExpanded(choices[processChoiceKey('turn:2', completed)], completed), false);
 });
 
 test('all abnormal and unknown terminal states preserve generated prefixes', () => {
@@ -118,4 +93,36 @@ test('a nonzero terminal exit is a failure even when the tool transport is non-e
   assert.equal(activityPhase({ block }), 'failed');
   assert.equal(activityPhase({ block: { ...block, resultView: null } as ToolCallBlock }), 'returned');
   assert.equal(activityPhase({}, true), 'interrupted');
+});
+
+
+test('activity summaries reuse immutable source models without reparsing unchanged tool arguments', () => {
+  const block = settledTool('summary-cache', 'bash', { command: 'unique-cache-command', cwd: 'C:/synthetic' });
+  const original = JSON.parse;
+  let parses = 0;
+  JSON.parse = ((raw: string, ...rest: any[]) => { if (raw === block.call.argsRaw) parses++; return original(raw, ...rest as []); }) as typeof JSON.parse;
+  try {
+    const first = activitySummary({ block });
+    for (let index = 0; index < 20; index++) {
+      assert.equal(activitySummary({ block }), first);
+      assert.equal(activitySummary({ block }).args, first.args);
+    }
+    assert.equal(parses, 1);
+    const changed = { ...block, call: { ...block.call, argsRaw: JSON.stringify({ command: 'new-command' }) } };
+    assert.equal(activitySummary({ block: changed }).command, 'new-command');
+    assert.notEqual(activitySummary({ block: changed }), first);
+    const viewed = { ...block, callView: { card: 'terminal', title: 'native-command', cwd: 'native-cwd' } };
+    assert.equal(activitySummary({ block: viewed }).command, 'native-command');
+    assert.equal(activitySummary({ block: viewed }).cwd, 'native-cwd');
+  } finally { JSON.parse = original; }
+});
+
+test('a growing draft invalidates the cached summary without losing its received prefix', () => {
+  const draft = { kind: 'tool-call', callId: 'draft-cache', name: 'write', argsRaw: '{"file_path":"x.ts","content":"start' } as any;
+  const first = activitySummary({ draft });
+  assert.equal(first.content, 'start');
+  assert.equal(activitySummary({ draft }), first);
+  const next = activitySummary({ draft: { ...draft, argsRaw: draft.argsRaw + ' continued' } });
+  assert.notEqual(next, first);
+  assert.equal(next.content, 'start continued');
 });

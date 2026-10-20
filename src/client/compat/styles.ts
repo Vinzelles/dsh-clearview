@@ -17,7 +17,7 @@
 export const COMPAT_CSS = `/* ==== reader-scroll-anchor.css ==== */
 /* 对话滚动容器交给原生 scroll anchoring 负责脱离底部后的位置保持；
  * 插件不再叠加手动锚点补偿，避免滚动历史时被二次锚定拽跳。 */
-[data-conversation-scroll] {
+[data-conversation-scroll]:has([data-dsh-clearview]) {
   overflow-anchor: auto;
 }
 
@@ -49,7 +49,8 @@ export const COMPAT_CSS = `/* ==== reader-scroll-anchor.css ==== */
 /* ==== rewind-reader-bridge.css ==== */
 /* rewind 兼容桥：座位内追加 [data-time-hover-root] > actions 行（复制按钮 +
  * rewind 撤回按钮 portal）。actions 行绝对定位 top:100% 移出气泡视觉框，座位
- * margin-bottom 预留空间；28px 圆形描边图标与原生 .action 一致。 */
+ * margin-bottom 预留空间；定位座位包含完整气泡，短消息的操作区也不进入气泡。
+ * 28px 圆形描边图标与原生 .action 一致。 */
 
 [data-dsh-clearview] div[data-dshcp-rewind-seat="1"] {
   position: relative;
@@ -69,7 +70,7 @@ export const COMPAT_CSS = `/* ==== reader-scroll-anchor.css ==== */
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 4px;
   height: 28px;
 }
 

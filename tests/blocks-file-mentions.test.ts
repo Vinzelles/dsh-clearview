@@ -14,3 +14,14 @@ test('settled answer text links inline-code file mentions', () => {
   assert.match(html, /<button[^>]*title="D:\/repo\/src\/a.ts"[^>]*aria-label="打开 src\/a.ts"[^>]*>src\/a.ts<\/button>/);
   assert.match(html, /<code>missing.ts<\/code>/);
 });
+
+
+test('reader streaming does not opt into host text reveal highlights', () => {
+  const html = render(Blocks, {
+    blocks: [], streaming: true,
+    renderSlotChain: ((_name: string, _owner: unknown, options: { fallback: unknown }) => options.fallback) as never,
+    loadImage: async () => 'blob:x',
+  });
+  assert.doesNotMatch(html, / data-streaming=/, 'host reveal engines claim this generic marker');
+  assert.match(html, / data-reader-streaming="true"/);
+});

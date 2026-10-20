@@ -1,0 +1,29 @@
+.live { min-width: 0; }
+.viewport {
+  font-family: var(--cc-font-ui);
+  font-style: normal;
+  font-size: var(--cv-process-size);
+  line-height: 1.65;
+  color: var(--cc-text-300);
+  max-height: 128px;
+  overflow-y: auto;
+  overflow-anchor: none;
+  scrollbar-width: none;
+  margin: 4px 8px 12px var(--cv-rail-offset);
+  padding: 0 12px;
+  border-left: 1px solid var(--cv-detail-border);
+}
+.viewport::-webkit-scrollbar { display: none; }
+.viewport[data-scrolled="true"] { mask-image: linear-gradient(to bottom, transparent 0, #000 1.6em); }
+.resume {
+  border: 0;
+  background: none;
+  padding: 2px 8px;
+  margin-left: var(--cv-rail-offset);
+  border-radius: var(--cv-row-radius);
+  color: var(--cc-text-500);
+  font: inherit;
+  font-size: var(--cc-size-small);
+  cursor: pointer;
+}
+.resume:hover { color: var(--cc-text-100); background: var(--cv-row-hover); }

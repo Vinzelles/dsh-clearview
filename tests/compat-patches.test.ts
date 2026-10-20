@@ -8,7 +8,7 @@ const COMPAT = new URL('../src/client/compat/', import.meta.url);
 test('only the three surviving compat patches are registered', () => {
   const source = readFileSync(new URL('index.ts', COMPAT), 'utf8');
   const registered = [...source.matchAll(/\['([\w-]+)',\s*\w+\.apply\]/g)].map(match => match[1]);
-  assert.deepEqual(registered, ['memory-tail-keep', 'perf-guard', 'rewind-bridge']);
+  assert.deepEqual(registered, ['perf-guard', 'rewind-bridge']);
   assert.doesNotMatch(source, /turn-metrics-footer|composer-readability/);
   assert.equal(existsSync(new URL('turn-metrics-footer.ts', COMPAT)), false);
   assert.equal(existsSync(new URL('composer-readability.ts', COMPAT)), false);

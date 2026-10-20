@@ -26,16 +26,18 @@ import type { ChatConversationViewNode } from '@deepseek-ai/dsh-client-ui-chat/c
 import type { ToolCallBlock } from '@deepseek-ai/dsh-client-ui-conversation/client';
 import { executionFacts, inputFields, stringValue } from './tool-activity.js';
 import { diffCardModel } from './native017/tool-models.mjs';
+import { diffStat } from './transcript-model.js';
 
 export type FileChangeKind = 'added' | 'modified' | 'deleted';
 export type FileOpKind = 'create' | 'modify' | 'delete';
 
 /** 一次文件路径操作（path 为原始写法，展示归一化在汇总阶段做）。 */
-export interface FileOp { op: FileOpKind; path: string }
+export interface FileEdit { oldText: string | null; newText: string }
+export interface FileOp { op: FileOpKind; path: string; edits?: FileEdit[] }
 /** 带归属轮次的操作（汇总输入）。 */
 export interface TimedOp extends FileOp { turn: number | null }
 
-export interface FileChangeEntry { key: string; display: string; kind: FileChangeKind; turns: number[] }
+export interface FileChangeEntry { key: string; display: string; kind: FileChangeKind; turns: number[]; edits?: FileEdit[] }
 export interface FileChangeSummary {
   added: FileChangeEntry[];
   modified: FileChangeEntry[];
@@ -270,7 +272,7 @@ export function resolveDisplayPath(rawPath: string, cwd?: string): { key: string
 
 /** 按日志顺序折叠为每路径净状态，输出新增/修改/删除三类。 */
 export function summarizeFileOps(ops: readonly TimedOp[], cwd?: string): FileChangeSummary {
-  interface State { key: string; display: string; first: 'create' | 'touch'; last: FileOpKind; turns: number[] }
+  interface State { key: string; display: string; first: 'create' | 'touch'; last: FileOpKind; turns: number[]; edits?: FileEdit[] }
   const byKey = new Map<string, State>();
   for (const op of ops) {
     if (!op.path) continue;
@@ -284,6 +286,7 @@ export function summarizeFileOps(ops: readonly TimedOp[], cwd?: string): FileCha
       state.last = op.op;
     }
     if (op.turn !== null && !state.turns.includes(op.turn)) state.turns.push(op.turn);
+    if (op.edits?.length) (state.edits ??= []).push(...op.edits);
   }
   const added: FileChangeEntry[] = [];
   const modified: FileChangeEntry[] = [];
@@ -293,12 +296,18 @@ export function summarizeFileOps(ops: readonly TimedOp[], cwd?: string): FileCha
     if (state.last === 'delete') kind = state.first === 'create' ? null : 'deleted';
     else kind = state.first === 'create' ? 'added' : 'modified';
     if (kind === null) continue; // 本会话内建了又删 → 净零
-    const entry: FileChangeEntry = { key: state.key, display: state.display, kind, turns: state.turns };
+    const entry: FileChangeEntry = { key: state.key, display: state.display, kind, turns: state.turns, ...(state.edits?.length ? { edits: state.edits } : {}) };
     if (kind === 'added') added.push(entry);
     else if (kind === 'deleted') deleted.push(entry);
     else modified.push(entry);
   }
   return { added, modified, deleted, total: added.length + modified.length + deleted.length };
+}
+
+/** Counts describe captured editing operations, not a reconstructed working-tree net diff. */
+export function fileChangeCounts(entry: FileChangeEntry): { added: number; removed: number } | null {
+  if (!entry.edits?.length) return null;
+  return entry.edits.reduce((sum, edit) => { const counts = diffStat(edit.oldText, edit.newText); return { added: sum.added + counts.added, removed: sum.removed + counts.removed }; }, { added: 0, removed: 0 });
 }
 
 /**
@@ -352,7 +361,11 @@ function walk(block: ToolCallBlock, turn: number | null, ops: TimedOp[], seen: S
     seen.add(sub.callId);
     walk(sub, turn, ops, seen);
   }
-  for (const op of fileOpsOf(block)) ops.push({ ...op, turn });
+  const diffs = diffCardModel(block)?.card.diffs;
+  for (const op of fileOpsOf(block)) {
+    const edits = diffs?.filter(diff => diff.path === op.path && (diff.oldText !== null || op.op === 'create')).map(diff => ({ oldText: diff.oldText, newText: diff.newText }));
+    ops.push({ ...op, turn, ...(edits?.length ? { edits } : {}) });
+  }
 }
 
 /** 会话窗口 → 文件改动汇总。order 传调用方已过滤（撤回/隐藏）后的可见节点顺序。 */

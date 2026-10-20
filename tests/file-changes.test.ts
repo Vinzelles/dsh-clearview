@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChatConversationViewNode, ToolCallBlock, ToolResultNode } from '@deepseek-ai/dsh-client-runtime/client';
 import {
-  collectFileChanges, EMPTY_FILE_CHANGES, fileOpsOf, reconcileFileChanges, resolveDisplayPath, shellFileOps, summarizeFileOps,
+  collectFileChanges, EMPTY_FILE_CHANGES, fileOpsOf, reconcileFileChanges, resolveDisplayPath, shellFileOps, summarizeFileOps, fileChangeCounts,
 } from '../src/client/file-changes.js';
 
 /** 一个已结算工具调用的最小夹具（未给出的字段取无害默认）。 */
@@ -359,4 +359,13 @@ test('collectFileChanges：按节点窗口收集、去重、子调用计入、�
 
 test('collectFileChanges：空窗口返回空汇总', () => {
   assert.deepEqual(collectFileChanges([], () => undefined, 'D:\\w'), EMPTY_FILE_CHANGES);
+});
+
+test('file review keeps applied diff records and counts shared context only once per edit', () => {
+  const call = settled({ call: { name: 'edit', argsRaw: JSON.stringify({ file_path: 'a.ts', old_string: 'a', new_string: 'a\nb' }) }, meta: { diffs: [{ path: 'a.ts', oldText: 'a\n', newText: 'a\nb\n' }] } });
+  const summary = collectFileChanges(['n'], () => toolNode(call, 1), 'D:/w');
+  assert.equal(summary.total, 1);
+  assert.deepEqual(fileChangeCounts(summary.modified[0]!), { added: 1, removed: 0 });
+  assert.equal(summary.modified[0]!.edits?.[0]?.newText, 'a\nb\n');
+  assert.equal(fileChangeCounts({ key: 'unknown', display: 'unknown', kind: 'modified', turns: [] }), null, 'missing counts are not zero counts');
 });

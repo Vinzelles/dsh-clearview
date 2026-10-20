@@ -1,0 +1,6 @@
+.group { min-width: 0 }
+/* Rail at 22px; member rows begin at the shared 28px indent, including the 1px rail. */
+.members { margin: 0 0 0 var(--cv-rail-offset, 22px); padding-left: calc(var(--cv-indent, 28px) - var(--cv-rail-offset, 22px) - 1px); border-left: 1px solid transparent; min-width: 0 }
+.group[data-expanded="true"] > .members:not([data-single="true"]) { margin-top: 4px; margin-bottom: 8px; border-left-color: var(--cv-detail-border); }
+.members:empty { display: none }
+.members[data-single="true"] { margin: 0; padding-left: 0; border-left: 0 }

@@ -58,3 +58,21 @@ test('group selection ignores other turns but observes own nodes and turn comple
   const closed = select(chat([a, b], new Map([[1, { status: 'closed' } as TurnLocation]])));
   assert.equal(closed.turn?.status, 'closed');
 });
+
+test('current engine completion removes the whole withdrawn group without changing node order', () => {
+  const select = createReaderStructureSelector();
+  const kept = node('kept', 1, 'user', 1), target = node('target', 2, 'user', 268);
+  const assistant = node('assistant', 2, 'assistant-step', 269), error = node('error', 2, 'turn-error', 270);
+  const command = { ...node('cmd', 3, 'command', 271), data: { name: 'rewind-plugin', seq: 271, args: '@268 chat', outcome: null } } as ChatConversationViewNode;
+  const before = select(chat([kept, target, assistant, error, command]));
+  const done = { ...command, data: { ...command.data as object, outcome: { kind: 'success', sourceEventSeq: 272 } } } as ChatConversationViewNode;
+  const after = select(chat([kept, target, assistant, error, done]));
+  assert.notEqual(after, before);
+  assert.deepEqual(after.visibleOrder, ['kept']);
+  assert.equal(after.latestUserKey, 'kept');
+  assert.equal(after.groups.length, 1);
+  assert.equal(after.groups[0], before.groups[0]);
+  const resumed = select(chat([kept, target, assistant, error, done, node('resumed', 4, 'user', 273)]));
+  assert.deepEqual(resumed.visibleOrder, ['kept', 'resumed']);
+  assert.equal(resumed.latestUserKey, 'resumed');
+});

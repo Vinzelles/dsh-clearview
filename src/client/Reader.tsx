@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { cssEscape } from './css-escape.js';
+import { useVisibleReadingWidth } from './reading-viewport.js';
 import { FileChangesPanel } from './FileChanges.js';
-import { FloatingStatus } from './FloatingStatus.js';
+import { JumpButton } from './JumpButton.js';
 import { viewRequestAction } from './view-request.js';
 import { TurnSection } from './TurnSection.js';
 import { useTurnActivity } from './use-turn-activity.js';
@@ -26,6 +27,7 @@ export function Reader(rawProps: ReaderProps) {
   // props.useSession；热路径按 chat/session/pending 域直接在宿主选择，避免全量订阅。
   const props = useCompatReaderProps(rawProps);
   const root = useRef<HTMLDivElement>(null);
+  useVisibleReadingWidth(root);
   const activatedAt = useRef(Date.now());
   const selectStructure = useMemo(createReaderStructureSelector, [props.sessionId]);
   const { visibleOrder, groups, hidden: rewindHidden, spans: rewindSpans, latestUserKey } = useChatSelector(props.useSession, selectStructure);
@@ -35,23 +37,31 @@ export function Reader(rawProps: ReaderProps) {
   const hasMore = useSessionSelector(props.useSession, snapshot => snapshot.hasMore);
   const loadingOlder = useSessionSelector(props.useSession, snapshot => snapshot.loadingOlder);
   const motionPreference = props.useStore(state => state.motion);
-  const collapseThinking = props.useStore(state => state.collapseThinking ?? false);
   const motion = useMotionAllowed(motionPreference);
   const activity = useTurnActivity(props.useSession);
   // 阅读流空闲判定（文件改动展示区的可见条件之一）：无开放轮次活动、无待处理交互、窗口已加载。
   const conversationIdle = !activity.key && pending.length === 0 && !loading;
   const streamMotion = useMemo(() => ({ enabled: motion, activatedAt: activatedAt.current }), [motion]);
   const scroll = useReadingScroll(root, motion, props.sessionId);
+  const [resumeSignal, setResumeSignal] = useState(0);
+  const jumpToLatest = () => {
+    // Do not clear a live text selection to resume scrolling.
+    const selection = document.getSelection();
+    if (selection && !selection.isCollapsed) return;
+    scroll.jump();
+    setResumeSignal(value => value + 1);
+  };
   const { openFile, fork, fileMentions, inspectCall, openView } = props;
   // One value for every row: motion, host file/fork/inspect/view actions.
   const actions = useMemo<ReaderActions>(() => ({
     motion,
+    resumeSignal,
     openFile: openFile ? path => { void openFile(path).catch(() => {}); } : undefined,
     fork,
     fileMentions,
     inspectCall,
     showInChat: focus => openView('chat', focus),
-  }), [motion, openFile, fork, fileMentions, inspectCall, openView]);
+  }), [motion, resumeSignal, openFile, fork, fileMentions, inspectCall, openView]);
   const { viewRequest, completeViewRequest } = props;
   useEffect(() => {
     if (!viewRequest || viewRequest.view !== 'reader') return;
@@ -60,7 +70,7 @@ export function Reader(rawProps: ReaderProps) {
     // A request that arrives before its turn renders stays pending; the groups / loading deps re-run this.
     const action = viewRequestAction(target !== null, loading);
     if (action === 'wait') return;
-    if (action === 'scroll') target?.scrollIntoView({ block: 'center' });
+    if (action === 'scroll') { scroll.pause(); target?.scrollIntoView({ block: 'center' }); }
     completeViewRequest();
   }, [viewRequest, completeViewRequest, loading, groups]);
   // 兼容层根发现：阅读根是运行中在深层会话容器里挂载/卸载的，body 级观察器看不到
@@ -90,7 +100,6 @@ export function Reader(rawProps: ReaderProps) {
     previousLatestUserKey.current = latest;
   }, [latestUserKey]);
   const pinnedKeys = usePinnedSelection(root);
-  const selectedProcessKeys = usePinnedSelection(root, '[data-reader-process]');
   const [historyError, setHistoryError] = useState(false);
   // 「本会话文件改动」作为最后一个轮次的收尾插槽（见 groups.map）。
   const fileChanges = useMemo(() => (
@@ -110,11 +119,9 @@ export function Reader(rawProps: ReaderProps) {
     />
   ), [props.useProjection, props.jobsSource, props.watchJobs, props.useSession, props.useSessions, props.sessionId, visibleOrder, motion, hasMore, conversationIdle, props.openFile, props.listDirNames]);
   return <StreamMotionContext.Provider value={streamMotion}><ReaderActionsContext.Provider value={actions}>
-    <div ref={root} className={css.root} data-dsh-clearview={READER_VERSION} data-motion={motion ? 'on' : 'off'}>
+    <div ref={root} className={css.root} data-dsh-clearview={READER_VERSION} data-motion={motion ? 'on' : 'off'} data-reader-following={!scroll.detached} data-reader-needs-action={pending.length > 0 || undefined}>
       <div className={css.column}>
         <div className={css.toolbar} data-ud-check="reader-toolbar">
-          <Switch label={`折叠思考${collapseThinking ? '开' : '关'}`} checked={collapseThinking} onChange={() => props.actions.setCollapseThinking(!collapseThinking)}
-            title="开启后，进行中的思考也只显示一行；已完成的思考始终是一行，点击查看全文。" />
           <Switch label={`动效${motionPreference ? '开' : '关'}`} checked={motionPreference} onChange={() => props.actions.setMotion(!motionPreference)}
             title="新到文字柔和显现，过程平滑展开；关闭后立即完整显示，自动遵循系统减少动态效果设置。" />
         </div>
@@ -125,14 +132,14 @@ export function Reader(rawProps: ReaderProps) {
         {historyError && <div className={css.notice}>历史记录加载失败，可再次尝试；现有内容未改变。</div>}
         {openError && <div className={css.error} role="alert">会话暂时无法读取：{openError.message}</div>}
         {loading && groups.length === 0 && <p className={css.empty} role="status">正在读取会话…</p>}
-        {groups.map((group, index) => <TurnSection key={group.key} {...props} group={group} pinnedKeys={pinnedKeys} selectedProcessKeys={selectedProcessKeys}
+        {groups.map((group, index) => <TurnSection key={group.key} {...props} group={group} pinnedKeys={pinnedKeys}
           rewindHidden={rewindHidden} rewindSpans={rewindSpans} flowTail={index === groups.length - 1 ? fileChanges : undefined} />)}
         {pending.length > 0 && <MountFade mounted={pending.length > 0} motion={motion}>{({ entering }) =>
           <div className={`${css.attention} ${entering ? css.isEntering : css.isIn}`} role="alert" data-reader-attention>
             <strong>{pending.some(item => item.kind === 'question') ? '需要你回答一个问题' : '需要你的确认'}</strong>
             <span>请在下方原生操作区处理。此提示不会收进执行过程。</span>
           </div>}</MountFade>}
-        <FloatingStatus activity={activity} detached={scroll.detached} onJump={scroll.jump} motion={motion} />
+        <JumpButton detached={scroll.detached} onJump={jumpToLatest} motion={motion} />
       </div>
     </div>
   </ReaderActionsContext.Provider></StreamMotionContext.Provider>;

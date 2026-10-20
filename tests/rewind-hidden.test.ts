@@ -83,6 +83,76 @@ test('multiple rewinds keep separate spans and do not hide traffic between them'
   assert.ok(!hidden.has(8));
 });
 
+test('the current rewind-plugin engine hides the entire cut and its internal probes', () => {
+  const rows = [node('before', 'user', 260), node('target', 'user', 268),
+    node('assistant', 'assistant-step', 269), node('retry', 'model-request-retry', 270),
+    node('error', 'turn-error', 271), node('preview', 'command', 272),
+    node('execute', 'command', 273), node('after', 'user', 275)];
+  rows[5].data = { seq: 272, name: 'rewind-plugin', args: 'preview @268 chat', outcome: { kind: 'success', text: 'translated preview' } };
+  rows[6].data = { seq: 273, name: 'rewind-plugin', args: '@268 chat', outcome: { kind: 'success', text: 'translated result', sourceEventSeq: 274 } };
+  assert.deepEqual(rewindSpansOf(chat(rows)), [{ start: 268, end: 274 }]);
+  assert.deepEqual([...hiddenSeqsOf(chat(rows))].sort((a, b) => a - b), [268, 269, 270, 271, 272, 273]);
+});
+
+test('new and legacy command names can coexist without cutting the traffic between rewinds', () => {
+  const rows = [node('target-old', 'user', 10), node('old', 'command', 12),
+    node('kept', 'user', 14), node('target-new', 'user', 20), node('new', 'command', 22), node('latest', 'user', 24)];
+  rows[1].data = { seq: 12, name: 'rewind', args: '@10 both', outcome: { kind: 'success', sourceEventSeq: 13 } };
+  rows[4].data = { seq: 22, name: 'rewind-plugin', args: '@20 chat', outcome: { kind: 'success', sourceEventSeq: 23 } };
+  assert.deepEqual(rewindSpansOf(chat(rows)), [{ start: 10, end: 13 }, { start: 20, end: 23 }]);
+  assert.deepEqual([...hiddenSeqsOf(chat(rows))].sort((a, b) => a - b), [10, 12, 20, 22]);
+});
+
+test('failed, pending and marker-free engine results never withdraw visible conversation rows', () => {
+  for (const outcome of [null, { kind: 'pending' }, { kind: 'error', sourceEventSeq: 20 }, { kind: 'success' }]) {
+    const user = node('user', 'user', 10), command = node('command', 'command', 15);
+    command.data = { seq: 15, name: 'rewind-plugin', args: '@10 chat', outcome };
+    assert.equal(hiddenSeqsOf(chat([user, command])).size, 0);
+  }
+  for (const args of ['preview @10 both', '__candidates']) {
+    const probe = node('probe', 'command', 15);
+    probe.data = { seq: 15, name: 'rewind-plugin', args, outcome: null };
+    assert.deepEqual([...hiddenSeqsOf(chat([node('user', 'user', 10), probe]))], [15]);
+  }
+});
+
+function chromeChat(remaining = false, collision = false, incomplete = false): HiddenChat {
+  const chrome = { ...node('chrome', 'turn-process', 1), location: { kind: 'turn', turn: { turn: 1, start: { seq: 1 } } } } as ChatConversationViewNode;
+  const user = node('user', 'user', 10), assistant = node('assistant', 'assistant-step', 11);
+  const command = node('command', 'command', 15);
+  command.data = { seq: 15, name: 'rewind-plugin', args: '@10 chat', outcome: { kind: 'success', sourceEventSeq: 20 } };
+  const rows = [chrome, user, assistant, command];
+  const keys = ['chrome', 'user', 'assistant'];
+  if (remaining) { rows.push(node('retained', 'user', 5)); keys.push('retained'); }
+  if (collision) rows.push(node('other-turn', 'user', 1));
+  if (incomplete) keys.push('unloaded');
+  return { ...chat(rows), locations: { getTurn: () => keys } } as HiddenChat;
+}
+
+test('a fully withdrawn turn loses the process summary anchored before the target', () => {
+  assert.ok(hiddenSeqsOf(chromeChat()).has(1));
+});
+
+test('partial turns, unloaded rows and shared live anchors retain their process summary', () => {
+  for (const snap of [chromeChat(true), chromeChat(false, true), chromeChat(false, false, true)]) {
+    assert.ok(!hiddenSeqsOf(snap).has(1));
+  }
+});
+
+test('older snapshots without a turn index still hide the withdrawal span', () => {
+  const snap = chromeChat();
+  const old: HiddenChat = { order: snap.order, nodes: snap.nodes };
+  assert.ok(hiddenSeqsOf(old).has(10));
+  assert.ok(!hiddenSeqsOf(old).has(1));
+});
+
+test('an unavailable optional turn index cannot break the withdrawal span', () => {
+  const snap: HiddenChat = { ...chromeChat(), locations: { getTurn: () => { throw new Error('Index not ready'); } } };
+  const hidden = hiddenSeqsOf(snap);
+  assert.ok(hidden.has(10) && hidden.has(11));
+  assert.ok(!hidden.has(1));
+});
+
 
 test('readerFlow drops rewound nodes and their in-flight tool drafts', () => {
   const draft: AssistantBlock = { kind: 'tool-call', callId: 'call-1', name: 'bash', argsRaw: '{}' };

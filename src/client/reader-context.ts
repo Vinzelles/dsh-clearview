@@ -5,6 +5,8 @@ import type { MarkdownFileMentions } from './markdown/render.js';
 /** Host actions and the motion switch, provided once by Reader for every row. */
 export interface ReaderActions {
   motion: boolean;
+  /** Incremented only by an explicit page-level "back to latest" request. */
+  resumeSignal?: number;
   openFile?: (path: string) => void;
   fork?: (atSeq: number) => Promise<void>;
   fileMentions?: (turn: TurnLocation, seq: number) => MarkdownFileMentions | undefined;

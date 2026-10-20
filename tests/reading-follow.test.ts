@@ -49,8 +49,10 @@ test('a following reader at the surface holds without a gesture (anchor events m
   assert.deepEqual(readingScrollAction(true, false, true), { following: true, wantDown: false });
 });
 
-test('leaving the surface detaches a following reader', () => {
-  assert.deepEqual(readingScrollAction(true, false, false), { following: false, wantDown: false });
+test('passive layout scroll outside the surface does not cancel follow intent', () => {
+  // Growth/clamping can emit scroll before the eased follow catches up.
+  // Upward input handlers already detach; no gesture here is layout, not intent.
+  assert.deepEqual(readingScrollAction(true, false, false), { following: true, wantDown: false });
 });
 
 test('a down-gesture landing outside the surface stays pending for the event that crosses in', () => {

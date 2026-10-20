@@ -4,19 +4,63 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash, randomUUID } from 'node:crypto';
+import { Script } from 'node:vm';
 const repo = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const out = resolve(process.env.CLEARVIEW_PERF_OUTPUT || join(repo, '.perf-results'));
-mkdirSync(out, { recursive: true });
+const buildOnly = process.argv.includes('--build-only');
+if (!buildOnly) mkdirSync(out, { recursive: true });
 const source = resolve(process.env.CLEARVIEW_PERF_SOURCE || repo);
 const testUrl = process.env.DSH_TEST_URL;
-if (!testUrl)
+if (!buildOnly && !testUrl)
     throw new Error('Set DSH_TEST_URL to the running test host (read-only, fresh browser profile).');
 const baseline = process.argv.includes('--baseline');
 const tracing = process.argv.includes('--trace');
-const expandEarlier = process.argv.includes('--expand-earlier');
-await build({ entryPoints: [join(repo, 'tests/browser/reader-performance.tsx')], bundle: true, write: true, outfile: join(out, 'fixture.js'), platform: 'browser', format: 'iife', jsx: 'automatic', target: 'es2022', external: ['react', 'react/*', 'react-dom', 'react-dom/*', '@deepseek-ai/*'], define: { 'process.env.NODE_ENV': '"production"', '__BASELINE__': String(baseline), '__EXPAND_EARLIER__': String(expandEarlier) }, plugins: [{ name: 'fixture-source', setup(b) { b.onResolve({ filter: /^fixture-source\// }, a => ({ path: join(source, 'src/client', a.path.slice('fixture-source/'.length)) })); } }], banner: { js: 'var require = (name) => { if (!(name in window.__clearviewTestModules)) throw new Error("Missing test host module: "+name); return window.__clearviewTestModules[name]; };' } });
+const fixtureName = process.argv.includes('--rewind-visibility') ? 'rewind-visibility' : process.argv.includes('--style-refinement') ? 'style-refinement' : process.argv.includes('--table-spacing') ? 'table-spacing' : process.argv.includes('--process-icons') ? 'process-icons' : process.argv.includes('--status-follow') ? 'status-follow' : process.argv.includes('--thought-settlement') ? 'thought-settlement' : process.argv.includes('--question-record') ? 'question-record' : 'reader-performance';
+const sourceVersion = JSON.parse(readFileSync(join(source, 'package.json'), 'utf8')).version;
+const transcript = existsSync(join(source, 'src/client/StatusLine.tsx')) && existsSync(join(source, 'src/client/ToolGroupRow.tsx'));
+const harnessHash = createHash('sha256').update(readFileSync(join(repo, `tests/browser/${fixtureName}.tsx`))).update(readFileSync(fileURLToPath(import.meta.url))).digest('hex');
+// Compare against the installed plugin's pure visibility module, without
+// running its engine, portals, commands or other host actions.
+let rewindOracle;
+if (fixtureName === 'rewind-visibility' && !buildOnly) {
+    if (!process.env.DSH_REWIND_CLIENT) throw Error('Set DSH_REWIND_CLIENT to the installed rewind lib/client.js.');
+    const path = resolve(process.env.DSH_REWIND_CLIENT), code = readFileSync(path, 'utf8');
+    const start = code.indexOf('// src/client/hidden.ts'), end = code.indexOf('// src/client/candidates.ts', start);
+    if (start < 0 || end <= start) throw Error('Installed rewind pure module boundary unavailable');
+    const script = `(()=>{${code.slice(start, end)};window.__clearviewRewindOracle=hiddenSeqsOf;})()`;
+    new Script(script);
+    rewindOracle = { path, hash: createHash('sha256').update(code).digest('hex'), script };
+}
+// --baseline labels the report only. Do not deliberately give main coarse subscriptions.
+// --build-only bundles in memory: no Chrome, host traffic, or generated files.
+
+
+const bundle = await build({ entryPoints: [join(repo, `tests/browser/${fixtureName}.tsx`)], bundle: true, write: !buildOnly, outfile: join(out, 'fixture.js'), platform: 'browser', format: 'iife', jsx: 'automatic', target: 'es2022', external: ['react', 'react/*', 'react-dom', 'react-dom/*', '@deepseek-ai/*', '/dsh-clearview/fonts/*.woff2'], define: { 'process.env.NODE_ENV': '"production"', '__TRANSCRIPT__': String(transcript) }, plugins: [{ name: 'fixture-source', setup(b) { b.onResolve({ filter: /^fixture-source\// }, a => ({ path: join(source, 'src/client', a.path.slice('fixture-source/'.length)) })); } }], banner: { js: 'var require = (name) => { if (!(name in window.__clearviewTestModules)) throw new Error("Missing test host module: "+name); return window.__clearviewTestModules[name]; };' } });
+if (buildOnly) {
+    for (const file of bundle.outputFiles) if (file.path.endsWith('.js')) new Script(file.text, { filename: file.path });
+    console.log(JSON.stringify({ syntaxChecked: true, buildOnly: true, source, sourceVersion, grammar: transcript ? 'transcript-0.3' : 'panel-0.2', outputs: bundle.outputFiles.map(file => ({ path: file.path, bytes: file.contents.length })) }, null, 2));
+    process.exit(0);
+}
+// Shared policy must exist before any host access; build-only remains entirely offline.
+const { readonlyDecision, readonlyRequestSummary, knownNativeReact130 } = await import('./browser-readonly.mjs');
+const readonlyPolicyHash = createHash('sha256').update(readFileSync(join(repo, 'scripts/browser-readonly.mjs'))).digest('hex');
+async function sessionInventory() {
+    const url = new URL('/api/session/list', testUrl).href;
+    const body = JSON.stringify({ type: 'client-request', rpcId: randomUUID(), method: 'session/list', payload: { args: { _request: {} } } });
+    if (!readonlyDecision({ url, method: 'POST', postData: body }, testUrl).allowed) throw Error('Shared policy rejected session inventory RPC');
+    const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body });
+    const items = (await response.json()).result?.value?.items;
+    if (!response.ok || !Array.isArray(items) || items.some(item => typeof item.sessionId !== 'string')) throw Error('Cannot verify read-only session inventory');
+    return { count: items.length, idsHash: createHash('sha256').update(JSON.stringify(items.map(item => item.sessionId).sort())).digest('hex') };
+}
+const initialSessions = await sessionInventory();
 const profile = mkdtempSync(join(tmpdir(), 'clearview-browser-'));
-const chrome = spawn(process.env.CHROME_PATH || join(process.env.ProgramFiles || 'C:/Program Files', 'Google/Chrome/Application/chrome.exe'), ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--window-size=1280,950', 'about:blank'], { stdio: 'ignore', windowsHide: true });
+// Both sources use foreground scheduling. A paint-window trace showed >90% idle
+// while waiting for rAF in the Windows headless renderer; do not measure OS
+// background scheduling as transcript work. Chromium defines this switch in
+// content/public/common/content_switches.cc. Keep GPU and all motion enabled.
+const chrome = spawn(process.env.CHROME_PATH || join(process.env.ProgramFiles || 'C:/Program Files', 'Google/Chrome/Application/chrome.exe'), ['--headless=new', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows', '--disable-background-timer-throttling', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--window-size=1280,950', 'about:blank'], { stdio: 'ignore', windowsHide: true });
 const delay = ms => new Promise(done => setTimeout(done, ms));
 // Chrome must never outlive the run, and its profile must always be removed: on success, on
 // failure, on timeout and on an uncaught error. taskkill /T also stops Chrome's helper processes.
@@ -63,10 +107,17 @@ try {
     const tabs = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
     ws = new WebSocket(tabs.find(t => t.type === 'page').webSocketDebuggerUrl);
     await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
-    const pending = new Map(), errors = [], trace = [];
+    const pending = new Map(), errors = [], trace = [], blockedMutations = [];
     let traceDone;
     let id = 0;
-    ws.onmessage = e => { const m = JSON.parse(e.data); const p = pending.get(m.id); if (p) {
+    ws.onmessage = e => { const m = JSON.parse(e.data);
+        if (m.method === 'Fetch.requestPaused') {
+            const { requestId, request } = m.params;
+            const decision = readonlyDecision(request, testUrl);
+            if (!decision.allowed) blockedMutations.push({ ...readonlyRequestSummary(request, decision), observedAtUtcMs: Date.now() });
+            void send(decision.allowed ? 'Fetch.continueRequest' : 'Fetch.failRequest', decision.allowed ? { requestId } : { requestId, errorReason: 'BlockedByClient' }).catch(bail);
+        }
+ const p = pending.get(m.id); if (p) {
         pending.delete(m.id);
         clearTimeout(p.timer);
         m.error ? p.reject(Error(m.error.message)) : p.resolve(m.result);
@@ -79,6 +130,10 @@ try {
         throw Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text); return r.result.value; };
     await send('Runtime.enable');
     await send('Page.enable');
+    await send('Page.bringToFront');
+    await send('Emulation.setFocusEmulationEnabled', { enabled: true });
+    await send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] });
+    await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
     await send('Page.navigate', { url: testUrl });
     for (let i = 0; i < 100; i++) {
         if (await evaluate('!!window.__dshSidebarModuleSystem__'))
@@ -87,6 +142,13 @@ try {
     }
     const modules = ['react', 'react/jsx-runtime', 'react-dom', 'react-dom/client', '@deepseek-ai/dsh-client-ui-primitives'];
     await evaluate(`(async()=>{const system=window.__dshSidebarModuleSystem__;if(!system?.import)throw Error('Host module system unavailable');window.__clearviewTestModules={};for(const name of ${JSON.stringify(modules)})window.__clearviewTestModules[name]=await system.import(name)})()`);
+    // The native host must have completed a frame before timing a new reader view.
+    // Module-table readiness alone can precede its first compositor commit; the
+    // trace showed steady BeginFrames with the main-frame pipeline still deferred.
+    // This happens before the tested stylesheet and Reader code are installed.
+    const hostReadyStart = performance.now();
+    await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    const hostReadyFrameMs = performance.now() - hostReadyStart;
     // Fresh browser profile and synthetic session only. No Agent messages or
     // writes to the running host. Production primitives/React come from its real
     // module table; the tested Reader itself comes from the selected source tree.
@@ -96,10 +158,69 @@ try {
     if (tracing) {
         await send('Profiler.enable');
         await send('Profiler.start');
-        await send('Tracing.start', { categories: 'devtools.timeline,blink.user_timing,v8.execute', transferMode: 'ReportEvents' });
+        await send('Tracing.start', { categories: 'devtools.timeline,blink.user_timing,v8.execute,cc,viz,gpu,disabled-by-default-devtools.timeline.frame', transferMode: 'ReportEvents' });
     }
     await evaluate(readFileSync(join(out, 'fixture.js'), 'utf8'));
+    if (rewindOracle) await evaluate(rewindOracle.script);
     const result = await evaluate('window.runClearviewPerformance()');
+    if (fixtureName === 'status-follow') {
+        const wheel = await evaluate('window.statusFollow.wheelPoint()');
+        await send('Input.dispatchMouseEvent', { type: 'mouseWheel', ...wheel, deltaX: 0, deltaY: -320 });
+        await delay(200);
+        const paused = await evaluate('window.statusFollow.afterWheel()');
+        if (!paused.jumpPoint) throw Error('Status follow resume button missing');
+        await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...paused.jumpPoint, button: 'left', buttons: 1, clickCount: 1 });
+        await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...paused.jumpPoint, button: 'left', buttons: 0, clickCount: 1 });
+        await delay(150);
+        const resumed = await evaluate('window.statusFollow.afterJump()');
+        const selection = await evaluate('window.statusFollow.selection()');
+        const attention = await evaluate('window.statusFollow.attention()');
+        // A standalone scrollbar is a positive control for compositor input readiness.
+        const controlPoint = await evaluate('window.statusFollow.trackControl()');
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: controlPoint.x, y: controlPoint.y, buttons: 0 });
+        await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: controlPoint.x, y: controlPoint.y, button: 'left', buttons: 1, clickCount: 1 });
+        await delay(120);
+        await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: controlPoint.x, y: controlPoint.y, button: 'left', buttons: 0, clickCount: 1 });
+        await delay(150);
+        const control = await evaluate(`window.statusFollow.afterControl(${controlPoint.before})`);
+        const trackPoint = await evaluate('window.statusFollow.trackPoint()');
+        const trackShot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+        writeFileSync(join(out, 'scrollbar-track.png'), Buffer.from(trackShot.data, 'base64'));
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: trackPoint.x, y: trackPoint.y, buttons: 0 });
+        await delay(200);
+        await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: trackPoint.x, y: trackPoint.y, button: 'left', buttons: 1, clickCount: 1 });
+        await delay(120);
+        await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: trackPoint.x, y: trackPoint.y, button: 'left', buttons: 0, clickCount: 1 });
+        const scrollbar = await evaluate(`window.statusFollow.afterTrack(${trackPoint.top})`);
+        const drag = await evaluate('window.statusFollow.dragPoints()');
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: drag.x, y: drag.from });
+        await delay(200);
+        await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: drag.x, y: drag.from, button: 'left', buttons: 1, clickCount: 1 });
+        for (let step = 1; step <= 10; step++) {
+            await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: drag.x, y: drag.from + (drag.to - drag.from) * step / 10, button: 'left', buttons: 1 });
+            await delay(20);
+        }
+        await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: drag.x, y: drag.to, button: 'left', buttons: 0, clickCount: 1 });
+        const dragResume = await evaluate('window.statusFollow.afterDrag()');
+        const viewRequest = await evaluate('window.statusFollow.viewRequest()');
+        const latestTurn = await evaluate('window.statusFollow.latestTurn()');
+        result.nativeInteraction = { paused, resumed, selection, attention, controlPoint, control, trackPoint, scrollbar, drag, dragResume, viewRequest, latestTurn };
+        result.failures = await evaluate('window.clearviewPerformanceFailures()');
+    }
+    if (fixtureName === 'process-icons') {
+        const steps = await evaluate('window.processIconInputSteps()');
+        for (const step of steps) {
+            const input = await evaluate(`window.prepareProcessIconInput(${JSON.stringify(step)})`);
+            if (input.reducedMotion) await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+            if (input.x !== undefined) await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: input.x, y: input.y });
+            if (input.click) for (const type of ['mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, x: input.x, y: input.y, button: 'left', clickCount: 1 });
+            if (input.key) for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: input.key, code: input.code, windowsVirtualKeyCode: input.keyCode,
+                ...(type === 'keyDown' && input.key === 'Enter' ? { text: '\r', unmodifiedText: '\r' } : {}) });
+            await evaluate(`window.assertProcessIconInput(${JSON.stringify(step)})`);
+        }
+        Object.assign(result, await evaluate('window.processIconInputReport()'));
+        await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
+    }
     let traceSummary;
     if (tracing) {
         const { profile: cpu } = await send('Profiler.stop');
@@ -123,9 +244,53 @@ try {
         traceSummary = { events: [...groups.values()].sort((a, b) => b.totalMs - a.totalMs).slice(0, 18), cpu: [...hits].sort((a, b) => b[1] - a[1]).slice(0, 20).map(([id, samples]) => ({ samples, ...nodes.get(id).callFrame })), slowest: stream.sort((a, b) => b.dur - a.dur).slice(0, 10).map(e => ({ name: e.name, duration: e.dur / 1000, args: e.args })) };
         writeFileSync(join(out, baseline ? 'baseline-trace.json' : 'optimized-trace.json'), JSON.stringify({ trace, cpu }));
     }
-    const report = { source, baseline, expandEarlier, browser: version.product, errors: errors.slice(initialErrors), ...result, ...traceSummary ? { traceSummary } : {} };
+    let screenshots;
+    if (process.argv.includes('--screenshots')) {
+        screenshots = [];
+        for (const [name, theme, width] of [['running-dark', 'dark', 1280], ['running-light', 'light', 1280], ['running-480', 'dark', 480]]) {
+            await send('Emulation.setDeviceMetricsOverride', { width, height: 1100, deviceScaleFactor: 1, mobile: false });
+            const facts = await evaluate(`window.prepareClearviewScreenshot(${JSON.stringify(theme)})`);
+            const { data } = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+            const file = join(out, `${name}.png`);
+            writeFileSync(file, Buffer.from(data, 'base64'));
+            screenshots.push({ file, ...facts });
+        }
+        // Screenshot-only checks use the same failure list, after all timed counters are frozen.
+        const screenshotFailures = await evaluate('window.clearviewPerformanceFailures()');
+        result.failures = screenshotFailures;
+    }
+    if (fixtureName === 'thought-settlement') {
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
+        const point = await evaluate('window.prepareThoughtHover()');
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+        await delay(2800);
+        const held = await evaluate('window.inspectThoughtHover()');
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
+        await delay(3000);
+        const folded = await evaluate('window.inspectThoughtHover()');
+        const control = await evaluate('window.thoughtControlPoint()');
+        const click = async () => {
+            await send('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, x: control.x, y: control.y });
+            await send('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, x: control.x, y: control.y });
+            await delay(350);
+            return evaluate('window.inspectThoughtHover()');
+        };
+        const opened = await click(), closed = await click();
+        const pass = held.expanded === 'true' && held.originalConnected && held.viewport === 128 && held.fullText
+            && folded.expanded === 'false' && control.hit && opened.expanded === 'true' && opened.fullText && closed.expanded === 'false';
+        result.pointerInteraction = { held, folded, opened, closed, hit: control.hit, pass };
+        if (!pass) result.failures.push('Native pointer hover/leave/disclosure interaction failed');
+    }
+    const finalSessions = await sessionInventory();
+    if (initialSessions.idsHash !== finalSessions.idsHash) result.failures.push('Host session inventory changed during read-only probe');
+    const sourceBundleHash = createHash('sha256').update(readFileSync(join(out, 'fixture.js'))).update(readFileSync(join(out, 'fixture.css'))).digest('hex');
+    const report = { fixtureName, readonlyPolicyHash, hostReadyFrameMs, screenshots, sourceBundleHash, initialSessions, finalSessions, schemaVersion: 2, capturedAt: new Date().toISOString(), source, sourceVersion, harnessHash, testUrl, viewport: { width: 1280, height: 950 }, baseline, browser: version.product, blockedMutations, initialHostErrors: errors.slice(0, initialErrors), errors: [...errors.slice(0, initialErrors).filter(text => !knownNativeReact130(text, 'native-chat')), ...errors.slice(initialErrors)], ...result, ...traceSummary ? { traceSummary } : {} };
     writeFileSync(join(out, baseline ? 'baseline.json' : 'optimized.json'), JSON.stringify(report, null, 2));
-    console.log(JSON.stringify(report, null, 2));
+    if (rewindOracle) {
+        report.rewindOracle = { path: rewindOracle.path, hash: rewindOracle.hash };
+        writeFileSync(join(out, baseline ? 'baseline.json' : 'optimized.json'), JSON.stringify(report, null, 2));
+    }
+    console.log(JSON.stringify({ report: join(out, baseline ? 'baseline.json' : 'optimized.json'), initialSessions, finalSessions, errors: report.errors, performance: report.performance, failures: report.failures }, null, 2));
     if (report.errors.length || report.failures.length)
         process.exitCode = 1;
 }

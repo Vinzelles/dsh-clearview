@@ -54,7 +54,10 @@ export function readingScrollAction(
   wantDown: boolean,
   atSurface: boolean,
 ): { following: boolean; wantDown: boolean } {
-  if (!atSurface) return { following: false, wantDown };
+  // Only a pending downward gesture can temporarily leave the surface here.
+  // Upward gestures detach in their input handler; native layout/clamping
+  // scrolls have neither intent and must not interrupt an eased follow.
+  if (!atSurface) return { following: wantDown ? false : following, wantDown };
   if (wantDown) return { following: true, wantDown: false };
   return { following, wantDown };
 }

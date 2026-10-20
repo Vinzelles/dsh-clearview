@@ -7,3 +7,7 @@ test('the root version attribute follows package.json', () => {
   const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   assert.equal(READER_VERSION, manifest.version);
 });
+
+test('this release is 0.3.11', () => {
+  assert.equal(READER_VERSION, '0.3.11');
+});
