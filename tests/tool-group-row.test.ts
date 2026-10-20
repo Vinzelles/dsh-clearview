@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { PROCESS_TAIL_SLACK, followsTail, groupOpen, processOverflow, ToolGroupRow, ToolGroupRowView, sameToolGroupProps, type ToolGroupRowProps, type GroupEntry } from '../src/client/ToolGroupRow.tsx';
+import { PROCESS_TAIL_SLACK, followDecision, followFrame, followsTail, groupOpen, processOverflow, tailOffset, ToolGroupRow, ToolGroupRowView, sameToolGroupProps, type ToolGroupRowProps, type GroupEntry } from '../src/client/ToolGroupRow.tsx';
 
 const group = (running: boolean, failed = 0): GroupEntry => ({
   kind: 'group', key: 'group:reader-tool:1',
@@ -32,6 +32,14 @@ test('a capped body follows its tail only until the reader scrolls away from it'
   assert.equal(processOverflow(320, 320), false);
   assert.equal(processOverflow(321, 320), false, 'a single px below the cap is not a scroll region');
   assert.equal(processOverflow(322, 320), true);
+  assert.equal(tailOffset(500, 320), 180, 'the tail is the bottom of a capped body');
+  assert.equal(tailOffset(200, 320), 0, 'a body shorter than the cap cannot scroll');
+  assert.equal(followDecision(180, 180, 500, 320), null, 'our own follow write never releases the follow');
+  assert.equal(followDecision(100, 180, 500, 320), false, 'the reader scrolled away from the tail');
+  assert.equal(followDecision(176, 0, 500, 320), true, 'a reader within the slack distance has returned');
+  assert.equal(followFrame({ scrollTop: 0, scrollHeight: 500, clientHeight: 320 }, true), 180, 'a growing body is pinned to its tail');
+  assert.equal(followFrame({ scrollTop: 180, scrollHeight: 500, clientHeight: 320 }, true), null, 'an already pinned body is not written again');
+  assert.equal(followFrame({ scrollTop: 0, scrollHeight: 500, clientHeight: 320 }, false), null, 'a detached body is never moved');
 });
 
 test('the grouped body is capped and scrolls, so its fold line stays reachable', () => {

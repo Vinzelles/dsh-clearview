@@ -32,6 +32,34 @@ export function processOverflow(scrollHeight: number, clientHeight: number): boo
   return scrollHeight > clientHeight + 1;
 }
 
+/** The offset that puts a capped body's newest member in view. */
+export function tailOffset(scrollHeight: number, clientHeight: number): number {
+  return Math.max(0, scrollHeight - clientHeight);
+}
+
+/**
+ * `null` when the offset is our own follow write; otherwise whether the reader is still at the tail.
+ * The reader's scroll is the only thing that releases the follow.
+ */
+export function followDecision(current: number, written: number, scrollHeight: number, clientHeight: number): boolean | null {
+  if (Math.abs(current - written) < 1) return null;
+  return followsTail(scrollHeight - current - clientHeight);
+}
+
+/**
+ * One frame of tail following: the offset to write, or `null` when the body is already at its tail.
+ * Members keep growing between React commits — a thought streams, the open animation expands its
+ * members — so the follow runs on the frame clock instead of only when this row re-renders.
+ */
+export function followFrame(
+  port: { scrollTop: number; scrollHeight: number; clientHeight: number },
+  sticking: boolean,
+): number | null {
+  if (!sticking) return null;
+  const offset = tailOffset(port.scrollHeight, port.clientHeight);
+  return Math.abs(port.scrollTop - offset) > 1 ? offset : null;
+}
+
 /** Stable operation seats: a singleton stays open; groups fold their rows but never their media. */
 export interface ToolGroupRowProps {
   group: GroupEntry; motion: boolean; onRead: () => void;
@@ -93,28 +121,71 @@ export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedi
   const members = useRef<HTMLDivElement | null>(null);
   const sticking = useRef(true);
   const opened = useRef(open);
+  const written = useRef(-1);
+  const measured = useRef(-1);
   const [overflowing, setOverflowing] = useState(false);
+  const overflowed = useRef(false);
+  // The cap crossing is a boolean the frame clock may rediscover many times per animation; only the
+  // crossing itself is a state change, so the members are not re-rendered on every measured height.
+  const syncOverflow = (element: HTMLDivElement) => {
+    const next = processOverflow(element.scrollHeight, element.clientHeight);
+    if (next === overflowed.current) return;
+    overflowed.current = next;
+    setOverflowing(next);
+  };
   useLayoutEffect(() => {
     const element = members.current;
     if (!element) return;
     if (opened.current !== open) {
       opened.current = open;
       sticking.current = open && (group.facts.running || live);
-      if (open) element.scrollTop = sticking.current ? element.scrollHeight : 0;
+      if (open) {
+        const offset = sticking.current ? tailOffset(element.scrollHeight, element.clientHeight) : 0;
+        element.scrollTop = offset;
+        written.current = offset;
+      }
     } else if (open && sticking.current) {
-      element.scrollTop = element.scrollHeight;
+      const offset = tailOffset(element.scrollHeight, element.clientHeight);
+      if (Math.abs(element.scrollTop - offset) > 1) {
+        element.scrollTop = offset;
+        written.current = offset;
+      }
     }
-    setOverflowing(processOverflow(element.scrollHeight, element.clientHeight));
+    syncOverflow(element);
   });
   useEffect(() => {
     const element = members.current;
     if (!element) return;
+    // A scroll offset we did not write is the reader's own: follow resumes only at the tail.
     const track = () => {
-      sticking.current = followsTail(element.scrollHeight - element.scrollTop - element.clientHeight);
+      const decision = followDecision(element.scrollTop, written.current, element.scrollHeight, element.clientHeight);
+      if (decision !== null) sticking.current = decision;
     };
     element.addEventListener('scroll', track, { passive: true });
     return () => element.removeEventListener('scroll', track);
   }, []);
+  // The body keeps growing between commits — a thought streams and the open animation expands its
+  // members — so a live batch follows its tail on the frame clock instead of only on React commits.
+  const follow = group.facts.running || live;
+  useEffect(() => {
+    if (!open || !follow) return;
+    let frame = requestAnimationFrame(function tick() {
+      const element = members.current;
+      if (element) {
+        if (element.scrollHeight !== measured.current) {
+          measured.current = element.scrollHeight;
+          syncOverflow(element);
+        }
+        const offset = followFrame(element, sticking.current);
+        if (offset !== null) {
+          element.scrollTop = offset;
+          written.current = offset;
+        }
+      }
+      frame = requestAnimationFrame(tick);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open, follow]);
   // Only a capped body is a scroll region; the summary row above it stays the reader's handle.
   const region = grouped && open && overflowing;
   const toggle = useCallback(() => { onRead(); if (open) onCloseThoughts?.(group.items); setChoice(!open); }, [onRead, open, onCloseThoughts, group.items]);
