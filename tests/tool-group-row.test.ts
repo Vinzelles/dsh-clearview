@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { PROCESS_TAIL_SLACK, followDecision, followFrame, followsTail, groupOpen, processOverflow, tailOffset, ToolGroupRow, ToolGroupRowView, sameToolGroupProps, type ToolGroupRowProps, type GroupEntry } from '../src/client/ToolGroupRow.tsx';
+import { PROCESS_TAIL_SLACK, followDecision, followFrame, followsTail, groupOpen, holdsWritten, keyReleasesFollow, processOverflow, releasesFollow, tailOffset, ToolGroupRow, ToolGroupRowView, sameToolGroupProps, type ToolGroupRowProps, type GroupEntry } from '../src/client/ToolGroupRow.tsx';
 
 const group = (running: boolean, failed = 0): GroupEntry => ({
   kind: 'group', key: 'group:reader-tool:1',
@@ -40,6 +40,18 @@ test('a capped body follows its tail only until the reader scrolls away from it'
   assert.equal(followFrame({ scrollTop: 0, scrollHeight: 500, clientHeight: 320 }, true), 180, 'a growing body is pinned to its tail');
   assert.equal(followFrame({ scrollTop: 180, scrollHeight: 500, clientHeight: 320 }, true), null, 'an already pinned body is not written again');
   assert.equal(followFrame({ scrollTop: 0, scrollHeight: 500, clientHeight: 320 }, false), null, 'a detached body is never moved');
+  assert.equal(holdsWritten(180, 180), true, 'a body still parked at our own offset is ours to move');
+  assert.equal(holdsWritten(180.4, 180), true, 'sub-pixel rounding still counts as our own write');
+  assert.equal(holdsWritten(120, 180), false, 'any other offset was written by the reader, not us');
+  assert.equal(holdsWritten(120, -1), false, 'a released body never matches a stale offset');
+  assert.equal(releasesFollow(-120), true, 'an upward wheel step is the reader taking the body over');
+  assert.equal(releasesFollow(0), false, 'a horizontal or zero step says nothing about the tail');
+  assert.equal(releasesFollow(120), false, 'a downward step leaves the follow intact');
+  assert.equal(keyReleasesFollow('ArrowUp'), true);
+  assert.equal(keyReleasesFollow('PageUp'), true);
+  assert.equal(keyReleasesFollow('Home'), true);
+  assert.equal(keyReleasesFollow('ArrowDown'), false);
+  assert.equal(keyReleasesFollow('PageDown'), false);
 });
 
 test('the grouped body is capped and scrolls, so its fold line stays reachable', () => {

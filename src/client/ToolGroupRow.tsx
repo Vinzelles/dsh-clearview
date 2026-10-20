@@ -60,6 +60,29 @@ export function followFrame(
   return Math.abs(port.scrollTop - offset) > 1 ? offset : null;
 }
 
+/**
+ * Whether the body still sits exactly where our own follow left it. A frame that finds any other
+ * offset is looking at a scroll we did not write — the reader's, a scrollbar drag, or a gesture that
+ * chained out of a nested viewport — and must stand down instead of pinning the tail back.
+ */
+export function holdsWritten(scrollTop: number, written: number): boolean {
+  return Math.abs(scrollTop - written) < 1;
+}
+
+/**
+ * An upward wheel step is the reader taking the body over, so the follow yields before the next
+ * frame. Attribution by scroll offset alone loses that race: the frame clock re-pins the body at
+ * its tail before the scroll event lands, which reads as a body that refuses to scroll at all.
+ */
+export function releasesFollow(deltaY: number): boolean {
+  return deltaY < 0;
+}
+
+/** The keys that move a focused body up release the follow exactly like an upward wheel step. */
+export function keyReleasesFollow(key: string): boolean {
+  return key === 'ArrowUp' || key === 'PageUp' || key === 'Home';
+}
+
 /** Stable operation seats: a singleton stays open; groups fold their rows but never their media. */
 export interface ToolGroupRowProps {
   group: GroupEntry; motion: boolean; onRead: () => void;
@@ -145,10 +168,17 @@ export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedi
         written.current = offset;
       }
     } else if (open && sticking.current) {
-      const offset = tailOffset(element.scrollHeight, element.clientHeight);
-      if (Math.abs(element.scrollTop - offset) > 1) {
-        element.scrollTop = offset;
-        written.current = offset;
+      // Only a body still parked where our own write left it may be re-pinned: a commit landing in
+      // the middle of the reader's scroll must not drag them back to the tail.
+      if (holdsWritten(element.scrollTop, written.current)) {
+        const offset = tailOffset(element.scrollHeight, element.clientHeight);
+        if (Math.abs(element.scrollTop - offset) > 1) {
+          element.scrollTop = offset;
+          written.current = offset;
+        }
+      } else {
+        sticking.current = false;
+        written.current = -1;
       }
     }
     syncOverflow(element);
@@ -156,13 +186,55 @@ export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedi
   useEffect(() => {
     const element = members.current;
     if (!element) return;
-    // A scroll offset we did not write is the reader's own: follow resumes only at the tail.
+    // Release first, attribute second. A gesture is synchronous intent, while a scroll event is
+    // dispatched a frame later — by then the follow loop has already written the tail back.
+    // Release only while the body can actually scroll: an upward wheel over a short body belongs to
+    // the page, and releasing there would strand the follow for the rest of the batch.
+    const release = () => {
+      if (!processOverflow(element.scrollHeight, element.clientHeight)) return;
+      sticking.current = false;
+      // Forget our own offset so every later scroll is attributed to the reader, even one that
+      // returns exactly to the offset we wrote last.
+      written.current = -1;
+    };
+    // A wheel over a member's own viewport (a 128px thought) belongs to that viewport: releasing here
+    // would stop the batch following with no way back, because this body never scrolls in that case.
+    const owns = (target: EventTarget | null): boolean => {
+      let node = target as HTMLElement | null;
+      while (node && node !== element) {
+        if (node.scrollHeight > node.clientHeight + 1) {
+          const overflowY = getComputedStyle(node).overflowY;
+          if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') return false;
+        }
+        node = node.parentElement;
+      }
+      return true;
+    };
+    // A scroll offset we did not write is the reader's own: follow resumes only at the tail. Adopt
+    // the tail position as ours on resume, so the frame loop can keep the body there as it grows.
     const track = () => {
       const decision = followDecision(element.scrollTop, written.current, element.scrollHeight, element.clientHeight);
-      if (decision !== null) sticking.current = decision;
+      if (decision === null) return;
+      sticking.current = decision;
+      if (decision) written.current = element.scrollTop;
     };
+    const onWheel = (event: WheelEvent) => { if (releasesFollow(event.deltaY) && owns(event.target)) release(); };
+    const onTouch = (event: TouchEvent) => { if (owns(event.target)) release(); };
+    const onKey = (event: KeyboardEvent) => { if (keyReleasesFollow(event.key) && owns(event.target)) release(); };
+    // A pointer press on the container itself is a scrollbar drag; a press on a member row is not.
+    const onPointer = (event: PointerEvent) => { if (event.target === element) release(); };
     element.addEventListener('scroll', track, { passive: true });
-    return () => element.removeEventListener('scroll', track);
+    element.addEventListener('wheel', onWheel, { passive: true });
+    element.addEventListener('touchmove', onTouch, { passive: true });
+    element.addEventListener('keydown', onKey);
+    element.addEventListener('pointerdown', onPointer);
+    return () => {
+      element.removeEventListener('scroll', track);
+      element.removeEventListener('wheel', onWheel);
+      element.removeEventListener('touchmove', onTouch);
+      element.removeEventListener('keydown', onKey);
+      element.removeEventListener('pointerdown', onPointer);
+    };
   }, []);
   // The body keeps growing between commits — a thought streams and the open animation expands its
   // members — so a live batch follows its tail on the frame clock instead of only on React commits.
@@ -175,6 +247,13 @@ export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedi
         if (element.scrollHeight !== measured.current) {
           measured.current = element.scrollHeight;
           syncOverflow(element);
+        }
+        // A body that no longer sits where our own write left it was moved by something else: a
+        // scrollbar drag, a key, or a wheel that chained out of a nested viewport. Stand down at once
+        // instead of pinning the tail back, or the gesture visibly fails to take effect.
+        if (sticking.current && !holdsWritten(element.scrollTop, written.current)) {
+          sticking.current = false;
+          written.current = -1;
         }
         const offset = followFrame(element, sticking.current);
         if (offset !== null) {
