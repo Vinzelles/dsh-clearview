@@ -1,8 +1,10 @@
 # dsh-clearview × DeepSeek Harness 0.2.1-rc.2 兼容性分析
 
-- 分析对象：本仓库（`main`，工作区版本 0.2.3）与 `D:\Khabarovsk\K.Develop\dsh\staging\dsh-clearview-0.3.11-fix`
+- 分析对象：本仓库（分析期间在 0.2.x 工作区上验证；修复最终随 0.3.13 发布到 `main`，见下方说明）与 `D:\Khabarovsk\K.Develop\dsh\staging\dsh-clearview-0.3.11-fix`
 - 对照内核：`@deepseek-ai/dsh 0.2.1-rc.2`（基线 `0.2.0-rc.2`）
 - 结论一句话：**代码只差 1 行，但发布清单（`peerDependencies`）不改就会被 0.2.1 新增的兼容门禁直接跳过。**
+
+> **版本口径说明**：分析期间仓库 `main` 停在内核 0.2.0-rc.2 时代的 0.2.1 基线，修复先在该基线上验证；随后 `main` 并入 0.3.x 线（`origin/main` 领先的 39 个提交 + `feat/user-image-thumb`／`fix/clearview-table-frame` 两个分支），修复重新应用到 0.3.12 之上，随 **0.3.13** 发布。0.3.12 与 0.2.1 一样缺 `commandLine`、同样精确钉死 `0.2.0-rc.2`，故两处修复在两条基线上都成立。
 
 > **本文提出的两项修复已落地**（见第 2、3 节的「已落实」标注）：`src/client/native/primitive-labels.ts` 补 `commandLine`，`package.json` 加 `engines.dsh: "^0.2.0-rc.2"` 并把 10 条 dsh peer 放宽为 `^0.2.0-rc.2`（cordis `^4.0.4`）。落地后复验：**0.2.1-rc.2 与 0.2.0-rc.2 双向全绿**（tsc 0 错、build 通过、测试 327/327）。
 

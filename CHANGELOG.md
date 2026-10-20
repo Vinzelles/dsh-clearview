@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.13
+
+- 兼容内核 0.2.1-rc.2 的构建契约：`dsh-client-ui-primitives` 从 0.2.1 起把 `TerminalBlockLabels.commandLine` 由可选改为必填（命令行横向溢出时的可访问名，1-based 行号）。缺这个键会让 `tsc` 报 `TS2322`，`npm run build` 的 tsc 阶段 exit=2、整包出不来。现补 ``commandLine: (line: number) => `第 ${line} 行命令行` ``；0.2.0 及更早的类型不声明该字段，多传一个键经 `{ ...TERMINAL_LABELS, ...labels }` 展开合并无副作用。
+- 兼容内核 0.2.1-rc.2 的安装门禁：`dsh-app-boot` 新增 `evaluatePluginCompatibility`，manifest 有 `engines.dsh` 时只认它，否则逐条检查 `@deepseek-ai/dsh*` 的 peer 范围（`semver.satisfies` + `includePrerelease`）。原先 10 条 dsh peer 精确钉死 `0.2.0-rc.2`，在 0.2.1-rc.2 上判为不兼容并把插件静默跳过，只留一条警告日志、不报错。现改为 `^0.2.0-rc.2` 并显式声明 `engines.dsh: "^0.2.0-rc.2"`；范围没有放宽成通配，`0.3.0-rc.1` 与 `1.0.0` 仍判不兼容。
+- 实测：干净房间里 0.2.1-rc.2 + cordis 4.0.5 与 0.2.0-rc.2 + cordis 4.0.4 双版本各跑 `tsc --noEmit` 0 错误、`npm run build` 通过、测试全绿；用内核真实导出的 `evaluatePluginCompatibility` 复验，改动前 0.2.1-rc.2 判不兼容（逐条列出 10 条 requirements）、改动后判兼容。bundle externals 未变（`@deepseek-ai/dsh-client-ui-primitives, react, react/jsx-runtime`），仍落在宿主前端的共享模块表内。
+
 ## 0.3.12
 
 - 用户消息里的图片改成方形缩略图：每张图一个 88px 方框、多图按 8px 列距折行，文件名改挂在放大按钮的 title 上，不再单独占一行说明；正文和其余块各占一整行，不会被图片挤出气泡或整段折叠。回答、工具结果里的图片仍是原比例大图与说明。
