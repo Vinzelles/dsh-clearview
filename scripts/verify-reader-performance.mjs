@@ -16,7 +16,7 @@ if (!buildOnly && !testUrl)
     throw new Error('Set DSH_TEST_URL to the running test host (read-only, fresh browser profile).');
 const baseline = process.argv.includes('--baseline');
 const tracing = process.argv.includes('--trace');
-const fixtureName = process.argv.includes('--rewind-visibility') ? 'rewind-visibility' : process.argv.includes('--style-refinement') ? 'style-refinement' : process.argv.includes('--table-spacing') ? 'table-spacing' : process.argv.includes('--process-icons') ? 'process-icons' : process.argv.includes('--status-follow') ? 'status-follow' : process.argv.includes('--thought-settlement') ? 'thought-settlement' : process.argv.includes('--question-record') ? 'question-record' : 'reader-performance';
+const fixtureName = process.argv.includes('--scroll-follow') ? 'scroll-follow' : process.argv.includes('--rewind-visibility') ? 'rewind-visibility' : process.argv.includes('--style-refinement') ? 'style-refinement' : process.argv.includes('--table-spacing') ? 'table-spacing' : process.argv.includes('--process-icons') ? 'process-icons' : process.argv.includes('--status-follow') ? 'status-follow' : process.argv.includes('--thought-settlement') ? 'thought-settlement' : process.argv.includes('--question-record') ? 'question-record' : 'reader-performance';
 const sourceVersion = JSON.parse(readFileSync(join(source, 'package.json'), 'utf8')).version;
 const transcript = existsSync(join(source, 'src/client/StatusLine.tsx')) && existsSync(join(source, 'src/client/ToolGroupRow.tsx'));
 const harnessHash = createHash('sha256').update(readFileSync(join(repo, `tests/browser/${fixtureName}.tsx`))).update(readFileSync(fileURLToPath(import.meta.url))).digest('hex');
@@ -280,6 +280,35 @@ try {
             && folded.expanded === 'false' && control.hit && opened.expanded === 'true' && opened.fullText && closed.expanded === 'false';
         result.pointerInteraction = { held, folded, opened, closed, hit: control.hit, pass };
         if (!pass) result.failures.push('Native pointer hover/leave/disclosure interaction failed');
+    }
+    if (fixtureName === 'scroll-follow') {
+        const probe = {};
+        const point = result.bodyPoint;
+        if (!point) throw Error('scroll probe body point missing');
+        await evaluate('window.scrollProbe.mark()');
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+        await delay(120);
+        await send('Input.dispatchMouseEvent', { type: 'mouseWheel', ...point, deltaX: 0, deltaY: -300 });
+        await delay(320);
+        probe.manualWheel = await evaluate('window.scrollProbe.afterWheel("manual")');
+        probe.tailAdopted = await evaluate('window.scrollProbe.establishTail()');
+        const tailPoint = await evaluate('window.scrollProbe.wheelFromTop()');
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: tailPoint.x, y: tailPoint.y });
+        await delay(150);
+        await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: tailPoint.x, y: tailPoint.y, deltaX: 0, deltaY: -300 });
+        await delay(320);
+        probe.tailWheel = await evaluate('window.scrollProbe.afterWheel("tail")');
+        probe.hostDom = await evaluate('window.scrollProbe.hostDom()');
+        probe.burst = await evaluate('window.scrollProbe.burst()');
+        probe.remount = await evaluate('window.scrollProbe.remountFollow()');
+        probe.anchoring = await evaluate('window.scrollProbe.anchoring()');
+        probe.heavy = await evaluate('window.scrollProbe.heavy()');
+        // Same stream with scroll anchoring off, then with content-visibility off: whichever
+        // variant stops the page from reversing names the cause.
+        probe.heavyNoAnchor = await evaluate('window.scrollProbe.heavyNoAnchor()');
+        probe.heavyNoCv = await evaluate('window.scrollProbe.heavyNoCv()');
+        result.probe = probe;
+        result.failures = await evaluate('window.clearviewPerformanceFailures()');
     }
     const finalSessions = await sessionInventory();
     if (initialSessions.idsHash !== finalSessions.idsHash) result.failures.push('Host session inventory changed during read-only probe');

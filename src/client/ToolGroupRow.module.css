@@ -13,4 +13,7 @@
   /* New members must not jump the viewport; the tail follow below keeps the newest row in view. */
   overflow-anchor: none;
   scrollbar-width: thin;
+  /* Reserve the gutter up front: the bar appearing at the cap narrowed the body by 10px and
+     rewrapped every visible row, which read as a flash exactly when a batch starts scrolling. */
+  scrollbar-gutter: stable;
 }

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { PROCESS_TAIL_SLACK, followDecision, followFrame, followsTail, groupOpen, holdsWritten, keyReleasesFollow, processOverflow, releasesFollow, tailOffset, ToolGroupRow, ToolGroupRowView, sameToolGroupProps, type ToolGroupRowProps, type GroupEntry } from '../src/client/ToolGroupRow.tsx';
+import { PROCESS_TAIL_SLACK, followDecision, followFrame, followsTail, groupOpen, holdsWritten, keyReleasesFollow, nestedOwnsWheel, processOverflow, releasesFollow, tailOffset, ToolGroupRow, ToolGroupRowView, sameToolGroupProps, type ToolGroupRowProps, type GroupEntry } from '../src/client/ToolGroupRow.tsx';
 
 const group = (running: boolean, failed = 0): GroupEntry => ({
   kind: 'group', key: 'group:reader-tool:1',
@@ -47,6 +47,12 @@ test('a capped body follows its tail only until the reader scrolls away from it'
   assert.equal(releasesFollow(-120), true, 'an upward wheel step is the reader taking the body over');
   assert.equal(releasesFollow(0), false, 'a horizontal or zero step says nothing about the tail');
   assert.equal(releasesFollow(120), false, 'a downward step leaves the follow intact');
+  // A nested viewport (an opened detail's raw block) keeps the wheel only while it can move.
+  assert.equal(nestedOwnsWheel(120, 700, 360, -120), true, 'a nested body with room upward keeps the wheel');
+  assert.equal(nestedOwnsWheel(0, 700, 360, -120), false, 'at its top the wheel is the capped body\'s again');
+  assert.equal(nestedOwnsWheel(340, 700, 360, 120), false, 'at its bottom a downward step leaves it');
+  assert.equal(nestedOwnsWheel(120, 700, 360, 120), true, 'a downward step with room belongs to it');
+  assert.equal(nestedOwnsWheel(0, 360, 360, -120), false, 'a viewport without overflow never owns the wheel');
   assert.equal(keyReleasesFollow('ArrowUp'), true);
   assert.equal(keyReleasesFollow('PageUp'), true);
   assert.equal(keyReleasesFollow('Home'), true);
@@ -83,7 +89,7 @@ test('a settled live tail keeps its members open without claiming activity', () 
 test('a running group is open, shimmering and shows its members', () => {
   const html = render(group(true));
   assert.match(html, /data-reader-group="group:reader-tool:1"[^>]*data-group-state="running"[^>]*data-expanded="true"/);
-  assert.match(html, /运行了 2 条命令/);
+  assert.match(html, /运行 2 条命令/);
   assert.match(html, /data-shimmer="true"/);
   assert.match(html, /data-member="r1"[\s\S]*data-member="r2"/);
   assert.doesNotMatch(html, /data-reader-line-hint|>收起</);
@@ -188,7 +194,7 @@ test('a settled singleton shows its member without a group header or group marke
   entry.items = entry.items.slice(0, 1);
   const html = render(entry);
   assert.match(html, /data-member="r1"/);
-  assert.doesNotMatch(html, /data-reader-group=|运行了|次失败/);
+  assert.doesNotMatch(html, /data-reader-group=|运行|次失败/);
 });
 
 test('media stays visible after settlement and follows each member in source order', () => {

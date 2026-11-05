@@ -61,3 +61,33 @@ export function readingScrollAction(
   if (wantDown) return { following: true, wantDown: false };
   return { following, wantDown };
 }
+
+/**
+ * One scroll body between a wheel's target and the conversation port.
+ * `holds` mirrors `overscroll-behavior[-y]: contain|none`: a body that cannot move any
+ * further also stops the chain, so the port never sees that step either.
+ */
+export interface NestedWheelBody {
+  current: number;
+  scrollHeight: number;
+  clientHeight: number;
+  holds: boolean;
+}
+
+/**
+ * Whether the port stays where it is because a nested scroll body spends this wheel step.
+ * A wheel aimed at the capped process body is not an intent to stop following the batch:
+ * releasing there froze the page follow while the page itself had not moved a pixel, and the
+ * reader came back from another window to a viewport that had silently stopped tracking.
+ * Only a step that can actually reach the port may detach the follow.
+ */
+export function nestedConsumesWheel(chain: readonly NestedWheelBody[], deltaY: number): boolean {
+  if (deltaY === 0) return true;
+  for (const body of chain) {
+    const span = body.scrollHeight - body.clientHeight;
+    if (span <= 1) continue;
+    if (deltaY < 0 ? body.current > 0.5 : body.current < span - 0.5) return true;
+    if (body.holds) return true;
+  }
+  return false;
+}

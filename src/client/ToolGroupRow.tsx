@@ -47,6 +47,17 @@ export function followDecision(current: number, written: number, scrollHeight: n
 }
 
 /**
+ * A nested viewport (an opened tool detail, a record's raw block) owns the wheel only while it can
+ * still move that way. At its own edge the wheel belongs to this body again: treating it as owned
+ * for as long as it overflows is what made the capped body ignore an upward wheel over a fully
+ * read detail and pin itself back to the tail on every frame.
+ */
+export function nestedOwnsWheel(current: number, scrollHeight: number, clientHeight: number, deltaY: number): boolean {
+  if (scrollHeight <= clientHeight + 1) return false;
+  return deltaY < 0 ? current > 0.5 : current < scrollHeight - clientHeight - 0.5;
+}
+
+/**
  * One frame of tail following: the offset to write, or `null` when the body is already at its tail.
  * Members keep growing between React commits — a thought streams, the open animation expands its
  * members — so the follow runs on the frame clock instead of only when this row re-renders.
@@ -143,7 +154,11 @@ export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedi
   // they scroll back down.
   const members = useRef<HTMLDivElement | null>(null);
   const sticking = useRef(true);
-  const opened = useRef(open);
+  // Seeded with `null`, not `open`: the first layout effect must run the initial branch below.
+  // Seeded with `open` it fell straight into the "was the body moved?" branch, compared `scrollTop=0`
+  // against `written=-1`, and stood down before ever writing the tail — so a group that mounts
+  // already open (every return to a running session) never followed its newest member again.
+  const opened = useRef<boolean | null>(null);
   const written = useRef(-1);
   const measured = useRef(-1);
   const [overflowing, setOverflowing] = useState(false);
@@ -165,7 +180,8 @@ export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedi
       if (open) {
         const offset = sticking.current ? tailOffset(element.scrollHeight, element.clientHeight) : 0;
         element.scrollTop = offset;
-        written.current = offset;
+        // Read back: the browser may clamp or round the write, and holdsWritten compares exactly.
+        written.current = element.scrollTop;
       }
     } else if (open && sticking.current) {
       // Only a body still parked where our own write left it may be re-pinned: a commit landing in
@@ -174,7 +190,7 @@ export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedi
         const offset = tailOffset(element.scrollHeight, element.clientHeight);
         if (Math.abs(element.scrollTop - offset) > 1) {
           element.scrollTop = offset;
-          written.current = offset;
+          written.current = element.scrollTop;
         }
       } else {
         sticking.current = false;
@@ -199,12 +215,18 @@ export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedi
     };
     // A wheel over a member's own viewport (a 128px thought) belongs to that viewport: releasing here
     // would stop the batch following with no way back, because this body never scrolls in that case.
-    const owns = (target: EventTarget | null): boolean => {
+    const owns = (target: EventTarget | null, deltaY?: number): boolean => {
       let node = target as HTMLElement | null;
       while (node && node !== element) {
         if (node.scrollHeight > node.clientHeight + 1) {
           const overflowY = getComputedStyle(node).overflowY;
-          if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') return false;
+          if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') {
+            // Without a direction (touch, keys) any overflowing viewport owns the gesture.
+            // With one, it only owns it while it can still move that way — at its edge the
+            // wheel is this body's again.
+            if (deltaY === undefined) return false;
+            if (nestedOwnsWheel(node.scrollTop, node.scrollHeight, node.clientHeight, deltaY)) return false;
+          }
         }
         node = node.parentElement;
       }
@@ -218,7 +240,7 @@ export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedi
       sticking.current = decision;
       if (decision) written.current = element.scrollTop;
     };
-    const onWheel = (event: WheelEvent) => { if (releasesFollow(event.deltaY) && owns(event.target)) release(); };
+    const onWheel = (event: WheelEvent) => { if (releasesFollow(event.deltaY) && owns(event.target, event.deltaY)) release(); };
     const onTouch = (event: TouchEvent) => { if (owns(event.target)) release(); };
     const onKey = (event: KeyboardEvent) => { if (keyReleasesFollow(event.key) && owns(event.target)) release(); };
     // A pointer press on the container itself is a scrollbar drag; a press on a member row is not.
@@ -258,7 +280,7 @@ export function ToolGroupRowView({ group, motion, onRead, renderItem, renderMedi
         const offset = followFrame(element, sticking.current);
         if (offset !== null) {
           element.scrollTop = offset;
-          written.current = offset;
+          written.current = element.scrollTop;
         }
       }
       frame = requestAnimationFrame(tick);

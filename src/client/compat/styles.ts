@@ -20,6 +20,12 @@ export const COMPAT_CSS = `/* ==== reader-scroll-anchor.css ==== */
 [data-conversation-scroll]:has([data-dsh-clearview]) {
   overflow-anchor: auto;
 }
+/* 跟随尾部时 anchoring 必须关闭：scrollTop 由跟随器独占写入，anchoring 会按「新增成员改变
+ * 了锚点偏移」把刚写下的底部位置再往回拉，形成每帧上下反复的抽搐（实测重负载流式会话
+ * 每帧 -67px、一次运行 22 次反向；关闭后 0 次）。脱离底部后仍交给 anchoring 保持位置。 */
+[data-conversation-scroll]:has([data-dsh-clearview][data-reader-following='true']) {
+  overflow-anchor: none;
+}
 
 /* ==== reader-perf-long-content.css ==== */
 /* 长会话性能：

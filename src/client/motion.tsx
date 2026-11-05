@@ -5,7 +5,7 @@ import css from './Reader.module.css';
 import { TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives';
 import { cssEscape } from './css-escape.js';
 import { MOTION } from './motion-tokens.js';
-import { READING_SURFACE_GAP, readingFollowAction, readingScrollAction } from './reading-follow.js';
+import { READING_SURFACE_GAP, nestedConsumesWheel, readingFollowAction, readingScrollAction, type NestedWheelBody } from './reading-follow.js';
 import { pickAnchor, recallPosition, rememberPosition } from './reading-position.js';
 import { statusBottomInset } from './reading-status.js';
 
@@ -337,18 +337,43 @@ export function useReadingScroll(root: RefObject<HTMLElement>, motion: boolean, 
       // moment the reader moves (the guard exit is the jump button itself).
       if (hadDownGesture || !following.current) setDetached(!following.current);
     };
+    // Nested scroll bodies between the wheel target and the port (a capped process body, a tool
+    // detail's raw block, a record's raw view). Only a step that can reach the port may detach the
+    // follow: a wheel spent inside one of these never moves the page, and releasing on it used to
+    // stop the follow silently for the rest of the batch.
+    const wheelBodies = (target: EventTarget | null): NestedWheelBody[] => {
+      const bodies: NestedWheelBody[] = [];
+      let node = target instanceof Element ? target as HTMLElement : null;
+      while (node && node !== scroll) {
+        if (node.scrollHeight > node.clientHeight + 1) {
+          const style = getComputedStyle(node);
+          if (style.overflowY === 'auto' || style.overflowY === 'scroll' || style.overflowY === 'overlay') {
+            bodies.push({ current: node.scrollTop, scrollHeight: node.scrollHeight, clientHeight: node.clientHeight,
+              holds: style.overscrollBehaviorY === 'contain' || style.overscrollBehaviorY === 'none' });
+          }
+        }
+        node = node.parentElement;
+      }
+      return bodies;
+    };
     const onWheel = (event: WheelEvent) => {
-      if (event.deltaY !== 0) initialGesture = true;
+      if (event.deltaY === 0) return;
+      // An upward step a nested body absorbs (or that its overscroll containment stops dead at
+      // its edge) is not an intent to leave the bottom: nothing about the port moved for it.
+      if (event.deltaY < 0 && nestedConsumesWheel(wheelBodies(event.target), event.deltaY)) return;
+      initialGesture = true;
       // The wheel takes the scroll over from our easing frames; the down
       // gesture records intent, the up gesture leaves the bottom explicitly
       // before the position is even known.
       cancelAnimationFrame(followFrame); followFrame = 0; lastWrittenTop = null;
       if (event.deltaY < 0) { wantDown = false; releaseFollow(); }
-      else if (event.deltaY > 0) wantDown = true;
+      else wantDown = true;
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLElement && event.target.closest('textarea,input,[contenteditable=true]')) return;
       if (['PageUp', 'Home', 'ArrowUp'].includes(event.key)) {
+        // A focused nested viewport scrolls itself for these keys; the port does not move.
+        if (nestedConsumesWheel(wheelBodies(event.target), -1)) return;
         initialGesture = true;
         cancelAnimationFrame(followFrame); followFrame = 0; lastWrittenTop = null;
         wantDown = false; releaseFollow();

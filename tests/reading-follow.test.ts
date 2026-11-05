@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { READING_SURFACE_GAP, readingFollowAction, readingScrollAction } from '../src/client/reading-follow.ts';
+import { READING_SURFACE_GAP, nestedConsumesWheel, readingFollowAction, readingScrollAction } from '../src/client/reading-follow.ts';
 
 const CLEAR = { selected: false, focused: false };
 
@@ -70,4 +70,23 @@ test('an up-gesture supersedes a pending down-gesture', () => {
   // The wheel handler clears wantDown before the up-scroll event arrives, so
   // a changed mind (down, then back up) must not re-pin at the surface.
   assert.deepEqual(readingScrollAction(false, false, true), { following: false, wantDown: false });
+});
+
+test('a wheel a nested scroll body absorbs never detaches the follow', () => {
+  // The capped process body (320px, overscroll-behavior-y: contain) sits between the
+  // pointer and the conversation port. An upward step there scrolls the body, not the
+  // page: releasing the follow for it silently stopped the page from tracking the batch.
+  const body = (current: number) => ({ current, scrollHeight: 900, clientHeight: 320, holds: true });
+  assert.equal(nestedConsumesWheel([body(400)], -120), true, 'the body can scroll up: it spends the step');
+  assert.equal(nestedConsumesWheel([body(0)], -120), true, 'at its top the containment stops the chain dead');
+  assert.equal(nestedConsumesWheel([{ current: 0, scrollHeight: 900, clientHeight: 320, holds: false }], -120), false,
+    'without containment the step chains out to the port, which may then detach');
+  assert.equal(nestedConsumesWheel([body(0)], 120), true, 'a downward step can move the body again');
+  assert.equal(nestedConsumesWheel([{ current: 580, scrollHeight: 900, clientHeight: 320, holds: false }], 120), false,
+    'a body already at its bottom lets a downward step reach the port');
+  assert.equal(nestedConsumesWheel([{ current: 0, scrollHeight: 320, clientHeight: 320, holds: true }], -120), false,
+    'a body that does not overflow is transparent to the gesture');
+  assert.equal(nestedConsumesWheel([{ current: 0, scrollHeight: 900, clientHeight: 320, holds: false },
+    { current: 0, scrollHeight: 400, clientHeight: 320, holds: true }], -120), true,
+    'any body in the chain that holds the step keeps the port still');
 });
