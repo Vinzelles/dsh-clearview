@@ -159,11 +159,13 @@ function summarize(rows: Sample[]) {
   let hostReversals = 0;
   for (let i = 1; i < hostDeltas.length; i++) if (Math.sign(hostDeltas[i]) !== 0 && Math.sign(hostDeltas[i]) === -Math.sign(hostDeltas[i - 1]) && Math.abs(hostDeltas[i]) > 2) hostReversals++;
   const widthChanges = rows.slice(1).filter((row, i) => row.bodyW !== rows[i].bodyW).length;
-  const shShrinks = rows.slice(1).filter((row, i) => row.bodySh < rows[i].bodySh).length;
+  // `scrollHeight` is rounded per element, so a fractional line box makes it wobble by one pixel
+  // between frames. Only a real collapse (two pixels or more) is a shrink worth failing on.
+  const shShrinks = rows.slice(1).filter((row, i) => row.bodySh <= rows[i].bodySh - 2).length;
   const widths = [...new Set(rows.map(row => row.bodyW))];
   // The page scrollbar appearing/disappearing reflows every row, which reads as flicker.
   const hostWidthChanges = rows.slice(1).filter((row, i) => row.hostW !== rows[i].hostW).length;
-  const hostShrinks = rows.slice(1).filter((row, i) => row.hostSh < rows[i].hostSh).length;
+  const hostShrinks = rows.slice(1).filter((row, i) => row.hostSh <= rows[i].hostSh - 2).length;
   return { frames: rows.length, widthChanges, shShrinks, widths, hostWidthChanges, hostShrinks, tailGapMax: Math.max(...tailGaps), tailGapLast: tailGaps.at(-1), tailGapMin: Math.min(...tailGaps),
     bodyReversals: reversals, bodyDeltaMax: Math.max(...bodyDeltas.map(Math.abs)), hostReversals, hostDeltaMax: Math.max(...hostDeltas.map(Math.abs)),
     hostTailLast: rows.at(-1) ? rows.at(-1)!.hostMax - rows.at(-1)!.hostTop : null, samples: rows.filter((_, i) => i % 4 === 0) };
