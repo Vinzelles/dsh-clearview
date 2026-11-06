@@ -661,9 +661,12 @@ async function reader() {
     check(!host.querySelector('[data-reader-block-error]'), 'Reader error boundary');
     if (__TRANSCRIPT__) {
         const operationGroups = [...activeTurn().querySelectorAll<HTMLElement>('[data-reader-group]')]
-            .filter(group => /(?:调用了|运行了|读取了|写入了|编辑了)/.test(disclosure(group)?.textContent ?? ''));
+            .filter(group => /(?:调用|运行|读取|写入|编辑)/.test(disclosure(group)?.textContent ?? ''));
         check(operationGroups.length === 10, 'adjacent tool pairs were not grouped');
-        check(!activeTurn().querySelector('[data-reader-group][data-expanded="true"]'), 'settled groups should auto-fold');
+        // The turn is still open during answer streaming: only its settled tail stays open.
+        const openGroups = [...activeTurn().querySelectorAll<HTMLElement>('[data-reader-group][data-expanded="true"]')];
+        check(openGroups.length === 1 && openGroups[0] === operationGroups.at(-1)
+            && openGroups[0]?.dataset.groupState === 'settled', 'only the settled live tail should stay open');
     }
     // Open only the synthetic active turn's containers, outside the timed window.
     if (!__TRANSCRIPT__) {

@@ -28,7 +28,7 @@ test('a static line has only an operation icon and no spare disclosure slot', ()
 
 test('all disclosures omit side hints and preserve accessible state and toggle callbacks', () => {
   let clicks = 0;
-  for (const label of ['思考', '运行了 2 条命令', '运行', '记录']) {
+  for (const label of ['思考', '运行 2 条命令', '运行', '记录']) {
     const props = { icon: 'i', label, open: true, controls: 'detail', onToggle: () => { clicks++; } };
     const html = renderToStaticMarkup(createElement(Line, props));
     assert.match(html, /aria-expanded="true"[^>]*aria-controls="detail"/);

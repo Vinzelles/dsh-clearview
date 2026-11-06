@@ -262,12 +262,22 @@ test('group wording counts by kind in order of first appearance', () => {
     tool('4', 'edit', { path: 'a' }), tool('5', 'grep', { pattern: 'x' }), tool('6', 'skill', { name: 'pdf' }), tool('7', 'mystery'), tool('8', 'read', { path: 'a' })], none, true);
   assert.equal(group!.kind, 'group');
   if (group!.kind !== 'group') return;
-  assert.equal(groupSummary(group.facts), '运行了 1 条命令，写入了 2 个文件，编辑了 1 个文件，搜索了 1 次，使用了 1 个技能，调用了 1 次工具，读取了 1 个文件');
+  assert.equal(groupSummary(group.facts), '运行 1 条命令，写入 2 个文件，编辑 1 个文件，搜索 1 次，使用 1 个技能，调用 1 次工具，读取 1 个文件');
+});
+
+test('all process summaries omit 了 without altering their order or counts', () => {
+  const facts = {
+    counts: { search: 12, command: 7, thinking: 1, read: 22, tool: 1, skill: 1, write: 2, edit: 3, web: 4, operation: 5 },
+    order: ['search', 'command', 'thinking', 'read', 'tool', 'skill', 'write', 'edit', 'web', 'operation'] as const,
+    running: true,
+    failed: 2,
+  };
+  assert.equal(groupSummary({ ...facts, order: [...facts.order] }), '搜索 12 次，运行 7 条命令，思考，读取 22 个文件，调用 1 次工具，使用 1 个技能，写入 2 个文件，编辑 3 个文件，访问 4 次网页，执行 5 个操作');
 });
 
 test('str_replace_editor create counts as a write, other editor commands as edits', () => {
   const [group] = buildTranscript([tool('1', 'str_replace_editor', { command: 'create', path: 'a' }), tool('2', 'str_replace_editor', { command: 'str_replace', path: 'a' })], none, true);
-  assert.equal(group!.kind === 'group' && groupSummary(group.facts), '写入了 1 个文件，编辑了 1 个文件');
+  assert.equal(group!.kind === 'group' && groupSummary(group.facts), '写入 1 个文件，编辑 1 个文件');
 });
 
 test('running and failed facts', () => {
@@ -282,7 +292,7 @@ test('command and manual-compaction records join groups', () => {
   const compact = chatNode('manual-compaction', { command: { outcome: { kind: 'success' } }, compaction: {} }, turn, 1);
   const map = new Map([[command.key, command], [compact.key, compact]]);
   const [group] = buildTranscript([{ kind: 'record', key: command.key, nodeKey: command.key, step: 1 }, { kind: 'record', key: compact.key, nodeKey: compact.key, step: 1 }, tool('1', 'bash')], key => map.get(key), true);
-  assert.equal(group!.kind === 'group' && groupSummary(group.facts), '运行了 2 条命令，执行了 1 个操作');
+  assert.equal(group!.kind === 'group' && groupSummary(group.facts), '运行 2 条命令，执行 1 个操作');
   assert.equal(group!.kind === 'group' && group.facts.failed, 0);
 });
 

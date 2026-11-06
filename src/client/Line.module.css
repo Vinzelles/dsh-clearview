@@ -18,7 +18,8 @@ button.button:is(:hover, :focus-visible, [aria-expanded="true"]) .chevron { opac
 .trailing [data-add] { color: var(--cc-success); }
 .trailing [data-del] { color: var(--cc-danger); }
 .line[data-tone="failed"] .leading, .line[data-tone="failed"] .trailing { color: var(--cc-danger); }
-.label[data-shimmer] { background: linear-gradient(90deg, var(--cc-text-300) 0%, var(--cc-text-100) 45%, var(--cc-text-300) 70%); background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: cc-shimmer 2s linear infinite; }
-@keyframes cc-shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+.label[data-shimmer] { background: repeating-linear-gradient(90deg, var(--cc-text-300) 0%, var(--cc-text-300) 15%, var(--cc-text-100) 25%, var(--cc-text-300) 35%, var(--cc-text-300) 50%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: cc-shimmer 2s linear infinite; }
+/* One sweep moves one complete gradient period, so the next loop has the same painted frame. */
+@keyframes cc-shimmer { from { background-position: 100% 0; } to { background-position: 0% 0; } }
 [data-motion=off] .button, [data-motion=off] .chevron, [data-motion=off] .icon { transition: none; }
 @media (prefers-reduced-motion: reduce) { .label[data-shimmer] { animation: none; color: var(--cv-process-text); background: none; } .button, .chevron, .icon { transition: none; } }

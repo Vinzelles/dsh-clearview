@@ -89,7 +89,7 @@ test('a settled live tail keeps its members open without claiming activity', () 
 test('a running group is open, shimmering and shows its members', () => {
   const html = render(group(true));
   assert.match(html, /data-reader-group="group:reader-tool:1"[^>]*data-group-state="running"[^>]*data-expanded="true"/);
-  assert.match(html, /运行了 2 条命令/);
+  assert.match(html, /运行 2 条命令/);
   assert.match(html, /data-shimmer="true"/);
   assert.match(html, /data-member="r1"[\s\S]*data-member="r2"/);
   assert.doesNotMatch(html, /data-reader-line-hint|>收起</);

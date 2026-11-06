@@ -28,7 +28,7 @@ test('thoughts before, between and after operations remain inside the same order
   assert.equal(group.kind, 'group');
   if (group.kind !== 'group') throw Error('process group required');
   assert.deepEqual(group.items, items);
-  assert.equal(groupSummary(group.facts), '思考，运行了 2 条命令');
+  assert.equal(groupSummary(group.facts), '思考，运行 2 条命令');
   assert.equal(JSON.stringify(items), before);
 });
 

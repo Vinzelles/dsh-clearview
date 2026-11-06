@@ -17,7 +17,7 @@ export function formatThinkingSeconds(seconds: number): string {
 export function thoughtLabel(durationMs: number | null): string {
   if (durationMs === null) return '思考';
   const seconds = Math.round(durationMs / 1000);
-  return seconds < 1 ? '思考了不到 1 秒' : `思考了 ${formatThinkingSeconds(seconds)}`;
+  return seconds < 1 ? '思考不到 1 秒' : `思考 ${formatThinkingSeconds(seconds)}`;
 }
 
 export const THOUGHT_READ_DELAY = 2400;

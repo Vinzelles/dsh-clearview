@@ -33,8 +33,8 @@ const STANDALONE_TOOLS = new Set(['todo_write', 'dispatch', 'ask_user_question']
 const STATUSES = new Set(['pending', 'in_progress', 'completed']);
 const WORDS: Record<GroupKind, (count: number) => string> = {
   thinking: () => '思考',
-  command: n => `运行了 ${n} 条命令`, read: n => `读取了 ${n} 个文件`, write: n => `写入了 ${n} 个文件`, edit: n => `编辑了 ${n} 个文件`,
-  search: n => `搜索了 ${n} 次`, web: n => `访问了 ${n} 次网页`, skill: n => `使用了 ${n} 个技能`, tool: n => `调用了 ${n} 次工具`, operation: n => `执行了 ${n} 个操作`,
+  command: n => `运行 ${n} 条命令`, read: n => `读取 ${n} 个文件`, write: n => `写入 ${n} 个文件`, edit: n => `编辑 ${n} 个文件`,
+  search: n => `搜索 ${n} 次`, web: n => `访问 ${n} 次网页`, skill: n => `使用 ${n} 个技能`, tool: n => `调用 ${n} 次工具`, operation: n => `执行 ${n} 个操作`,
 };
 
 export function parseTodos(argsRaw: string): PlanTodo[] | null {
