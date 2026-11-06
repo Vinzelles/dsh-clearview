@@ -89,7 +89,7 @@ test('a settled live tail keeps its members open without claiming activity', () 
 test('a running group is open, shimmering and shows its members', () => {
   const html = render(group(true));
   assert.match(html, /data-reader-group="group:reader-tool:1"[^>]*data-group-state="running"[^>]*data-expanded="true"/);
-  assert.match(html, /运行 2 条命令/);
+  assert.match(html, /运行了 2 条命令/);
   assert.match(html, /data-shimmer="true"/);
   assert.match(html, /data-member="r1"[\s\S]*data-member="r2"/);
   assert.doesNotMatch(html, /data-reader-line-hint|>收起</);
@@ -194,7 +194,7 @@ test('a settled singleton shows its member without a group header or group marke
   entry.items = entry.items.slice(0, 1);
   const html = render(entry);
   assert.match(html, /data-member="r1"/);
-  assert.doesNotMatch(html, /data-reader-group=|运行|次失败/);
+  assert.doesNotMatch(html, /data-reader-group=|运行了|次失败/);
 });
 
 test('media stays visible after settlement and follows each member in source order', () => {
